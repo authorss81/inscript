@@ -1,0 +1,24 @@
+# While loop example
+x = 0
+while x < 5:
+{
+    print(x)
+    x = x + 1
+}
+
+print("---")
+
+# For loop example
+for item in range(3):
+{
+    print(item)
+}
+
+print("---")
+
+# List iteration
+numbers = [10, 20, 30, 40, 50]
+for num in numbers:
+{
+    print(num)
+}

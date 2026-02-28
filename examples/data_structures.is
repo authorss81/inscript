@@ -1,0 +1,33 @@
+# Lists
+fruits = ["apple", "banana", "cherry"]
+print(fruits)
+print(fruits[0])
+fruits.append("date")
+print(fruits)
+
+print("---")
+
+# Dictionaries
+person = {
+    "name": "Alice",
+    "age": 30,
+    "city": "New York"
+}
+print(person)
+print(person["name"])
+print(person.keys())
+print(person.values())
+
+print("---")
+
+# Iteration over lists
+for fruit in fruits:
+{
+    print(fruit)
+}
+
+print("---")
+
+# List length
+print(length(fruits))
+print(length(person))

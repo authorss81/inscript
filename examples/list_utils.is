@@ -1,0 +1,173 @@
+# List utilities library for Inscript
+# Provides advanced list operations
+
+function sum_list(numbers):
+{
+    total = 0
+    for num in numbers:
+    {
+        total = total + num
+    }
+    return total
+}
+
+function product_list(numbers):
+{
+    result = 1
+    for num in numbers:
+    {
+        result = result * num
+    }
+    return result
+}
+
+function average_list(numbers):
+{
+    if length(numbers) == 0:
+    {
+        return 0
+    }
+    return sum_list(numbers) / length(numbers)
+}
+
+function range_of_list(numbers):
+{
+    if length(numbers) == 0:
+    {
+        return 0
+    }
+    return max(numbers) - min(numbers)
+}
+
+function find_duplicates(items):
+{
+    seen = {}
+    duplicates = []
+    for item in items:
+    {
+        if has_key(seen, item):
+        {
+            if not contains(duplicates, item):
+            {
+                duplicates.append(item)
+            }
+        }
+        else:
+        {
+            seen[item] = true
+        }
+    }
+    return duplicates
+}
+
+function partition(items, pivot):
+{
+    left = []
+    right = []
+    for item in items:
+    {
+        if item < pivot:
+        {
+            left.append(item)
+        }
+        else:
+        {
+            right.append(item)
+        }
+    }
+    return [left, right]
+}
+
+function rotate_left(items, n):
+{
+    n = n % length(items)
+    return slice_list(items, n) + slice_list(items, 0, n)
+}
+
+function rotate_right(items, n):
+{
+    n = n % length(items)
+    return slice_list(items, length(items) - n) + slice_list(items, 0, length(items) - n)
+}
+
+function chunk(items, size):
+{
+    chunks = []
+    i = 0
+    while i < length(items):
+    {
+        chunk_items = slice_list(items, i, i + size)
+        chunks.append(chunk_items)
+        i = i + size
+    }
+    return chunks
+}
+
+function intersect(list1, list2):
+{
+    result = []
+    for item in list1:
+    {
+        if contains(list2, item) and not contains(result, item):
+        {
+            result.append(item)
+        }
+    }
+    return result
+}
+
+function union(list1, list2):
+{
+    result = copy(list1)
+    for item in list2:
+    {
+        if not contains(result, item):
+        {
+            result.append(item)
+        }
+    }
+    return result
+}
+
+function difference(list1, list2):
+{
+    result = []
+    for item in list1:
+    {
+        if not contains(list2, item):
+        {
+            result.append(item)
+        }
+    }
+    return result
+}
+
+function is_sorted(items):
+{
+    for i in range(1, length(items)):
+    {
+        if items[i] < items[i - 1]:
+        {
+            return false
+        }
+    }
+    return true
+}
+
+function group_by_size(items, size):
+{
+    groups = {}
+    for item in items:
+    {
+        key = string(length(item))
+        if has_key(groups, key):
+        {
+            groups[key].append(item)
+        }
+        else:
+        {
+            groups[key] = [item]
+        }
+    }
+    return groups
+}

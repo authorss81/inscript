@@ -1,0 +1,18 @@
+# Fibonacci sequence generator
+function fibonacci(n):
+{
+    if n <= 1:
+    {
+        return n
+    }
+    else:
+    {
+        return fibonacci(n - 1) + fibonacci(n - 2)
+    }
+}
+
+# Print first 10 fibonacci numbers
+for i in range(10):
+{
+    print(fibonacci(i))
+}

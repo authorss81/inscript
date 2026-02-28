@@ -1,0 +1,58 @@
+# Advanced example: Statistics calculator
+# Uses math utilities to calculate statistics
+
+function calculate_stats(data):
+{
+    cnt = length(data)
+    tot = sum(data)
+    minimum = min(data)
+    maximum = max(data)
+    rng = maximum - minimum
+    avg = tot / cnt
+    
+    product = 1
+    for num in data:
+    {
+        product = product * num
+    }
+    
+    sorted_data = sorted(data)
+    n = length(sorted_data)
+    med = 0
+    if n % 2 == 0:
+    {
+        idx1 = int(n / 2 - 1)
+        idx2 = int(n / 2)
+        med = (sorted_data[idx1] + sorted_data[idx2]) / 2
+    }
+    else:
+    {
+        idx = int(n / 2)
+        med = sorted_data[idx]
+    }
+    
+    results = {"count": cnt, "sum": tot, "min": minimum, "max": maximum, "range": rng, "mean": avg, "median": med, "product": product}
+    return results
+}
+
+function main():
+{
+    print("=== Statistics Calculator ===")
+    
+    numbers = [45, 23, 67, 89, 12, 56, 78, 34, 92, 11]
+    print("Data: " + join_str(numbers))
+    
+    stats = calculate_stats(numbers)
+    
+    print("")
+    print("Statistics:")
+    print("  Count:  " + string(stats["count"]))
+    print("  Sum:    " + string(stats["sum"]))
+    print("  Mean:   " + string(round(stats["mean"], 2)))
+    print("  Median: " + string(stats["median"]))
+    print("  Min:    " + string(stats["min"]))
+    print("  Max:    " + string(stats["max"]))
+    print("  Range:  " + string(stats["range"]))
+}
+
+main()

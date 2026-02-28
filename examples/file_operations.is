@@ -1,0 +1,67 @@
+# Advanced example: File I/O operations
+# Demonstrates reading, writing, and processing files
+
+function create_sample_file():
+{
+    content = "Line 1: Welcome to Inscript\n"
+    content = content + "Line 2: This is a sample file\n"
+    content = content + "Line 3: File operations demo\n"
+    content = content + "Line 4: Reading and writing files\n"
+    
+    write("sample_data.txt", content)
+    print("Created sample_data.txt")
+}
+
+function read_and_count():
+{
+    if not file_exists("sample_data.txt"):
+    {
+        create_sample_file()
+    }
+    
+    content = read("sample_data.txt")
+    lines = split(content, "\n")
+    
+    print("\n=== File Contents ===")
+    print(content)
+    
+    print("\n=== Statistics ===")
+    print("Total lines: " + string(length(lines) - 1))
+    print("Total characters: " + string(length(content)))
+    print("Total words: " + string(length(split(content))))
+}
+
+function process_file_lines():
+{
+    lines = readlines("sample_data.txt")
+    
+    print("\n=== Line by Line ===")
+    for i in range(0, length(lines)):
+    {
+        line = lines[i]
+        clean_line = strip(line)
+        print("Line " + string(i + 1) + ": " + clean_line + " (length: " + string(length(clean_line)) + ")")
+    }
+}
+
+function append_to_file():
+{
+    append_text("sample_data.txt", "\nLine 5: This line was appended\n")
+    print("\n=== After Append ===")
+    print(read("sample_data.txt"))
+}
+
+function main():
+{
+    print("=== File I/O Demo ===\n")
+    
+    read_and_count()
+    process_file_lines()
+    append_to_file()
+    
+    print("\nCleaning up...")
+    delete_file("sample_data.txt")
+    print("Demo complete!")
+}
+
+main()
