@@ -1,486 +1,425 @@
-# Inscript - A Clean Python-Like Programming Language
+<div align="center">
 
-Inscript is an interpreted programming language designed with three core principles:
-- **Language Feel**: Intuitive and pleasant to write
-- **Clarity**: Code should be easy to understand
-- **Developer Happiness**: Focus on reducing friction
+# 🎮 InScript
 
-It features English-style keywords, clean syntax inspired by Python, and a focus on readability.
+**A modern programming language designed for games — clean syntax, powerful type system, batteries included.**
+
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Tests](https://img.shields.io/badge/tests-122%20passing-brightgreen.svg)](#testing)
+[![Version](https://img.shields.io/badge/version-0.6.0-blue.svg)](#)
+
+</div>
+
+---
+
+## What is InScript?
+
+InScript is a statically-typed, dynamically-executed scripting language built specifically for game development. It brings Rust-style safety (pattern matching, ADT enums, Result types, generics) with Python-like readability — and runs right out of the box with a single Python file.
+
+```inscript
+// Structs with inheritance and operator overloading
+struct Ship {
+    x: float   y: float   hp: int
+
+    fn take_damage(amount: int) { self.hp -= amount }
+}
+
+struct PlayerShip extends Ship {
+    shots: int
+    fn fire() -> string {
+        self.shots += 1
+        return f"💥 Shot #{self.shots}!"
+    }
+}
+
+// ADT enums with pattern matching
+enum Asteroid {
+    Small(x: float, y: float)
+    Large(x: float, y: float)
+}
+
+fn points(a: Asteroid) -> int {
+    match a {
+        case Small(x, y) { return 30 }
+        case Large(x, y) { return 10 }
+    }
+}
+
+// Generic data structures
+struct Stack<T> {
+    items: T[]
+    fn push(item: T) { self.items.push(item) }
+    fn pop() -> T    { return self.items.pop() }
+}
+
+// Error propagation
+fn accuracy(hits: int, shots: int) -> Result {
+    let r = safe_divide(float(hits), float(shots))?
+    return Ok(r * 100.0)
+}
+
+// Coroutines
+fn* spawn_wave(n: int) {
+    let i = 0
+    while i < n { yield Asteroid.Large(random_int(0,800), 0.0); i += 1 }
+}
+```
+
+---
+
+## Feature Overview
+
+| Feature | Status | Notes |
+|---|---|---|
+| Variables (`let`, `const`) with type annotations | ✅ | Type inference supported |
+| Structs with methods | ✅ | Full OOP |
+| **Struct inheritance** (`extends`) | ✅ | Method dispatch + field inheritance |
+| **Interface / Trait** system | ✅ | `interface` + `implements` |
+| **Operator overloading** (`fn +()`) | ✅ | All arithmetic + comparison ops |
+| **Mixins** (`with` keyword) | ✅ | Horizontal code reuse |
+| **Properties** (`get`/`set`) | ✅ | Computed + validated fields |
+| **Static methods** | ✅ | `static fn` on structs |
+| **Generics** (`struct Stack<T>`) | ✅ | Type-erased, multi-param |
+| **ADT Enums** with data fields | ✅ | `Circle(radius: float)` |
+| **Pattern matching** + guards | ✅ | `case v if v < 10` |
+| **ADT destructuring** | ✅ | `case Circle(r)` binds `r` |
+| **Error propagation** `?` | ✅ | `Ok(v)` / `Err(e)` / `Result?` |
+| **Coroutines / generators** | ✅ | `fn*` + `yield` + `.next()` |
+| **Comptime evaluation** | ✅ | `comptime { 1024 * 4 }` |
+| **Pipe operator** `\|>` (chainable) | ✅ | `x \|> double \|> add1` |
+| **Destructuring** | ✅ | `let [a,b] = arr` / `let {x,y} = p` |
+| **Spread operator** | ✅ | `fn sum(...args)` / `call(...arr)` |
+| **Optional chaining** | ✅ | `obj?.field?.method()` |
+| **Nullish coalescing** | ✅ | `value ?? "default"` |
+| F-strings | ✅ | `f"Hello {name}!"` |
+| Multi-line strings | ✅ | `"""..."""` |
+| Closures / lambdas | ✅ | `\|x\| x * 2` |
+| Async/await syntax | ✅ | |
+| Labeled break/continue | ✅ | `outer: for ... { break outer }` |
+| Built-in math, Vec2, Vec3, Color | ✅ | Game-ready primitives |
+| REPL | ✅ | Interactive shell |
+
+---
 
 ## Quick Start
 
-### Installation
+### 1. Clone and run (no install needed)
 
-**Option 1: Install via pip (Recommended)**
 ```bash
-pip install inscript
-inscript examples/hello.is
-```
-
-**Option 2: VS Code Extension (Coming Soon)**
-- Search for "Inscript" in VS Code Extensions marketplace
-- Click Install
-- Use keyboard shortcut `Ctrl+Alt+I` to run scripts directly from editor
-- Full syntax highlighting and integrated terminal support
-
-**Option 3: Run from Source**
-```bash
-# Clone or download the repository
+git clone https://github.com/YOUR_USERNAME/inscript.git
 cd inscript
-
-# Run a program
-python inscript.py examples/hello.is
-
-# Interactive mode
-python inscript.py --repl
-
-# For pip-like behavior, add to PATH or use batch file
-# (See Development Setup section below)
+python inscript.py examples/asteroid_blaster.ins
 ```
 
-### First Script
+### 2. Try the REPL
 
-**Create hello.is:**
-```inscript
-print("Hello, Inscript!")
-```
-
-**Run it:**
 ```bash
-# Via pip
-inscript hello.is
-
-# Or from source
-python inscript.py hello.is
+python inscript.py --repl
 ```
 
-## Language Features
+```
+InScript 0.6.0 REPL — type 'exit' or Ctrl+C to quit
+>> let x = 42
+>> print(f"The answer is {x}")
+The answer is 42
+>> struct Point { x: float  y: float }
+>> let p = Point { x: 3.0, y: 4.0 }
+>> print(p.x)
+3.0
+```
 
-### Clean Syntax
+### 3. Run any `.ins` file
+
+```bash
+python inscript.py mygame.ins
+```
+
+---
+
+## Running in VS Code
+
+### Prerequisites
+
+- [VS Code](https://code.visualstudio.com/) installed
+- [Python extension for VS Code](https://marketplace.visualstudio.com/items?itemName=ms-python.python) installed
+- Python 3.10+ on your system (`python --version`)
+
+### Step-by-step
+
+**1. Clone the repo and open in VS Code**
+```bash
+git clone https://github.com/YOUR_USERNAME/inscript.git
+cd inscript
+code .
+```
+
+**2. Set Python interpreter**
+
+Press `Ctrl+Shift+P` → type `Python: Select Interpreter` → choose Python 3.10+
+
+**3. Open the example program**
+
+In the Explorer panel, open `examples/asteroid_blaster.ins` to browse the code.
+
+**4. Create a run task** — create `.vscode/tasks.json`:
+
+```json
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Run InScript file",
+      "type": "shell",
+      "command": "python",
+      "args": ["${workspaceFolder}/inscript.py", "${file}"],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Run example: Asteroid Blaster",
+      "type": "shell",
+      "command": "python",
+      "args": ["${workspaceFolder}/inscript.py", "examples/asteroid_blaster.ins"],
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "InScript REPL",
+      "type": "shell",
+      "command": "python",
+      "args": ["${workspaceFolder}/inscript.py", "--repl"],
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      },
+      "problemMatcher": []
+    }
+  ]
+}
+```
+
+**5. Run it!**
+
+- Press `Ctrl+Shift+B` to run the currently open `.ins` file
+- Or open Command Palette → `Tasks: Run Task` → choose any task above
+
+**Tip:** Add this `launch.json` for F5 debugging too (`.vscode/launch.json`):
+
+```json
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Run InScript (current file)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/inscript.py",
+      "args": ["${file}"],
+      "console": "integratedTerminal"
+    }
+  ]
+}
+```
+
+Now pressing **F5** while editing any `.ins` file will run it through InScript.
+
+---
+
+## Language Tour
+
+### Variables & Types
+
 ```inscript
-# Variables
-name = "Alice"
-age = 30
-
-# If statements
-if age >= 18:
-{
-    print(name + " is an adult")
-}
-
-# Loops
-for i in range(10):
-{
-    print(i)
-}
-
-# Functions
-function greet(person):
-{
-    return "Hello, " + person
-}
-
-result = greet("World")
+let x: int = 42
+let name = "Ada"          // type inferred
+const MAX = comptime { 1024 * 4 }   // compile-time constant = 4096
 ```
-
-### Data Types
-- **Numbers**: `42`, `3.14`
-- **Strings**: `"hello"`
-- **Booleans**: `true`, `false`
-- **Lists**: `[1, 2, 3]`
-- **Dictionaries**: `{"name": "Alice"}`
-- **Null**: `null`
-
-### Built-in Functions
-- I/O: `print()`, `input()`
-- Type conversion: `int()`, `float()`, `string()`, `list()`, `dict()`
-- Collections: `length()`, `keys()`, `values()`, `sort()`, `reverse()`
-- **String functions (20+)**: `upper()`, `lower()`, `split()`, `join()`, `strip()`, `replace()`, `find()`, `startswith()`, `endswith()`, `isdigit()`, `isalpha()`, etc.
-- **List functions (15+)**: `append()`, `insert()`, `remove()`, `pop()`, `copy()`, `extend()`, `unique()`, `flatten()`, `slice_list()`, `zip()`, etc.
-- **Math functions (20+)**: `sqrt()`, `sin()`, `cos()`, `log()`, `ceil()`, `floor()`, `gcd()`, `factorial()`, `pi()`, `e()`, etc.
-- **Dictionary functions (5+)**: `get()`, `pop_dict()`, `update()`, `has_key()`
-- **File I/O (5+)**: `read()`, `write()`, `append_text()`, `readlines()`, `file_exists()`, `delete_file()`
-- **Random (6+)**: `random()`, `randint()`, `choice()`, `sample()`, `shuffle()`, `seed()`
-- **JSON (2+)**: `to_json()`, `from_json()`
-- **Date/Time (5+)**: `now()`, `timestamp()`, `year()`, `month()`, `day()`
-- **Type Checking (8+)**: `is_int()`, `is_float()`, `is_string()`, `is_list()`, `is_dict()`, `is_null()`, `type()`
-- **Utilities (15+)**: `any()`, `all()`, `enumerate()`, `range()`, `abs()`, `round()`, `power()`, `ascii()`, `chr()`, `hash()`, `wait()`, etc.
-
-**Total: 100+ built-in functions**
-
-### Control Flow
-- **if/elseif/else**: Conditional execution
-- **while**: Loop while condition is true
-- **for**: Iterate over sequences
-- **break/continue**: Control loop flow
-- **return**: Return from function
 
 ### Functions
+
 ```inscript
-function fibonacci(n):
-{
-    if n <= 1:
-        return n
-    else:
-        return fibonacci(n - 1) + fibonacci(n - 2)
+fn lerp(a: float, b: float, t: float) -> float {
+    return a + (b - a) * t
+}
+
+// Closures
+let doubled = [1, 2, 3].map(|x| x * 2)
+```
+
+### Structs
+
+```inscript
+struct Bullet extends Entity {
+    dmg:   int = 10
+    speed: float = 600.0
+
+    fn update(dt: float) {
+        self.pos += Vec2(0.0, -self.speed * dt)
+    }
 }
 ```
 
-## Examples
+### Generics
 
-See the `examples/` directory:
-- `hello.is` - Hello World program
-- `conditionals.is` - If/elseif/else statements
-- `loops.is` - While and for loops
-- `data_structures.is` - Lists and dictionaries
-- `fibonacci.is` - Recursive functions
-- `statistics.is` - Statistical calculations with lists
-- `prime_finder.is` - Prime number analysis and patterns
-- `string_analyzer.is` - String manipulation and character analysis
-- `list_algorithms.is` - Advanced list operations (sort, filter, chunk, etc.)
-- `json_random.is` - Random numbers and JSON processing
-- `file_operations.is` - File reading, writing, and manipulation
-- `string_utils.is` - String utility functions library
-- `math_utils.is` - Mathematical utility functions
-- `list_utils.is` - Advanced list utility functions
+```inscript
+struct Pair<A, B> {
+    first:  A
+    second: B
+}
+
+let p = Pair<int, string> { first: 1, second: "one" }
+```
+
+### ADT Enums + Pattern Matching
+
+```inscript
+enum Shape {
+    Circle(radius: float)
+    Rectangle(w: float, h: float)
+}
+
+fn area(s: Shape) -> float {
+    match s {
+        case Circle(r)       { return 3.14159 * r * r }
+        case Rectangle(w, h) { return w * h }
+    }
+}
+```
+
+### Error Handling
+
+```inscript
+fn load(path: string) -> Result {
+    let data = read_file(path)?   // propagates Err upward
+    return Ok(data)
+}
+
+let result = load("level.json")
+let data   = unwrap_or(result, "{}")
+```
+
+### Coroutines
+
+```inscript
+fn* enemy_spawner() {
+    while true {
+        yield Enemy { x: random_int(0, 800), y: -20 }
+    }
+}
+
+let spawner = enemy_spawner()
+let enemy   = spawner.next()
+```
+
+### Pipe Operator
+
+```inscript
+fn clamp01(v: float) -> float { return clamp(v, 0.0, 1.0) }
+fn to_pct(v: float) -> string { return f"{v * 100.0}%" }
+
+let display = raw_value |> clamp01 |> to_pct
+// → "73.5%"
+```
+
+---
 
 ## Project Structure
 
 ```
 inscript/
-├── inscript/              # Main package
-│   ├── __init__.py       # Package initialization
-│   ├── lexer.py          # Tokenizer (lexical analysis)
-│   ├── parser.py         # Parser (syntax analysis)
-│   ├── interpreter.py    # Interpreter (execution)
-│   └── builtins.py       # Built-in functions
-├── inscript.py           # CLI entry point
-├── examples/             # Example programs
-│   ├── hello.is
-│   ├── fibonacci.is
-│   ├── loops.is
-│   ├── conditionals.is
-│   └── data_structures.is
-├── tests/                # Test suite
-├── docs/                 # Documentation
-│   └── LANGUAGE_SPEC.md  # Full language specification
-└── README.md             # This file
+├── inscript.py          ← Entry point (run files, REPL, flags)
+├── lexer.py             ← Tokenizer
+├── parser.py            ← Recursive-descent parser → AST
+├── ast_nodes.py         ← All AST node dataclasses
+├── interpreter.py       ← Tree-walk interpreter (122 tests)
+├── analyzer.py          ← Static type analyzer
+├── environment.py       ← Scope / variable resolution
+├── errors.py            ← Error + signal classes
+├── stdlib.py            ← Standard library
+├── stdlib_values.py     ← Runtime value types (InScriptRange, etc.)
+├── repl.py              ← Interactive REPL
+├── setup.py             ← PyPI packaging
+├── examples/
+│   └── asteroid_blaster.ins   ← Full demo program
+└── tests/
+    ├── test_interpreter.py    ← 122 runtime tests
+    ├── test_parser.py
+    ├── test_lexer.py
+    ├── test_analyzer.py
+    └── test_stdlib.py
 ```
-
-## Architecture
-
-Inscript uses a classic three-stage interpreter architecture:
-
-1. **Lexer** (`lexer.py`): Tokenizes source code into a stream of tokens
-2. **Parser** (`parser.py`): Converts tokens into an Abstract Syntax Tree (AST)
-3. **Interpreter** (`interpreter.py`): Walks the AST and executes the program
-
-### Files
-
-- **lexer.py**: 
-  - `Lexer` class: Main tokenizer
-  - `Token` dataclass: Represents individual tokens
-  - `TokenType` enum: All token types
-
-- **parser.py**:
-  - `Parser` class: Converts tokens to AST
-  - AST Node classes: `BinaryOp`, `FunctionDef`, `IfStatement`, etc.
-
-- **interpreter.py**:
-  - `Interpreter` class: Executes AST nodes
-  - `Environment` class: Manages variable scopes
-  - `InscriptFunction` class: User-defined functions
-
-- **builtins.py**:
-  - Built-in functions available to Inscript programs
-
-## Command Line Interface
-
-### Run a program file
-```bash
-python inscript.py <filename.is>
-```
-
-### Start interactive REPL
-```bash
-python inscript.py --repl
-# or
-python inscript.py -i
-```
-
-### View help
-```bash
-python inscript.py
-```
-
-## Features Implemented
-
-✅ Variables and assignment
-✅ All primitive data types
-✅ Lists and dictionaries
-✅ Arithmetic operators
-✅ Comparison operators
-✅ Logical operators
-✅ If/elseif/else statements
-✅ While loops
-✅ For loops
-✅ Functions
-✅ Built-in functions (25+)
-✅ REPL (Read-Eval-Print Loop)
-✅ Comments
-
-## Planned Features
-
-- Classes and objects
-- Module/import system
-- Exception handling (try/catch/finally)
-- Lambda functions
-- List comprehensions
-- Decorators
-- Multiple file support
-- File I/O operations
-- More string methods
-- First-class functions
-- Closure support
-
-## Design Principles
-
-### 1. Language Feel
-The language should be pleasant and intuitive to write. Keywords are English words that clearly express intent.
-
-### 2. Clarity
-Code written in Inscript should be self-documenting. We prioritize readability over cleverness.
-
-### 3. Developer Happiness
-The language removes unnecessary friction:
-- Simple, predictable syntax
-- Helpful error messages
-- Quick feedback loop (REPL)
-- Extensive documentation
-- Practical built-in functions
-
-## Getting Started with Development
-
-### Understanding the Code
-
-1. Start with `lexer.py` to understand tokenization
-2. Move to `parser.py` to see AST construction
-3. Study `interpreter.py` to see execution
-4. Check `builtins.py` for available functions
-
-### Running Examples
-
-```bash
-# Run each example to see the language in action
-python inscript.py examples/hello.is
-python inscript.py examples/conditionals.is
-python inscript.py examples/loops.is
-python inscript.py examples/data_structures.is
-python inscript.py examples/fibonacci.is
-python inscript.py examples/statistics.is              # Statistics
-python inscript.py examples/prime_finder.is           # Prime numbers
-python inscript.py examples/string_analyzer.is        # String analysis
-python inscript.py examples/list_algorithms.is        # List operations
-python inscript.py examples/json_random.is            # JSON & Random
-```
-
-### Writing Your First Program
-
-Create a new file `myprogram.is`:
-
-```inscript
-# Say hello
-print("Welcome to Inscript!")
-
-# Simple calculation
-sum = 10 + 20
-print("10 + 20 = " + string(sum))
-
-# Lists
-numbers = [1, 2, 3, 4, 5]
-for num in numbers:
-{
-    print(num)
-}
-```
-
-Run it:
-```bash
-python inscript.py myprogram.is
-```
-
-## Contributing
-
-This is an open-source language project. Areas for contribution:
-
-1. **Core Features**: Implement planned features
-2. **Built-in Functions**: Add more standard library functions
-3. **Documentation**: Write guides and tutorials
-4. **Examples**: Create interesting example programs
-5. **Testing**: Write comprehensive test suite
-6. **Performance**: Optimize interpreter
-7. **VS Code Extension**: Syntax highlighting, debugging support
-
-## Publishing for VS Code
-
-### VS Code Extension
-
-The Inscript VS Code extension provides:
-- ✨ Syntax highlighting for `.is` files
-- 🚀 Run scripts with keyboard shortcuts (`Ctrl+Alt+I`)
-- 🔧 Terminal integration for interactive debugging
-- 💻 REPL integration for live coding
-
-**See `vscode-extension/README.md` for detailed instructions on:**
-- Installing from source
-- Publishing to marketplace
-- Development workflow
-- Building distribution packages
-
-### Development Setup
-
-#### Setting up for Local Development
-
-```bash
-# Clone the repository
-git clone https://github.com/YourUsername/inscript.git
-cd inscript
-
-# Install Python dependencies (none required!)
-# Python 3.8+ is the only requirement
-
-# Install locally in editable mode
-pip install -e .
-
-# Now inscript command works everywhere
-inscript examples/hello.is
-```
-
-#### Building the pip Package
-
-```bash
-# Install build tools
-pip install build twine
-
-# Build distribution
-python -m build
-
-# Upload to PyPI (requires account)
-python -m twine upload dist/*
-```
-
-#### Developing the VS Code Extension
-
-```bash
-# Install Node.js dependencies
-cd vscode-extension
-npm install
-
-# Start development mode
-npm run esbuild-watch
-
-# Test the extension (F5 in VS Code)
-# Package for distribution
-npm run vscode:prepublish
-
-# Create VSIX package
-npx vsce package
-
-# Publish to marketplace
-npx vsce publish
-```
-
-## Distribution & Installation Methods
-
-Inscript is available through multiple channels:
-
-| Method | Install Command | Best For |
-|--------|-----------------|----------|
-| **pip** | `pip install inscript` | Python developers, system scripts |
-| **VS Code** | Search Extensions for "Inscript" | VS Code users, interactive development |
-| **GitHub** | `git clone ...` | Contributing, latest source code |
-| **Standalone** | Download `.exe` from releases | No Python required (Windows) |
-| **Docker** | `docker pull inscript:latest` | Cloud, reproducible environments |
-
-## Requirements
-
-- **Runtime**: Python 3.8 or higher
-- **For VS Code Extension**: VS Code 1.70.0+
-- **For Development**: Node.js 14+ (for VS Code extension only)
-
-## Package Structure
-
-```
-inscript/
-├── inscript/                    # Core language package
-│   ├── __init__.py             # Package initialization
-│   ├── cli.py                  # Command-line interface
-│   ├── lexer.py                # Tokenization
-│   ├── parser.py               # AST parsing
-│   ├── interpreter.py          # Code execution
-│   └── builtins.py             # Built-in functions (100+)
-├── vscode-extension/           # VS Code extension
-│   ├── extension.js            # Extension logic
-│   ├── package.json            # Extension metadata
-│   ├── syntaxes/inscript.json  # Syntax highlighting
-│   └── README.md               # Extension documentation
-├── examples/                   # Sample programs (11 total)
-├── docs/                       # Documentation
-│   ├── LANGUAGE_SPEC.md        # Language specification
-│   └── STDLIB.md               # Standard library reference
-├── setup.py                    # pip package configuration
-├── inscript.py                 # Legacy entry point
-└── README.md                   # This file
-```
-
-## Roadmap
-
-### Current (v0.2.0)
-- ✅ Core language with 100+ built-in functions
-- ✅ Complete REPL
-- ✅ pip package distribution
-- ✅ VS Code extension with syntax highlighting and execution
-- ✅ Comprehensive standard library
-- ✅ 11 example programs
-
-### Next (v0.3.0)
-- 🔄 Classes and OOP support
-- 🔄 Exception handling (try/catch)
-- 🔄 Lambda functions
-- 🔄 List comprehensions
-- 🔄 Module/import system
-
-### Future (v1.0.0)
-- Regular expressions
-- Async/await
-- Generators
-- Pattern matching
-- Full VS Code debugging support
-- Performance optimization
-
-Future roadmap includes:
-1. Syntax highlighting extension
-2. Language server protocol (LSP) support
-3. Debugging support
-4. One-click installation from VS Code Marketplace
-
-## License
-
-[Specify your chosen license here]
-
-## Author
-
-Created with focus on developer happiness.
-
-## Resources
-
-For detailed information:
-- **Complete Language Spec**: [docs/LANGUAGE_SPEC.md](docs/LANGUAGE_SPEC.md)
-- **Standard Library**: [docs/STDLIB.md](docs/STDLIB.md) - 100+ built-in functions
-- **Development Roadmap**: [ROADMAP.md](ROADMAP.md)
-- **How to Contribute**: [CONTRIBUTING.md](CONTRIBUTING.md)
-- **Example Programs**: [examples/](examples/)
 
 ---
 
-**Start coding in Inscript today and experience the joy of a language designed for clarity and developer happiness!**
+## Testing
+
+```bash
+# Run all interpreter tests (122 tests)
+python test_interpreter.py
+
+# Run parser tests
+python test_parser.py
+
+# Run lexer tests
+python test_lexer.py
+```
+
+Expected output:
+```
+=================================================================
+  Phase 4 Final Results
+=================================================================
+  122 passed, 0 failed out of 122 tests
+=================================================================
+```
+
+---
+
+## CLI Reference
+
+```bash
+python inscript.py <file.ins>          # Run a file
+python inscript.py --repl             # Interactive REPL
+python inscript.py --check <file.ins> # Type-check only (no run)
+python inscript.py --tokens <file.ins># Print lexer tokens
+python inscript.py --ast <file.ins>   # Print the AST
+python inscript.py --version          # Print version
+```
+
+---
+
+## Roadmap
+
+- [ ] Union / intersection types (`Shape = Circle | Rectangle`)
+- [ ] Abstract methods (`abstract fn update()`)
+- [ ] Macro / metaprogramming system
+- [ ] SIMD vector types (`float32x4`)
+- [ ] LSP VS Code extension (syntax highlighting + completions)
+- [ ] PyPI package (`pip install inscript-lang`)
+
+---
+
+## License
+
+MIT — see [LICENSE](LICENSE)
+
+---
+
+<div align="center">
+
+Built with ❤️ and Python · InScript 0.6.0
+
+</div>
