@@ -1,0 +1,82 @@
+# Advanced example: Prime number finder
+# Uses mathematical functions to find primes
+
+function is_prime(n):
+{
+    if n < 2:
+    {
+        return false
+    }
+    if n == 2:
+    {
+        return true
+    }
+    if n % 2 == 0:
+    {
+        return false
+    }
+    
+    i = 3
+    while i * i <= n:
+    {
+        if n % i == 0:
+        {
+            return false
+        }
+        i = i + 2
+    }
+    return true
+}
+
+function find_primes_up_to(limit):
+{
+    primes = []
+    for num in range(2, limit + 1):
+    {
+        if is_prime(num):
+        {
+            primes.append(num)
+        }
+    }
+    return primes
+}
+
+function print_prime_info(p):
+{
+    print("Prime: " + string(p))
+    print("  Twin prime partner: " + string(p + 2) + " -> " + string(is_prime(p + 2)))
+    print("  Sophie Germain prime: " + string(is_prime(2 * p + 1)))
+}
+
+function main():
+{
+    print("=== Prime Number Analyzer ===\n")
+    
+    limit = 100
+    print("Finding primes up to " + string(limit) + "...")
+    primes = find_primes_up_to(limit)
+    
+    print("Found " + string(length(primes)) + " primes:")
+    print(join_str(primes))
+    
+    print("\n=== First 5 Primes Analysis ===")
+    for i in range(0, 5):
+    {
+        if i < length(primes):
+        {
+            print_prime_info(primes[i])
+            print("")
+        }
+    }
+    
+    print("=== Twin Primes Up to " + string(limit) + " ===")
+    for p in primes:
+    {
+        if is_prime(p + 2):
+        {
+            print("(" + string(p) + ", " + string(p + 2) + ")")
+        }
+    }
+}
+
+main()
