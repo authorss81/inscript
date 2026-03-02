@@ -11,3 +11,6 @@ build/
 *.inscache
 .pytest_cache/
 .coverage
+
+vscode-extension/node_modules/
+final/

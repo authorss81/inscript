@@ -1,49 +1,35 @@
 {
-  "name": "inscript",
-  "displayName": "Inscript Language Support",
-  "description": "Syntax highlighting, execution, and debugging support for Inscript programming language",
-  "version": "0.2.0",
-  "publisher": "TechGenesis",
+  "name": "inscript-lang",
+  "displayName": "InScript",
+  "description": "InScript language support — syntax highlighting, snippets, run & build",
+  "version": "0.5.0",
+  "publisher": "inscript-lang",
   "engines": {
-    "vscode": "^1.70.0"
+    "vscode": "^1.85.0"
   },
   "categories": [
     "Programming Languages",
-    "Debuggers",
-    "Snippets"
+    "Snippets",
+    "Other"
   ],
   "keywords": [
     "inscript",
-    "python-like",
-    "interpreter",
-    "language",
-    "programming"
+    "game",
+    "scripting",
+    "gamedev"
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/authorss81/inscript"
+    "url": "https://github.com/inscript-lang/vscode-inscript"
   },
-  "bugs": {
-    "url": "https://github.com/authorss81/inscript/issues"
-  },
-  "homepage": "https://github.com/authorss81/inscript",
-  "author": {
-    "name": "Souvik Sarkar",
-    "email": "authorss81@gmail.com"
-  },
-  "license": "MIT",
-  "activationEvents": [
-    "onLanguage:inscript",
-    "onCommand:inscript.run",
-    "onCommand:inscript.runInTerminal"
-  ],
-  "main": "./extension.js",
+  "activationEvents": [],
+  "main": "./out/extension.js",
   "contributes": {
     "languages": [
       {
         "id": "inscript",
         "aliases": [
-          "Inscript",
+          "InScript",
           "inscript"
         ],
         "extensions": [
@@ -51,8 +37,8 @@
         ],
         "configuration": "./language-configuration.json",
         "icon": {
-          "light": "./images/icon-light.png",
-          "dark": "./images/icon-dark.png"
+          "light": "./icons/inscript-light.svg",
+          "dark": "./icons/inscript-dark.svg"
         }
       }
     ],
@@ -60,88 +46,78 @@
       {
         "language": "inscript",
         "scopeName": "source.inscript",
-        "path": "./syntaxes/inscript.json"
+        "path": "./syntaxes/inscript.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "inscript",
+        "path": "./snippets/inscript.json"
       }
     ],
     "commands": [
       {
         "command": "inscript.run",
-        "title": "Inscript: Run Current File",
-        "category": "Inscript",
+        "title": "InScript: Run File",
         "icon": "$(play)"
       },
       {
-        "command": "inscript.runInTerminal",
-        "title": "Inscript: Run in Terminal",
-        "category": "Inscript"
+        "command": "inscript.check",
+        "title": "InScript: Type Check"
       },
       {
-        "command": "inscript.repl",
-        "title": "Inscript: Open REPL",
-        "category": "Inscript"
+        "command": "inscript.buildWeb",
+        "title": "InScript: Build for Web"
+      },
+      {
+        "command": "inscript.showAST",
+        "title": "InScript: Show AST"
       }
     ],
     "menus": {
-      "editor/title/run": [
+      "editor/title": [
         {
-          "when": "resourceLangId == inscript",
           "command": "inscript.run",
-          "group": "play"
-        }
-      ],
-      "editor/context": [
-        {
           "when": "resourceLangId == inscript",
-          "command": "inscript.run",
-          "group": "play"
+          "group": "navigation"
         }
       ]
     },
     "keybindings": [
       {
         "command": "inscript.run",
-        "key": "ctrl+alt+i",
-        "when": "resourceLangId == inscript"
-      },
-      {
-        "command": "inscript.runInTerminal",
-        "key": "ctrl+alt+t",
+        "key": "F5",
         "when": "resourceLangId == inscript"
       }
     ],
     "configuration": {
-      "type": "object",
-      "title": "Inscript",
+      "title": "InScript",
       "properties": {
         "inscript.pythonPath": {
           "type": "string",
-          "default": "python",
-          "description": "Path to Python executable (for running Inscript interpreter)"
+          "default": "python3",
+          "description": "Path to Python interpreter to use for running InScript"
         },
-        "inscript.showOutputOnRun": {
+        "inscript.showTypeHints": {
           "type": "boolean",
           "default": true,
-          "description": "Show output panel when running a script"
-        },
-        "inscript.terminalMode": {
-          "type": "boolean",
-          "default": false,
-          "description": "Run scripts in integrated terminal instead of output panel"
+          "description": "Show inferred type hints as decorations"
         }
       }
     }
   },
   "scripts": {
-    "vscode:prepublish": "npm run esbuild-base -- --minify",
-    "esbuild-base": "esbuild ./extension.js --bundle --outfile=out/main.js --external:vscode --platform=node --target=node14",
-    "esbuild": "npm run esbuild-base -- --sourcemap",
-    "esbuild-watch": "npm run esbuild-base -- --sourcemap --watch",
-    "test": "node ./test/runTest.js"
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package"
   },
   "devDependencies": {
-    "@types/vscode": "^1.70.0",
-    "@types/node": "^18.0.0",
-    "esbuild": "^0.15.0"
-  },
-  "dependencies": {}
+    "@types/node": "^25.3.2",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^2.23.0",
+    "esbuild": "^0.27.3",
+    "typescript": "^5.3.0"
+  }
 }
+
