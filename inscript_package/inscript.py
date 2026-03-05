@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 # inscript.py  — InScript Language Entry Point
 #
 # Usage:
@@ -21,13 +21,149 @@ from interpreter import Interpreter
 from errors   import (InScriptError, LexerError, ParseError,
                        SemanticError, InScriptRuntimeError)
 
-VERSION = "0.6.0"
+VERSION = "1.0.0"
 LANG    = "InScript"
+PACKAGES_DIR = os.path.join(os.path.expanduser("~"), ".inscript", "packages")
+REGISTRY_URL = "https://raw.githubusercontent.com/authorss81/inscript-packages/main/registry.json"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # RUN A FILE
 # ─────────────────────────────────────────────────────────────────────────────
+
+def install_package(pkg_name: str) -> int:
+    """Download and install an InScript package to ~/.inscript/packages/"""
+    import urllib.request, json as _json, zipfile, io
+
+    os.makedirs(PACKAGES_DIR, exist_ok=True)
+    pkg_dir = os.path.join(PACKAGES_DIR, pkg_name)
+
+    if os.path.exists(pkg_dir):
+        print(f"[InScript] Package '{pkg_name}' is already installed at {pkg_dir}")
+        return 0
+
+    print(f"[InScript] Fetching registry...")
+    try:
+        with urllib.request.urlopen(REGISTRY_URL, timeout=10) as resp:
+            registry = _json.loads(resp.read().decode())
+    except Exception as e:
+        print(f"[InScript] Could not reach package registry: {e}", file=sys.stderr)
+        print(f"[InScript] Tip: you can also install manually by placing .ins files in {PACKAGES_DIR}/",
+              file=sys.stderr)
+        return 1
+
+    if pkg_name not in registry:
+        available = list(registry.keys())
+        print(f"[InScript] Package '{pkg_name}' not found in registry.", file=sys.stderr)
+        print(f"[InScript] Available packages: {available}", file=sys.stderr)
+        return 1
+
+    pkg_info = registry[pkg_name]
+    zip_url  = pkg_info.get("url")
+    version  = pkg_info.get("version", "?")
+
+    print(f"[InScript] Installing {pkg_name}@{version}...")
+    try:
+        with urllib.request.urlopen(zip_url, timeout=30) as resp:
+            data = resp.read()
+        with zipfile.ZipFile(io.BytesIO(data)) as zf:
+            zf.extractall(PACKAGES_DIR)
+        print(f"[InScript] ✅ {pkg_name}@{version} installed to {pkg_dir}")
+        return 0
+    except Exception as e:
+        print(f"[InScript] Install failed: {e}", file=sys.stderr)
+        return 1
+
+
+def list_packages() -> int:
+    """List installed packages."""
+    if not os.path.exists(PACKAGES_DIR):
+        print("[InScript] No packages installed yet.")
+        print(f"[InScript] Install packages with: inscript install <name>")
+        return 0
+    pkgs = [d for d in os.listdir(PACKAGES_DIR)
+            if os.path.isdir(os.path.join(PACKAGES_DIR, d))]
+    if not pkgs:
+        print("[InScript] No packages installed yet.")
+        print(f"[InScript] Try: inscript install math-utils")
+    else:
+        print(f"[InScript] Installed packages ({len(pkgs)}):")
+        for p in sorted(pkgs):
+            pkg_json = os.path.join(PACKAGES_DIR, p, "package.json")
+            version = ""
+            if os.path.exists(pkg_json):
+                import json as _j
+                try:
+                    info = _j.loads(open(pkg_json).read())
+                    version = f"@{info.get('version','?')}"
+                except Exception:
+                    pass
+            print(f"  • {p}{version}")
+    return 0
+
+
+def remove_package(pkg_name: str) -> int:
+    """Uninstall an InScript package."""
+    import shutil
+    pkg_dir = os.path.join(PACKAGES_DIR, pkg_name)
+    if not os.path.exists(pkg_dir):
+        print(f"[InScript] Package '{pkg_name}' is not installed.", file=sys.stderr)
+        return 1
+    shutil.rmtree(pkg_dir)
+    print(f"[InScript] ✅ Removed {pkg_name}")
+    return 0
+
+
+def search_packages(query: str) -> int:
+    """Search the registry for packages matching a query."""
+    import urllib.request, json as _json
+    print(f"[InScript] Searching registry for '{query}'...")
+    try:
+        with urllib.request.urlopen(REGISTRY_URL, timeout=10) as resp:
+            registry = _json.loads(resp.read().decode())
+    except Exception as e:
+        print(f"[InScript] Could not reach registry: {e}", file=sys.stderr)
+        return 1
+    query_lower = query.lower()
+    matches = [
+        (name, info) for name, info in registry.items()
+        if query_lower in name.lower()
+        or query_lower in info.get("description","").lower()
+        or query_lower in " ".join(info.get("tags",[]))
+    ]
+    if not matches:
+        print(f"[InScript] No packages found matching '{query}'.")
+    else:
+        print(f"[InScript] Found {len(matches)} package(s):")
+        for name, info in sorted(matches):
+            desc = info.get("description", "")
+            ver  = info.get("version", "?")
+            print(f"  • {name}@{ver} — {desc}")
+    return 0
+
+
+def info_package(pkg_name: str) -> int:
+    """Show information about a package."""
+    import urllib.request, json as _json
+    try:
+        with urllib.request.urlopen(REGISTRY_URL, timeout=10) as resp:
+            registry = _json.loads(resp.read().decode())
+    except Exception as e:
+        print(f"[InScript] Could not reach registry: {e}", file=sys.stderr)
+        return 1
+    if pkg_name not in registry:
+        print(f"[InScript] Package '{pkg_name}' not found.", file=sys.stderr)
+        return 1
+    info = registry[pkg_name]
+    installed = os.path.exists(os.path.join(PACKAGES_DIR, pkg_name))
+    print(f"  Name:        {pkg_name}")
+    print(f"  Version:     {info.get('version', '?')}")
+    print(f"  Description: {info.get('description', '')}")
+    print(f"  Tags:        {', '.join(info.get('tags', []))}")
+    print(f"  Repo:        {info.get('repo', '')}")
+    print(f"  Installed:   {'yes' if installed else 'no'}")
+    return 0
+
 
 def run_file(path: str, type_check: bool = True) -> int:
     """Load and execute an InScript source file. Returns exit code."""
@@ -202,11 +338,43 @@ Examples:
     parser.add_argument("--no-typecheck", action="store_true",
                         help="Skip semantic analysis (faster, less safe)")
     parser.add_argument("--version", action="store_true", help="Print version and exit")
+    parser.add_argument("--install", metavar="PKG",
+                        help="Install a package: inscript install math-utils")
+    parser.add_argument("--remove", metavar="PKG",
+                        help="Remove a package: inscript --remove math-utils")
+    parser.add_argument("--packages", action="store_true",
+                        help="List installed packages")
+    parser.add_argument("--search", metavar="QUERY",
+                        help="Search the registry: inscript --search math")
+    parser.add_argument("--info", metavar="PKG",
+                        help="Show package info: inscript --info math-utils")
+    parser.add_argument("--lsp", action="store_true",
+                        help="Start the Language Server (requires: pip install pygls)")
     args = parser.parse_args()
 
     if args.version:
         print(f"InScript {VERSION}")
         return 0
+
+    if args.lsp:
+        from inscript_package.lsp.server import main as lsp_main
+        lsp_main()
+        return 0
+
+    if args.packages:
+        return list_packages()
+
+    if args.install:
+        return install_package(args.install)
+
+    if args.remove:
+        return remove_package(args.remove)
+
+    if args.search:
+        return search_packages(args.search)
+
+    if args.info:
+        return info_package(args.info)
 
     if args.repl:
         run_repl()

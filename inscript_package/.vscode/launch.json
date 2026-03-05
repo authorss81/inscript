@@ -1,0 +1,29 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Run InScript (current file)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/inscript.py",
+      "args": ["${file}"],
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Run example: Asteroid Blaster",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/inscript.py",
+      "args": ["examples/asteroid_blaster.ins"],
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "InScript REPL",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/inscript.py",
+      "args": ["--repl"],
+      "console": "integratedTerminal"
+    }
+  ]
+}

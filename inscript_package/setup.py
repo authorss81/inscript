@@ -1,16 +1,7 @@
 """
-InScript — setup.py
-Correct structure: this file is at the ROOT, one level ABOVE inscript_package/
-
-Directory layout:
-  inscript_release/          ← you run `python -m build` from here
-    setup.py                 ← this file
-    pyproject.toml
-    README.md
-    inscript_package/        ← the actual Python package
-      __init__.py
-      inscript.py
-      ...
+InScript — setup.py (legacy fallback; pyproject.toml is canonical)
+Run:  pip install .
+      python -m build && twine upload dist/*
 """
 from setuptools import setup, find_packages
 
@@ -23,7 +14,7 @@ setup(
     long_description_content_type = "text/markdown",
     license          = "MIT",
     python_requires  = ">=3.10",
-    packages         = find_packages(),           # finds inscript_package/
+    packages         = find_packages(),
     package_data     = {"inscript_package": ["examples/*.ins"]},
     entry_points     = {"console_scripts": ["inscript=inscript_package.inscript:main"]},
     classifiers      = [
@@ -36,7 +27,7 @@ setup(
     ],
     extras_require   = {"lsp": ["pygls>=1.3"]},
     project_urls     = {
-        "Homepage":   "https://github.com/authorss81/inscript",
-        "Repository": "https://github.com/authorss81/inscript",
+        "Homepage":   "https://inscript-lang.dev",
+        "Repository": "https://github.com/YOUR_USERNAME/inscript",
     },
 )
