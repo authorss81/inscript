@@ -847,3 +847,15 @@ except KeyError:
         "get":  _http_get,
         "post": _http_post,
     })
+
+# Extended stdlib Part 1
+try:
+    import stdlib_extended
+except Exception as _e:
+    import sys; print(f'[stdlib_extended] {_e}', file=sys.stderr)
+
+# Extended stdlib Part 1
+try:
+    import stdlib_extended
+except Exception as _e:
+    import sys; print(f'[stdlib_extended] {_e}', file=sys.stderr)
