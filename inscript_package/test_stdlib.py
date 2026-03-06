@@ -129,7 +129,7 @@ test("array.any with lambda", t_array_any)
 # ── io module ──────────────────────────────────────────────────────────────
 def t_io_write_read():
     import tempfile
-    path = tempfile.mktemp(suffix=".txt")
+    path = tempfile.mktemp(suffix=".txt").replace("\\", "/")
     src = f'import "io"\nwrite_file("{path}", "hello inscript")\nlet content = read_file("{path}")'
     i = R(src)
     assert i._env.get("content") == "hello inscript"
@@ -138,7 +138,7 @@ test("io.write_file + read_file", t_io_write_read)
 
 def t_io_read_lines():
     import tempfile
-    path = tempfile.mktemp(suffix=".txt")
+    path = tempfile.mktemp(suffix=".txt").replace("\\", "/")
     with open(path, "w") as f: f.write("line1\nline2\nline3")
     src = f'import "io"\nlet lines = read_lines("{path}")'
     i = R(src)
