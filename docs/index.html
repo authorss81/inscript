@@ -1,0 +1,37 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>InScript — Game-First Scripting Language</title>
+  <style>
+    body { font-family: monospace; max-width: 700px; margin: 60px auto; padding: 0 20px; background:#0d0d0d; color:#e0e0e0; }
+    h1   { color: #7effa0; }
+    pre  { background:#1a1a1a; padding:16px; border-radius:6px; overflow-x:auto; }
+    a    { color:#7effa0; }
+  </style>
+</head>
+<body>
+  <h1>InScript</h1>
+  <p>A game-first scripting language. <code>scene</code>, <code>on_update</code>, <code>ai</code>, and <code>shader</code> are first-class keywords.</p>
+  <pre>
+scene GameScene {
+    let score: int = 0
+
+    on_update(dt: float) {
+        if input.key_pressed("space") {
+            score += 1
+        }
+    }
+
+    on_draw {
+        draw.text(10, 10, f"Score: {score}", WHITE)
+    }
+}
+  </pre>
+  <p>
+    <a href="https://github.com/authorss81/inscript">GitHub</a> &nbsp;|&nbsp;
+    <a href="https://github.com/authorss81/inscript/blob/main/docs/">Documentation</a> &nbsp;|&nbsp;
+    <a href="https://pypi.org/project/inscript/">PyPI</a>
+  </p>
+</body>
+</html>
