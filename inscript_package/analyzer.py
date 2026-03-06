@@ -61,12 +61,20 @@ T_TRANSFORM3D = InScriptType("Transform3D")
 T_TEXTURE = InScriptType("Texture")
 
 BUILTIN_TYPES: Dict[str, InScriptType] = {
+    # canonical names
     "int": T_INT, "float": T_FLOAT, "bool": T_BOOL,
     "string": T_STRING, "void": T_VOID, "null": T_NULL, "any": T_ANY,
+    # common aliases
+    "str": T_STRING, "boolean": T_BOOL, "number": T_FLOAT,
+    "nil": T_NULL, "object": T_ANY, "auto": T_ANY,
+    "Integer": T_INT, "Float": T_FLOAT, "String": T_STRING, "Bool": T_BOOL,
+    # game types
     "Vec2": T_VEC2, "Vec3": T_VEC3, "Vec4": T_VEC4,
     "Color": T_COLOR, "Rect": T_RECT,
     "Transform2D": T_TRANSFORM2D, "Transform3D": T_TRANSFORM3D,
     "Texture": T_TEXTURE,
+    # tuple / array shorthand
+    "Tuple": T_ANY, "List": T_ANY, "Dict": T_ANY, "Map": T_ANY,
 }
 
 def array_type(elem: InScriptType) -> InScriptType:
