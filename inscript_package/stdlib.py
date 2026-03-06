@@ -641,7 +641,7 @@ import os as _os
 import os.path as _osp
 
 register_module("path", {
-    "join":       lambda *parts: _osp.join(*[str(p) for p in parts]),
+    "join":       lambda *parts: _osp.join(*[str(p) for p in parts]).replace("\\", "/"),
     "dirname":    lambda p: _osp.dirname(str(p)),
     "basename":   lambda p: _osp.basename(str(p)),
     "stem":       lambda p: _osp.splitext(_osp.basename(str(p)))[0],
