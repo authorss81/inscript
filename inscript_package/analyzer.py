@@ -182,6 +182,7 @@ class Analyzer(Visitor):
         self._current_fn_return_type: Optional[InScriptType] = None
         self._loop_depth:  int  = 0
         self._in_scene:    bool = False
+        self._in_match_arm: bool = False
         self._struct_defs: Dict[str, StructDecl] = {}
 
         # Pre-register built-in global functions
@@ -202,6 +203,10 @@ class Analyzer(Visitor):
     def _lookup(self, name: str, line: int = 0, col: int = 0) -> Symbol:
         sym = self._scope.lookup(name)
         if sym is None:
+            # Inside a match arm, unknown names may be ADT field bindings
+            # injected at runtime — treat them as any rather than erroring
+            if self._in_match_arm:
+                return Symbol(name, T_ANY, kind="var")
             self._error(f"Undefined name: '{name}'", line, col)
         return sym
 
@@ -617,9 +622,18 @@ class Analyzer(Visitor):
     def visit_MatchStmt(self, node: MatchStmt) -> InScriptType:
         self.visit(node.subject)
         for arm in node.arms:
+            self._push_scope("match_arm")
+            if arm.binding:
+                self._define(Symbol(arm.binding, T_ANY, kind="var", line=node.line))
             if arm.pattern:
                 self.visit(arm.pattern)
+            if arm.guard:
+                self.visit(arm.guard)
+            prev = self._in_match_arm
+            self._in_match_arm = True
             self.visit(arm.body)
+            self._in_match_arm = prev
+            self._pop_scope()
         return T_VOID
 
     def visit_ThrowStmt(self, node: ThrowStmt) -> InScriptType:
@@ -747,15 +761,19 @@ class Analyzer(Visitor):
     def visit_GetAttrExpr(self, node: GetAttrExpr) -> InScriptType:
         obj_type = self.visit(node.obj)
 
-        # If the object is a known struct type, validate field access
+        # If the object is a known struct type, validate field/method access
+        # Walk the full inheritance chain: child → parent → grandparent
         if obj_type.name in self._struct_defs:
-            struct = self._struct_defs[obj_type.name]
-            for field in struct.fields:
-                if field.name == node.attr:
-                    return self._resolve_type_ann(field.type_ann)
-            for method in struct.methods:
-                if method.name == node.attr:
-                    return self._resolve_type_ann(method.return_type)
+            name = obj_type.name
+            while name and name in self._struct_defs:
+                struct = self._struct_defs[name]
+                for field in struct.fields:
+                    if field.name == node.attr:
+                        return self._resolve_type_ann(field.type_ann)
+                for method in struct.methods:
+                    if method.name == node.attr:
+                        return self._resolve_type_ann(method.return_type)
+                name = getattr(struct, "parent_name", None)
             self._error(
                 f"Struct '{obj_type.name}' has no field or method '{node.attr}'",
                 node.line, node.col

@@ -913,13 +913,37 @@ class Interpreter(Visitor):
                             if isinstance(arg.value, IdentExpr) and i < len(field_vals):
                                 adt_bindings[arg.value.name] = field_vals[i][1]
                 else:
-                    pattern_val = self.visit(arm.pattern)
-                    # ADT variant matching: case Shape.Circle (no destructuring)
-                    if (isinstance(subject, dict) and "_variant" in subject
-                            and isinstance(pattern_val, dict) and "_variant" in pattern_val):
-                        matched = subject["_variant"] == pattern_val["_variant"]
+                    # ── ADT namespace pattern: case Shape.Circle or case Direction.North
+                    # The pattern node is a NamespaceAccessExpr or GetAttrExpr
+                    # We match by variant name WITHOUT evaluating (which gives a factory fn)
+                    from ast_nodes import NamespaceAccessExpr, GetAttrExpr as _GAE
+                    pat = arm.pattern
+                    variant_name = None
+                    if isinstance(pat, NamespaceAccessExpr):
+                        variant_name = pat.member
+                    elif isinstance(pat, _GAE):
+                        variant_name = pat.attr
+
+                    if (variant_name and isinstance(subject, dict)
+                            and "_variant" in subject):
+                        matched = subject["_variant"] == variant_name
+                        if matched:
+                            # Auto-bind all ADT fields so `radius`, `w`, `h` etc work
+                            for k, v in subject.items():
+                                if not k.startswith("_"):
+                                    adt_bindings[k] = v
                     else:
-                        matched = subject == pattern_val
+                        pattern_val = self.visit(arm.pattern)
+                        # ADT variant matching via evaluated dict
+                        if (isinstance(subject, dict) and "_variant" in subject
+                                and isinstance(pattern_val, dict) and "_variant" in pattern_val):
+                            matched = subject["_variant"] == pattern_val["_variant"]
+                            if matched:
+                                for k, v in subject.items():
+                                    if not k.startswith("_"):
+                                        adt_bindings[k] = v
+                        else:
+                            matched = subject == pattern_val
 
             if not matched:
                 continue
