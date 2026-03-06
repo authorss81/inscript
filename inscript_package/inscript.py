@@ -242,17 +242,87 @@ InScript REPL Tips:
 
 def run_repl():
     """Interactive Read-Eval-Print Loop."""
+    try:
+        from repl import EnhancedREPL
+        EnhancedREPL().run()
+        return
+    except Exception:
+        pass
+
+    # Fallback simple REPL
     print(REPL_BANNER)
-    interp   = Interpreter()
-    history  = []
-    buf      = []
+    interp  = Interpreter()
+    buf     = []
 
     def show_result(val):
         if val is None: return
-        from stdlib_values import (InScriptFunction, InScriptInstance,
-                                    Vec2, Vec3, Color, Rect)
         from interpreter import _inscript_str
         print(f"  → {_inscript_str(val)}")
+
+    def handle_dot_cmd(cmd):
+        """Handle .help .vars .modules .type .clear .exit etc."""
+        parts   = cmd.strip().split(None, 1)
+        command = parts[0].lower()
+        arg     = parts[1] if len(parts) > 1 else ""
+
+        if command in (".help", "help"):
+            print(REPL_HELP); return True
+        if command in (".exit", ".quit", "exit", "quit"):
+            print("[InScript] Goodbye!"); raise SystemExit(0)
+        if command == ".clear":
+            nonlocal interp, buf
+            interp = Interpreter(); buf = []
+            print("  (session cleared)"); return True
+        if command == ".vars":
+            items = {k: v for k, v in interp._env._store.items()
+                     if not k.startswith("_")}
+            if not items:
+                print("  (no variables defined)")
+            else:
+                from interpreter import _inscript_str
+                for k, v in sorted(items.items()):
+                    try:    vs = _inscript_str(v)
+                    except: vs = repr(v)
+                    print(f"  {k} = {vs}")
+            return True
+        if command == ".modules":
+            try:
+                from stdlib import _MODULE_REGISTRY
+                for name in sorted(_MODULE_REGISTRY.keys()):
+                    print(f"  {name}")
+            except Exception:
+                mods = ["math","string","array","io","json","random","time",
+                        "color","tween","grid","events","debug","http",
+                        "path","regex","csv","uuid","crypto"]
+                for m in mods: print(f"  {m}")
+            return True
+        if command == ".type":
+            if not arg:
+                print("  Usage: .type <expression>"); return True
+            try:
+                prog = parse(arg, "<repl>")
+                from ast_nodes import ExprStmt
+                if prog.body and isinstance(prog.body[-1], ExprStmt):
+                    val = interp.visit(prog.body[-1].expr)
+                    print(f"  {type(val).__name__}")
+            except Exception as e:
+                print(f"  Error: {e}")
+            return True
+        if command == ".fns":
+            from stdlib_values import InScriptFunction
+            fns = {k: v for k, v in interp._env._store.items()
+                   if isinstance(v, InScriptFunction) and not k.startswith("_")}
+            if not fns:
+                print("  (no functions defined)")
+            else:
+                for k in sorted(fns): print(f"  fn {k}()")
+            return True
+        if command == ".history":
+            print("  (history not available in fallback REPL)"); return True
+        if command == ".reset":
+            interp = Interpreter(); buf = []
+            print("  (interpreter reset)"); return True
+        return False
 
     while True:
         prompt = ">>> " if not buf else "... "
@@ -262,50 +332,32 @@ def run_repl():
             print("\n[InScript] Goodbye!")
             break
 
-        # REPL commands
         stripped = line.strip()
-        if stripped in ("exit", ".exit", "quit"):
-            print("[InScript] Goodbye!")
-            break
-        if stripped == "help":
-            print(REPL_HELP); continue
-        if stripped == ".clear":
-            interp = Interpreter()
-            buf = []
-            print("  (session cleared)")
+        if not stripped:
             continue
-        if stripped == ".vars":
-            for name, sym in sorted(interp._env._store.items()):
-                if not name.startswith("_"):
-                    print(f"  {name} = {sym!r}")
-            continue
+
+        # Dot commands
+        if stripped.startswith(".") or stripped in ("exit","quit","help"):
+            try:
+                if handle_dot_cmd(stripped):
+                    continue
+            except SystemExit:
+                break
 
         # Multiline continuation
         if line.endswith("\\"):
-            buf.append(line[:-1])
-            continue
+            buf.append(line[:-1]); continue
         buf.append(line)
         source = "\n".join(buf)
         buf = []
 
-        if not source.strip():
-            continue
-
-        # Try to eval
         try:
             prog = parse(source, "<repl>")
-            history.append(source)
-
-            # Run and show last expression value
-            prev_count = len(interp._env._store)
             interp.run(prog)
-
-            # Show result of last expression statement
             from ast_nodes import ExprStmt
             if prog.body and isinstance(prog.body[-1], ExprStmt):
                 val = interp.visit(prog.body[-1].expr)
                 show_result(val)
-
         except (LexerError, ParseError, SemanticError, InScriptRuntimeError) as e:
             print(e)
         except Exception as e:

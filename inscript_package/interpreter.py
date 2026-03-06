@@ -1970,11 +1970,15 @@ def _inscript_str(val) -> str:
     if val is None:  return "nil"
     if val is True:  return "true"
     if val is False: return "false"
+    if isinstance(val, list):
+        return "[" + ", ".join(_inscript_str(v) for v in val) + "]"
     if isinstance(val, float):
         # Always show at least one decimal place: 4.0 → "4.0", 3.14 → "3.14"
         if val == int(val) and not (val != val):  # not NaN
             return f"{int(val)}.0"
         return str(val)
+    if isinstance(val, str):
+        return val  # bare string — no quotes when printing
     if isinstance(val, dict):
         # Result types
         if "_ok" in val:

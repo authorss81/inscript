@@ -267,15 +267,25 @@ class Lexer:
         if ch in (" ", "\t", "\r", "\n"):
             return
 
-        # // followed by digit/( is floor-division; // followed by space/letter is a comment
+        # // — floor-division or line comment
+        # Floor division: `10 // 3`, `x // 2`, `(a+b) // c`
+        # Comment:        `let x = 5 // this is a comment`
+        # Key rule: look at what comes AFTER the second /
+        #   - digit or ( → always floor division
+        #   - letter/word → always comment
+        #   - space then digit → floor division  
+        #   - space then letter → comment
         if ch == "/" and self.current == "/":
-            # Peek at character after second /
-            peek_after = self.source[self.pos + 1] if self.pos + 1 < len(self.source) else " "
-            if peek_after in (" ", "\t", "\n", "\r", "/", "*") or peek_after.isalpha() or peek_after == "_":
-                # It's a line comment
-                self._skip_line_comment(); return
             self.advance()  # consume second /
-            self._emit(TT.SLASH_SLASH, "//", sl, sc)
+            # Now look at remaining source after both slashes
+            rest = self.source[self.pos:]
+            rest_stripped = rest.lstrip(" \t")
+            if rest_stripped and (rest_stripped[0].isdigit() or rest_stripped[0] == "("):
+                # e.g. `10//3` or `x // 3` or `x//(y+1)`
+                self._emit(TT.SLASH_SLASH, "//", sl, sc)
+            else:
+                # e.g. `// comment` or `x = 5 // comment`
+                self._skip_line_comment()
             return
         if ch == "/" and self.current == "*":
             self._skip_block_comment(sl, sc); return
