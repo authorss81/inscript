@@ -1,0 +1,216 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// Asteroid Blaster — InScript Demo Program
+// Shows: generics, ADT enums, inheritance, mixins, properties, pattern guards,
+//        coroutines, error propagation, comptime, pipe operator, closures
+//
+// Run:  python inscript.py examples/asteroid_blaster.ins
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ── Safe math via Result / error propagation ──────────────────────────────
+fn safe_divide(a: float, b: float) -> Result {
+    if b == 0.0 { return Err("division by zero") }
+    return Ok(a / b)
+}
+
+fn accuracy_pct(hits: int, shots: int) -> Result {
+    let r = safe_divide(float(hits), float(shots))?
+    return Ok(r * 100.0)
+}
+
+// ── Generic bullet pool ───────────────────────────────────────────────────
+struct Stack<T> {
+    items: T[]
+    fn push(item: T)   { self.items.push(item) }
+    fn pop()  -> T     { return self.items.pop() }
+    fn size() -> int   { return self.items.length }
+    fn is_empty() -> bool { return self.items.length == 0 }
+}
+
+// ── Score board with get/set properties ──────────────────────────────────
+struct ScoreBoard {
+    _score:    int
+    _hi_score: int
+
+    get score()    -> int { return self._score }
+    set score(v: int)     {
+        self._score = v
+        if v > self._hi_score { self._hi_score = v }
+    }
+    get hi_score() -> int { return self._hi_score }
+}
+
+// ── Base ship — inherited by PlayerShip ───────────────────────────────────
+struct Ship {
+    name:  string
+    x:     float
+    y:     float
+    hp:    int
+    speed: float
+
+    fn move_by(dx: float, dy: float) {
+        self.x += dx * self.speed
+        self.y += dy * self.speed
+    }
+
+    fn take_damage(amount: int) {
+        self.hp -= amount
+        if self.hp < 0 { self.hp = 0 }
+    }
+
+    fn is_alive() -> bool { return self.hp > 0 }
+}
+
+struct PlayerShip extends Ship {
+    shots: int
+    hits:  int
+
+    fn fire(target_x: float) -> string {
+        self.shots += 1
+        let hit = (abs(target_x - self.x) < 80.0)
+        if hit { self.hits += 1 }
+        let outcome = hit ? "HIT 💥" : "miss"
+        return f"Shot #{self.shots} → {outcome}"
+    }
+}
+
+// ── ADT enum — each asteroid variant carries different data ───────────────
+enum Asteroid {
+    Small(x: float, y: float)
+    Medium(x: float, y: float)
+    Large(x: float, y: float)
+}
+
+fn asteroid_points(a: Asteroid) -> int {
+    match a {
+        case Small(x, y)  { return 30 }
+        case Medium(x, y) { return 20 }
+        case Large(x, y)  { return 10 }
+    }
+}
+
+fn asteroid_label(a: Asteroid) -> string {
+    match a {
+        case Small(x, y)  { return f"🪨 Small  ({x}, {y})" }
+        case Medium(x, y) { return f"🌑 Medium ({x}, {y})" }
+        case Large(x, y)  { return f"⚫ Large  ({x}, {y})" }
+    }
+}
+
+// ── HP status via pattern matching guard ──────────────────────────────────
+fn hp_status(hp: int) -> string {
+    match hp {
+        case h if h <= 0  { return "💀 Dead" }
+        case h if h <= 25 { return "🔴 Critical" }
+        case h if h <= 50 { return "🟡 Damaged" }
+        case h if h <= 75 { return "🟢 Good" }
+        case _            { return "✨ Full" }
+    }
+}
+
+// ── Coroutine: lazily yields one asteroid per call ────────────────────────
+fn* asteroid_wave(wave_num: int) {
+    let count = wave_num + 1
+    let i = 0
+    while i < count {
+        let rx = float(random_int(50, 750))
+        let ry = float(random_int(10, 80))
+        if i % 3 == 0 { yield Asteroid.Large(rx, ry) }
+        else if i % 3 == 1 { yield Asteroid.Medium(rx, ry) }
+        else { yield Asteroid.Small(rx, ry) }
+        i += 1
+    }
+}
+
+// ── Comptime constant: evaluated once at startup ───────────────────────────
+const SURVIVAL_BONUS = comptime { 50 * 10 }
+
+// ── Main simulation ───────────────────────────────────────────────────────
+fn main() {
+    print("╔═══════════════════════════════════════════╗")
+    print("║        ASTEROID BLASTER  v1.0  🚀         ║")
+    print("║        Powered by InScript 0.6.0          ║")
+    print("╚═══════════════════════════════════════════╝")
+    print("")
+
+    // Set up player ship
+    let player = PlayerShip {
+        name:  "Eagle-1",
+        x:     400.0,
+        y:     550.0,
+        hp:    100,
+        speed: 4.0,
+        shots: 0,
+        hits:  0,
+    }
+
+    // Generic bullet pool (Stack<string>)
+    let pool = Stack<string> { items: [] }
+    pool.push("AP-Round")
+    pool.push("AP-Round")
+    pool.push("Laser")
+    pool.push("Laser")
+    pool.push("Laser")
+    print(f"  Arming {pool.size()} rounds...\n")
+
+    // Score board using get/set property accessors
+    let board = ScoreBoard { _score: 0, _hi_score: 0 }
+
+    // Simulate 3 waves
+    let wave_num = 1
+    while wave_num <= 3 {
+        print(f"━━━  WAVE {wave_num}  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+
+        // Spawn asteroids via coroutine
+        let spawner = asteroid_wave(wave_num)
+        let spawned = 0
+        while spawned < wave_num + 1 {
+            let asteroid = spawner.next()
+            if asteroid != null {
+                print(asteroid_label(asteroid))
+                let pts = asteroid_points(asteroid)
+                board.score = board.score + pts
+
+                // Fire if ammo available (pop from generic stack)
+                if !pool.is_empty() {
+                    let ammo = pool.pop()
+                    let tx = float(random_int(300, 500))
+                    let shot = player.fire(tx)
+                    print(f"  [{ammo}] {shot}")
+                }
+            }
+            spawned += 1
+        }
+
+        // Ship takes hull damage, moves
+        player.take_damage(wave_num * 10)
+        player.move_by(float(wave_num) * 0.3, -0.2)
+
+        print(f"\n  HP:    {player.hp}/100  {hp_status(player.hp)}")
+        print(f"  Score: {board.score}  |  Hi: {board.hi_score}")
+        print(f"  Pos:   ({player.x}, {player.y})\n")
+
+        wave_num += 1
+    }
+
+    // Pipe operator: apply bonus, then format
+    fn add_bonus(s: int) -> int { return s + SURVIVAL_BONUS }
+    fn label_score(s: int) -> string { return f"🏆 {s} points" }
+    let final_label = board.score |> add_bonus |> label_score
+
+    // Error propagation: accuracy may fail if 0 shots
+    let acc_result = accuracy_pct(player.hits, player.shots)
+    let acc = unwrap_or(acc_result, 0.0)
+
+    // Destructure final stats
+    let [total_shots, total_hits] = [player.shots, player.hits]
+
+    print("━━━  MISSION COMPLETE  ━━━━━━━━━━━━━━━━━━━━━━━━━━")
+    print(f"  {final_label}")
+    print(f"  Shots: {total_shots}  Hits: {total_hits}  Accuracy: {acc}%")
+    print(f"  Survival bonus: +{SURVIVAL_BONUS}")
+    print(f"  Status: {hp_status(player.hp)}")
+    print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+    print("  Thanks for playing InScript 🎮")
+}
+
+main()

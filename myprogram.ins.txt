@@ -1,0 +1,6 @@
+# Example: Print numbers from 1 to 5
+let count = 1
+
+while count <= 5:
+    print ("Number is") count
+    count = count + 1

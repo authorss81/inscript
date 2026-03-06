@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+
+# IDE
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# InScript compiled
+*.insb
+*.inscache
+
+# Test artifacts
+.pytest_cache/
+htmlcov/
+.coverage
