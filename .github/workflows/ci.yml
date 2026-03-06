@@ -1,0 +1,34 @@
+﻿name: InScript CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Run tests
+      working-directory: inscript_package
+      run: |
+        python test_lexer.py
+        python test_parser.py
+        python test_analyzer.py
+        python test_interpreter.py
+        python test_stdlib.py
+        python test_v12.py
