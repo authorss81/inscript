@@ -242,8 +242,15 @@ class Analyzer(Visitor):
     def _register_builtins(self):
         """Pre-populate the global scope with built-in functions and constants."""
         builtins = [
-            # print
-            Symbol("print",   T_VOID, kind="fn"),
+            # print / output
+            Symbol("print",   T_VOID,   kind="fn"),
+            Symbol("println", T_VOID,   kind="fn"),
+            # type inspection
+            Symbol("typeof",  T_STRING, kind="fn"),
+            Symbol("type",    T_STRING, kind="fn"),
+            Symbol("is_nil",  T_BOOL,   kind="fn"),
+            Symbol("is_null", T_BOOL,   kind="fn"),
+            Symbol("isinstance", T_BOOL, kind="fn"),
             # math
             Symbol("sin",     T_FLOAT, kind="fn"),
             Symbol("cos",     T_FLOAT, kind="fn"),
@@ -257,13 +264,36 @@ class Analyzer(Visitor):
             Symbol("lerp",    T_FLOAT, kind="fn"),
             Symbol("min",     T_FLOAT, kind="fn"),
             Symbol("max",     T_FLOAT, kind="fn"),
+            Symbol("pow",     T_FLOAT, kind="fn"),
+            Symbol("log",     T_FLOAT, kind="fn"),
             Symbol("random",  T_FLOAT, kind="fn"),
+            # collections
             Symbol("len",     T_INT,   kind="fn"),
+            Symbol("range",   T_ANY,   kind="fn"),
+            Symbol("next",    T_ANY,   kind="fn"),
+            Symbol("has_key", T_BOOL,  kind="fn"),
+            Symbol("keys",    T_ANY,   kind="fn"),
+            Symbol("values",  T_ANY,   kind="fn"),
+            Symbol("zip",     T_ANY,   kind="fn"),
+            Symbol("map",     T_ANY,   kind="fn"),
+            Symbol("filter",  T_ANY,   kind="fn"),
+            Symbol("reduce",  T_ANY,   kind="fn"),
+            Symbol("sorted",  T_ANY,   kind="fn"),
+            Symbol("reversed",T_ANY,   kind="fn"),
+            Symbol("enumerate",T_ANY,  kind="fn"),
+            # Result types
+            Symbol("Ok",      T_ANY,   kind="fn"),
+            Symbol("Err",     T_ANY,   kind="fn"),
             # type conversions
             Symbol("int",     T_INT,   kind="fn"),
             Symbol("float",   T_FLOAT, kind="fn"),
             Symbol("string",  T_STRING, kind="fn"),
+            Symbol("str",     T_STRING, kind="fn"),
             Symbol("bool",    T_BOOL,  kind="fn"),
+            # I/O
+            Symbol("input_str", T_STRING, kind="fn"),
+            Symbol("read_file", T_STRING, kind="fn"),
+            Symbol("write_file", T_VOID,  kind="fn"),
             # game built-ins (constructors / namespaces)
             Symbol("Vec2",    T_VEC2,  kind="fn"),
             Symbol("Vec3",    T_VEC3,  kind="fn"),
@@ -357,6 +387,24 @@ class Analyzer(Visitor):
             line=node.line, col=node.col
         ))
         return declared_type
+
+    def visit_TupleDestructureDecl(self, node) -> InScriptType:
+        """let (a, b) = expr  — register each name as a variable."""
+        if hasattr(node, "initializer") and node.initializer:
+            self.visit(node.initializer)
+        for name in node.names:
+            self._define(Symbol(name, T_ANY, kind="var", line=node.line))
+        return T_ANY
+
+    def visit_DestructureDecl(self, node) -> InScriptType:
+        """let [a, b] = arr  or  let {x, y} = obj — register each name."""
+        if hasattr(node, "initializer") and node.initializer:
+            self.visit(node.initializer)
+        names = getattr(node, "names", []) or getattr(node, "targets", [])
+        for name in names:
+            if isinstance(name, str):
+                self._define(Symbol(name, T_ANY, kind="var", line=node.line))
+        return T_ANY
 
     def visit_FunctionDecl(self, node: FunctionDecl) -> InScriptType:
         ret_type = self._resolve_type_ann(node.return_type)
@@ -757,8 +805,17 @@ class Analyzer(Visitor):
                 f"Unknown struct: '{node.struct_name}'",
                 node.line, node.col
             )
-        struct = self._struct_defs[node.struct_name]
-        field_map = {f.name: f for f in struct.fields}
+        # Collect fields from the full inheritance chain
+        field_map = {}
+        chain = []
+        name = node.struct_name
+        while name and name in self._struct_defs:
+            chain.append(self._struct_defs[name])
+            parent = getattr(self._struct_defs[name], "parent_name", None)
+            name = parent
+        for struct in reversed(chain):      # parent fields first, child overrides
+            for f in struct.fields:
+                field_map[f.name] = f
 
         for field_name, value_node in node.fields:
             if field_name not in field_map:
