@@ -1,120 +1,70 @@
-# Contributing to Inscript
+﻿# Contributing to InScript
 
-Thank you for your interest in contributing to Inscript! We welcome contributions from everyone and appreciate your effort to improve the language.
+Thank you for your interest in contributing to InScript — a game-first scripting language.
 
-## How to Contribute
+## How to Report Bugs
 
-### Reporting Bugs
+Open a GitHub Issue with:
+- Your OS and Python version (`python --version`)
+- The `.ins` file that caused the error
+- The full error message including line/column
+- What you expected to happen vs what actually happened
 
-If you find a bug, please create an issue with:
-- A clear description of the bug
-- Steps to reproduce it
-- Expected vs actual behavior
-- Your environment (Python version, OS, etc.)
+## How to Request Features
 
-### Requesting Features
+Open a GitHub Issue labelled `enhancement`. Describe:
+- What the feature does
+- Why it belongs in InScript specifically
+- An example of the syntax you propose
 
-For feature requests, please:
-- Clearly describe the feature
-- Explain why it would be useful
-- If possible, provide example code
-
-### Code Contributions
-
-1. **Fork the repository**
-2. **Create a new branch** for your feature: `git checkout -b feature/your-feature-name`
-3. **Make your changes** with clear, descriptive commits
-4. **Write or update tests** for your changes
-5. **Update documentation** as needed
-6. **Submit a pull request** with a clear description
-
-## Development Setup
-
-```bash
-# Clone the repository
-git clone <your-fork-url>
-cd inscript
-
-# Install in development mode
-pip install -e .
-
-# Run tests
-python -m pytest tests/ -v
+## Setting Up for Development
+```powershell
+git clone https://github.com/authorss81/inscript
+cd inscript\inscript_package
+python inscript.py --help
 ```
 
-## Code Style
+Run the full test suite:
+```powershell
+cd inscript_package
+python test_lexer.py
+python test_parser.py
+python test_analyzer.py
+python test_interpreter.py
+python test_stdlib.py
+python test_v12.py
+```
 
-- Follow PEP 8 for Python code
-- Use clear variable and function names
-- Add docstrings to functions and classes
-- Keep functions focused and small
+All six must pass before you submit a pull request.
 
-## What We're Looking For
+## Code Structure
 
-### High Priority
-- Bug fixes
-- Performance improvements
-- Test coverage
-- Documentation improvements
+| File | Purpose |
+|---|---|
+| `lexer.py` | Tokenizer — add new token types here |
+| `parser.py` | AST builder — add new syntax here |
+| `ast_nodes.py` | AST node definitions |
+| `analyzer.py` | Semantic analysis and type checking |
+| `interpreter.py` | Tree-walk interpreter |
+| `stdlib.py` | Standard library (18 built-in modules) |
+| `stdlib_values.py` | Built-in types: Vec2, Vec3, Color, Rect |
+| `errors.py` | Error classes |
+| `repl.py` | Interactive REPL |
 
-### Medium Priority
-- New built-in functions
-- Error message improvements
-- Example programs
-- Tutorial content
+## Pull Request Rules
 
-### Future Features
-- Classes and OOP support
-- Exception handling
-- Module/import system
-- File I/O operations
-- List comprehensions
-- VS Code extension
-
-## File Structure
-
-When adding new features, consider:
-- **lexer.py**: Add new token types if needed
-- **parser.py**: Add AST nodes for new constructs
-- **interpreter.py**: Add evaluation logic
-- **builtins.py**: Add new built-in functions
-- **examples/**: Create example programs
-- **docs/**: Update language specification
-- **tests/**: Add test cases
+1. Fork the repo, create a branch: `git checkout -b fix/your-fix-name`
+2. Every new stdlib function needs a test in `test_stdlib.py`
+3. Every new language feature needs a test in `test_interpreter.py`
+4. Run all six test files — all must pass
+5. Write a clear PR description: what changed and why
 
 ## Language Design Principles
 
-Remember our three core principles when contributing:
-
-1. **Language Feel**: Is it pleasant to write?
-2. **Clarity**: Is the code self-documenting?
-3. **Developer Happiness**: Does it reduce friction?
-
-## Testing
-
-- All new features should have tests
-- Run `python tests/test_interpreter.py` before submitting
-- For pytest users: `pytest tests/ -v`
-
-## Documentation
-
-- Update [docs/LANGUAGE_SPEC.md](docs/LANGUAGE_SPEC.md) for language changes
-- Update [README.md](README.md) for project changes
-- Add example programs for new features
-- Include docstrings in code
-
-## Questions?
-
-Feel free to:
-- Open an issue for discussion
-- Comment on existing issues
-- Reach out to the community
+1. **Game-first** — if a feature helps game developers, it gets priority
+2. **Readable** — code should be obvious to a beginner
+3. **Honest** — do not add syntax that does nothing (no stubs in the language itself)
 
 ## Code of Conduct
 
-- Be respectful and inclusive
-- Provide constructive feedback
-- Support other contributors
-- Keep discussions professional
-
-Thank you for contributing to Inscript! 🎉
+Be respectful. Provide constructive feedback. Keep discussions professional.
