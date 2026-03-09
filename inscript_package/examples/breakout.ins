@@ -1,0 +1,261 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// breakout.ins — Breakout / Arkanoid clone in InScript
+// Run: python inscript.py --game examples/breakout.ins
+//
+// Controls:
+//   LEFT / RIGHT or A / D : Move paddle
+//   SPACE                  : Launch ball (on start)
+//   R                      : Restart
+// ─────────────────────────────────────────────────────────────────────────────
+
+const W: int = 800
+const H: int = 600
+const PAD_W: int = 100
+const PAD_H: int = 14
+const PAD_Y: int = H - 50
+const BALL_R: float = 7.0
+const BALL_SPEED: float = 300.0
+const PAD_SPEED: float = 420.0
+const BRICK_COLS: int = 10
+const BRICK_ROWS: int = 6
+const BRICK_W: int = 70
+const BRICK_H: int = 22
+const BRICK_GAP: int = 4
+const BRICK_TOP: int = 70
+
+fn clampf(v: float, lo: float, hi: float) -> float {
+    if v < lo { return lo }
+    if v > hi { return hi }
+    return v
+}
+
+fn make_bricks() -> bool[] {
+    let bricks: bool[] = []
+    let i: int = 0
+    while i < BRICK_COLS * BRICK_ROWS {
+        bricks.push(true)
+        i = i + 1
+    }
+    return bricks
+}
+
+fn brick_color(row: int) -> string {
+    // Return a color dict key name based on row
+    if row == 0 { return "top" }
+    if row == 1 { return "hi" }
+    if row == 2 { return "mid" }
+    if row == 3 { return "lo" }
+    if row == 4 { return "bot" }
+    return "base"
+}
+
+scene Breakout {
+    let px: float = W / 2 - PAD_W / 2
+    let bx: float = W / 2
+    let by: float = PAD_Y - BALL_R - 2
+    let bvx: float = 0.0
+    let bvy: float = 0.0
+    let launched: bool = false
+    let bricks: bool[] = make_bricks()
+    let score: int = 0
+    let lives: int = 3
+    let game_over: bool = false
+    let won: bool = false
+    let total_bricks: int = BRICK_COLS * BRICK_ROWS
+
+    on_start {
+        screen.set_title("Breakout — InScript")
+        screen.set_background({"r":0.05,"g":0.05,"b":0.08,"a":1.0})
+    }
+
+    on_update(dt: float) {
+        if game_over || won {
+            if input.key_pressed("r") {
+                bricks = make_bricks()
+                score = 0
+                lives = 3
+                game_over = false
+                won = false
+                launched = false
+                px = W / 2 - PAD_W / 2
+                bx = W / 2
+                by = PAD_Y - BALL_R - 2
+                bvx = 0.0
+                bvy = 0.0
+                total_bricks = BRICK_COLS * BRICK_ROWS
+            }
+            return
+        }
+
+        // Paddle movement
+        if input.key_down("left") || input.key_down("a") {
+            px = px - PAD_SPEED * dt
+        }
+        if input.key_down("right") || input.key_down("d") {
+            px = px + PAD_SPEED * dt
+        }
+        px = clampf(px, 0.0, W - PAD_W)
+
+        // Launch
+        if !launched && input.key_pressed("space") {
+            launched = true
+            bvx = BALL_SPEED * 0.7
+            bvy = -BALL_SPEED
+        }
+
+        if !launched {
+            bx = px + PAD_W / 2
+            return
+        }
+
+        // Ball movement
+        bx = bx + bvx * dt
+        by = by + bvy * dt
+
+        // Wall bounces
+        if bx - BALL_R < 0.0   { bx = BALL_R;     bvx = -bvx }
+        if bx + BALL_R > W     { bx = W - BALL_R;  bvx = -bvx }
+        if by - BALL_R < 0.0   { by = BALL_R;      bvy = -bvy }
+
+        // Ball lost
+        if by > H + 20.0 {
+            lives = lives - 1
+            if lives <= 0 {
+                game_over = true
+            } else {
+                launched = false
+                bx = px + PAD_W / 2
+                by = PAD_Y - BALL_R - 2
+                bvx = 0.0
+                bvy = 0.0
+            }
+        }
+
+        // Paddle collision
+        if bvy > 0.0 && by + BALL_R > PAD_Y && by - BALL_R < PAD_Y + PAD_H {
+            if bx > px && bx < px + PAD_W {
+                bvy = -bvy
+                by = PAD_Y - BALL_R
+                let rel: float = (bx - px - PAD_W / 2) / (PAD_W / 2)
+                bvx = rel * BALL_SPEED * 1.1
+            }
+        }
+
+        // Brick collisions
+        let col: int = 0
+        while col < BRICK_COLS {
+            let row: int = 0
+            while row < BRICK_ROWS {
+                let idx: int = row * BRICK_COLS + col
+                if bricks[idx] {
+                    let bk_x: float = (BRICK_W + BRICK_GAP) * col + 45
+                    let bk_y: float = BRICK_TOP + (BRICK_H + BRICK_GAP) * row
+
+                    if bx + BALL_R > bk_x && bx - BALL_R < bk_x + BRICK_W {
+                        if by + BALL_R > bk_y && by - BALL_R < bk_y + BRICK_H {
+                            bricks[idx] = false
+                            score = score + (BRICK_ROWS - row) * 10
+                            total_bricks = total_bricks - 1
+                            if total_bricks <= 0 { won = true }
+
+                            // Which side did we hit?
+                            let from_top: float = by + BALL_R - bk_y
+                            let from_bot: float = bk_y + BRICK_H - (by - BALL_R)
+                            let from_lft: float = bx + BALL_R - bk_x
+                            let from_rgt: float = bk_x + BRICK_W - (bx - BALL_R)
+
+                            let min_pen: float = from_top
+                            if from_bot < min_pen { min_pen = from_bot }
+                            if from_lft < min_pen { min_pen = from_lft }
+                            if from_rgt < min_pen { min_pen = from_rgt }
+
+                            if min_pen == from_top || min_pen == from_bot {
+                                bvy = -bvy
+                            } else {
+                                bvx = -bvx
+                            }
+                        }
+                    }
+                }
+                row = row + 1
+            }
+            col = col + 1
+        }
+    }
+
+    on_draw {
+        screen.clear()
+
+        // Bricks
+        let brick_colors: string[] = [
+            "0.9,0.2,0.2",
+            "0.9,0.5,0.1",
+            "0.8,0.8,0.1",
+            "0.2,0.8,0.3",
+            "0.1,0.6,0.9",
+            "0.7,0.2,0.9"
+        ]
+        let col: int = 0
+        while col < BRICK_COLS {
+            let row: int = 0
+            while row < BRICK_ROWS {
+                let idx: int = row * BRICK_COLS + col
+                if bricks[idx] {
+                    let bk_x: float = (BRICK_W + BRICK_GAP) * col + 45
+                    let bk_y: float = BRICK_TOP + (BRICK_H + BRICK_GAP) * row
+                    let bright: float = 0.4 + 0.6 * (BRICK_ROWS - row) / BRICK_ROWS
+                    let cr: float = bright * (row == 0 ? 0.9 : (row == 1 ? 0.9 : (row == 2 ? 0.8 : (row == 3 ? 0.2 : (row == 4 ? 0.1 : 0.7)))))
+                    let cg: float = bright * (row == 0 ? 0.2 : (row == 1 ? 0.5 : (row == 2 ? 0.8 : (row == 3 ? 0.8 : (row == 4 ? 0.6 : 0.2)))))
+                    let cb: float = bright * (row == 0 ? 0.2 : (row == 1 ? 0.1 : (row == 2 ? 0.1 : (row == 3 ? 0.3 : (row == 4 ? 0.9 : 0.9)))))
+                    draw.rounded_rect(bk_x, bk_y, BRICK_W, BRICK_H,
+                                      {"r":cr,"g":cg,"b":cb,"a":1.0}, 4)
+                    draw.rounded_rect(bk_x, bk_y, BRICK_W, BRICK_H,
+                                      {"r":cr+0.15,"g":cg+0.15,"b":cb+0.15,"a":0.5}, 4, false)
+                }
+                row = row + 1
+            }
+            col = col + 1
+        }
+
+        // Paddle
+        draw.rounded_rect(px, PAD_Y, PAD_W, PAD_H,
+                          {"r":0.2,"g":0.7,"b":1.0,"a":1.0}, 6)
+
+        // Ball
+        draw.circle(bx, by, BALL_R, {"r":1.0,"g":1.0,"b":1.0,"a":1.0})
+        draw.circle(bx - 2, by - 2, BALL_R * 0.35,
+                    {"r":1.0,"g":1.0,"b":1.0,"a":0.5})
+
+        // HUD
+        draw.text(8, 8, "SCORE: " + string(score),
+                  {"r":0.9,"g":0.9,"b":0.9,"a":1.0}, 18, true)
+        draw.text(8, 30, "LIVES: " + string(lives),
+                  {"r":1.0,"g":0.4,"b":0.4,"a":1.0}, 18, true)
+        draw.text(W - 160, 8, "FPS: " + string(screen.fps),
+                  {"r":0.4,"g":0.4,"b":0.4,"a":1.0}, 14)
+
+        if !launched && !game_over && !won {
+            draw.text_centered(W / 2, H / 2 + 60,
+                               "Press SPACE to launch",
+                               {"r":0.8,"g":0.8,"b":0.8,"a":1.0}, 18, false)
+        }
+
+        if game_over {
+            screen.fade(180)
+            draw.text_centered(W / 2, H / 2 - 30, "GAME OVER",
+                               {"r":1.0,"g":0.3,"b":0.3,"a":1.0}, 56, true)
+            draw.text_centered(W / 2, H / 2 + 30,
+                               "Score: " + string(score) + "   R to restart",
+                               {"r":0.8,"g":0.8,"b":0.8,"a":1.0}, 20, false)
+        }
+
+        if won {
+            screen.fade(180)
+            draw.text_centered(W / 2, H / 2 - 30, "YOU WIN!",
+                               {"r":0.3,"g":1.0,"b":0.5,"a":1.0}, 56, true)
+            draw.text_centered(W / 2, H / 2 + 30,
+                               "Score: " + string(score) + "   R to restart",
+                               {"r":0.8,"g":0.8,"b":0.8,"a":1.0}, 20, false)
+        }
+    }
+}

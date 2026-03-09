@@ -16,7 +16,8 @@ from stdlib_values import (
 import stdlib as _stdlib  # loads all built-in modules
 from errors import (
     InScriptRuntimeError, NameError_, IndexError_,
-    ReturnSignal, BreakSignal, ContinueSignal, YieldSignal, PropagateSignal
+    ReturnSignal, BreakSignal, ContinueSignal, YieldSignal, PropagateSignal,
+    InScriptCallStack, hint_for_name
 )
 
 
@@ -29,12 +30,14 @@ class Interpreter(Visitor):
     Tree-walking interpreter.  Visits each AST node and returns a Python value.
     """
 
-    def __init__(self, source_lines: List[str] = None):
+    def __init__(self, source_lines: List[str] = None, filename: str = "<script>"):
         self._src   = source_lines or []
+        self._filename = filename
         self._globals = Environment(name="global")
         self._env     = self._globals
         self._call_depth = 0
         self._MAX_CALL_DEPTH = 500
+        self._call_stack = InScriptCallStack(filename)   # Phase 3.4
 
         self._register_builtins()
 
@@ -44,7 +47,9 @@ class Interpreter(Visitor):
         return self._src[line-1] if self._src and 0 < line <= len(self._src) else ""
 
     def _error(self, msg: str, line: int = 0):
-        raise InScriptRuntimeError(msg, line, 0, self._src_line(line))
+        trace = self._call_stack.snapshot()
+        raise InScriptRuntimeError(msg, line, 0, self._src_line(line),
+                                   call_trace=trace)
 
     def _push(self, name="block") -> Environment:
         self._env = Environment(parent=self._env, name=name)
@@ -416,6 +421,10 @@ class Interpreter(Visitor):
 
     def visit_VarDecl(self, node: VarDecl) -> Any:
         value = self.visit(node.initializer) if node.initializer else None
+        # ── Phase 1.1: Runtime type enforcement ──────────────────────────────
+        if node.type_ann and value is not None:
+            value = self._enforce_type(value, node.type_ann.name, node.line,
+                                       context=f"variable '{node.name}'")
         self._env.define(node.name, value, is_const=node.is_const)
         return value
 
@@ -552,8 +561,59 @@ class Interpreter(Visitor):
         if not hasattr(node, '_implements'):
             node._implements = list(node.interfaces or [])
 
+        # Phase 1.1: enforce interface conformance at definition time
+        self._check_interface_conformance(node)
+
         self._env.define(node.name, node)    # store the AST node as the "constructor"
         return None
+
+    def _check_interface_conformance(self, struct_node) -> None:
+        """
+        For each interface listed in struct_node.interfaces, verify the struct
+        (including inherited methods) provides every required method.
+        Raises InScriptRuntimeError listing all missing methods.
+        """
+        if not getattr(struct_node, 'interfaces', None):
+            return
+
+        # Collect all method names available on this struct (own + inherited)
+        def _all_method_names(decl):
+            names = {m.name for m in (decl.methods or [])}
+            names |= {p.name for p in (getattr(decl, 'properties', None) or [])}
+            parent_name = getattr(decl, 'parent_name', None)
+            if parent_name:
+                try:
+                    parent_decl = self._env.get(parent_name, 0)
+                    if isinstance(parent_decl, StructDecl):
+                        names |= _all_method_names(parent_decl)
+                except Exception:
+                    pass
+            return names
+
+        available = _all_method_names(struct_node)
+        missing_all = []
+
+        for iface_name in struct_node.interfaces:
+            try:
+                iface = self._env.get(iface_name, struct_node.line)
+            except Exception:
+                continue   # interface not yet defined — forward ref, skip
+            if not isinstance(iface, dict) or iface.get('_type') != 'interface':
+                continue
+
+            required = set(iface.get('_methods', {}).keys())
+            missing  = sorted(required - available)
+            if missing:
+                missing_all.append(
+                    f"  interface '{iface_name}' requires: {', '.join(missing)}"
+                )
+
+        if missing_all:
+            raise InScriptRuntimeError(
+                f"Struct '{struct_node.name}' does not implement required interface methods:\n"
+                + "\n".join(missing_all),
+                struct_node.line
+            )
 
     def visit_SceneDecl(self, node: SceneDecl) -> Any:
         """
@@ -979,9 +1039,20 @@ class Interpreter(Visitor):
             finally:
                 self._pop()
             return result
+        # Phase 1.6: MatchError when no arm matched (instead of silently returning nil)
+        # Check if any arm was a wildcard/catch-all — if not, raise MatchError
+        has_wildcard = any(
+            arm.pattern is None and arm.binding is None
+            for arm in node.arms
+        )
+        if not has_wildcard:
+            self._error(
+                f"MatchError: no arm matched value {_inscript_str(subject)!r}",
+                node.line
+            )
         return None
 
-    def visit_ThrowStmt(self, node: ThrowStmt) -> Any:
+    def visit_ThrowStmt(self, node) -> Any:
         val = self.visit(node.value)
         raise InScriptRuntimeError(str(val), node.line)
 
@@ -1213,6 +1284,153 @@ class Interpreter(Visitor):
         if node.op == "~": return ~int(val)
         self._error(f"Unknown unary operator: '{node.op}'", node.line)
 
+    # ── Phase 1.1 — Type system helpers ──────────────────────────────────────
+
+    # Coercion table: (from_python_type, to_inscript_type) → result or raise
+    # "auto-coerce" means silently convert; "error" means TypeError
+    _COERCE_RULES = {
+        # to int
+        ("int",   "int"):    lambda v: v,
+        ("float", "int"):    lambda v: int(v),
+        ("bool",  "int"):    lambda v: int(v),
+        ("str",   "int"):    lambda v: int(v),   # raises ValueError if bad
+        # to float
+        ("int",   "float"):  lambda v: float(v),
+        ("float", "float"):  lambda v: v,
+        ("bool",  "float"):  lambda v: float(v),
+        ("str",   "float"):  lambda v: float(v), # raises ValueError if bad
+        # to string
+        ("int",   "string"): lambda v: str(v),
+        ("float", "string"): lambda v: str(v),
+        ("bool",  "string"): lambda v: "true" if v else "false",
+        ("str",   "string"): lambda v: v,
+        # to bool
+        ("int",   "bool"):   lambda v: bool(v),
+        ("float", "bool"):   lambda v: bool(v),
+        ("str",   "bool"):   lambda v: bool(v),
+        ("bool",  "bool"):   lambda v: v,
+    }
+
+    def _py_type_name(self, val) -> str:
+        """Return the Python-level type string for a runtime InScript value."""
+        if isinstance(val, bool):   return "bool"   # before int (bool is subclass of int)
+        if isinstance(val, int):    return "int"
+        if isinstance(val, float):  return "float"
+        if isinstance(val, str):    return "str"
+        if isinstance(val, list):   return "list"
+        if isinstance(val, dict):   return "dict"
+        if val is None:             return "nil"
+        return type(val).__name__
+
+    def _inscript_type_name(self, val) -> str:
+        """Return the InScript-visible type name of a runtime value."""
+        if val is None:             return "nil"
+        if isinstance(val, bool):   return "bool"
+        if isinstance(val, int):    return "int"
+        if isinstance(val, float):  return "float"
+        if isinstance(val, str):    return "string"
+        if isinstance(val, list):   return "array"
+        if isinstance(val, dict):
+            if "_variant" in val:   return val.get("_enum", "enum")
+            if "_ok" in val or "_err" in val: return "Result"
+            if "_type" in val:      return val["_type"]
+            return "dict"
+        return type(val).__name__
+
+    def _enforce_type(self, value, type_name: str, line: int, context: str = "") -> object:
+        """
+        Enforce that 'value' matches 'type_name'.
+        - For primitive types: auto-coerce where safe (int→float), error otherwise.
+        - For struct names: check isinstance.
+        - Unknown/complex types: pass through (forward-compatible).
+        """
+        _PRIMITIVE = {"int", "float", "string", "bool"}
+        if type_name not in _PRIMITIVE:
+            # Struct / enum / interface type — check if value is an InScriptInstance
+            # or a dict with matching _type key. If value is None, allow (nullable).
+            if value is None:
+                return value
+            val_type = self._inscript_type_name(value)
+            if val_type not in _PRIMITIVE and val_type not in ("nil", "array", "dict"):
+                # Already a struct-like object; trust the user for now
+                return value
+            # If assigning a primitive to a named type — pass through for now
+            # (enforced properly once interface/nominal typing is added in Phase 1.1 strict)
+            return value
+
+        py_type = self._py_type_name(value)
+        key = (py_type, type_name)
+        rule = self._COERCE_RULES.get(key)
+
+        if rule is None:
+            ins_type = self._inscript_type_name(value)
+            ctx_msg = f" in {context}" if context else ""
+            self._error(
+                f"TypeError: expected {type_name}, got {ins_type}{ctx_msg}",
+                line
+            )
+
+        try:
+            return rule(value)
+        except (ValueError, OverflowError) as e:
+            ins_type = self._inscript_type_name(value)
+            ctx_msg = f" in {context}" if context else ""
+            self._error(
+                f"TypeError: cannot cast {ins_type} {value!r} to {type_name}{ctx_msg}: {e}",
+                line
+            )
+
+    def visit_CastExpr(self, node) -> Any:
+        """expr as int — explicit cast. Raises TypeError on impossible cast."""
+        from ast_nodes import CastExpr
+        value = self.visit(node.expr)
+        _CAST_TYPES = {"int", "float", "string", "bool"}
+        t = node.cast_type
+        try:
+            if t == "int":
+                if isinstance(value, bool):   return int(value)
+                if isinstance(value, int):    return value
+                if isinstance(value, float):  return int(value)
+                if isinstance(value, str):    return int(value)
+                self._error(f"TypeError: cannot cast {self._inscript_type_name(value)!r} to int", node.line)
+            elif t == "float":
+                if isinstance(value, (int, float, bool)): return float(value)
+                if isinstance(value, str):    return float(value)
+                self._error(f"TypeError: cannot cast {self._inscript_type_name(value)!r} to float", node.line)
+            elif t == "string":
+                return _inscript_str(value)
+            elif t == "bool":
+                return _is_truthy(value)
+            else:
+                # Struct cast — return value unchanged (runtime duck-typing)
+                return value
+        except (ValueError, OverflowError) as e:
+            self._error(f"TypeError: cast to {t} failed: {e}", node.line)
+
+    def visit_IsExpr(self, node) -> Any:
+        """expr is int — runtime type check, returns bool."""
+        from ast_nodes import IsExpr
+        value = self.visit(node.expr)
+        t = node.check_type
+        if t == "nil":    return value is None
+        if t == "int":    return isinstance(value, int) and not isinstance(value, bool)
+        if t == "float":  return isinstance(value, float)
+        if t == "string": return isinstance(value, str)
+        if t == "bool":   return isinstance(value, bool)
+        if t == "array":  return isinstance(value, list)
+        if t == "dict":   return isinstance(value, dict) and "_variant" not in value
+        # Struct name check
+        if isinstance(value, dict) and value.get("_type") == t:
+            return True
+        return False
+
+    def visit_PropertyDecl(self, node) -> Any:
+        """Property getter/setter — stored on the struct instance dict under special keys."""
+        # PropertyDecl nodes are registered when a struct is defined.
+        # The actual get/set routing is handled in visit_GetAttrExpr / visit_SetAttrExpr.
+        # Here we just register the property on the current struct being built.
+        return None
+
     def visit_AssignExpr(self, node: AssignExpr) -> Any:
         val = self.visit(node.value)
         op  = node.op
@@ -1436,6 +1654,9 @@ class Interpreter(Visitor):
         if self._call_depth >= self._MAX_CALL_DEPTH:
             self._error(f"Maximum call depth exceeded ({self._MAX_CALL_DEPTH}) — infinite recursion?", line)
 
+        # Phase 3.4: push call frame
+        self._call_stack.push(fn.name or "<anonymous>", line)
+
         # Create new environment chained to closure
         call_env = Environment(parent=fn.closure, name=f"fn:{fn.name}")
         prev_env = self._env
@@ -1454,29 +1675,37 @@ class Interpreter(Visitor):
             pos_idx     = 0
             for i, param in enumerate(fn.params):
                 if getattr(param, 'is_variadic', False):
-                    # Collect remaining positional args
                     call_env.define(param.name, pos_vals[pos_idx:])
                     break
                 if param.name in name_to_val:
-                    call_env.define(param.name, name_to_val[param.name])
+                    val = name_to_val[param.name]
                 elif pos_idx < len(pos_vals):
-                    call_env.define(param.name, pos_vals[pos_idx]); pos_idx += 1
+                    val = pos_vals[pos_idx]; pos_idx += 1
                 elif param.default:
-                    call_env.define(param.name, self.visit(param.default))
+                    val = self.visit(param.default)
                 else:
-                    call_env.define(param.name, None)
+                    val = None
+                # ── Phase 1.1: enforce param type annotation ──────────────
+                if param.type_ann and val is not None:
+                    val = self._enforce_type(val, param.type_ann.name, line,
+                                             context=f"param '{param.name}' of fn '{fn.name}'")
+                call_env.define(param.name, val)
         else:
             for i, param in enumerate(fn.params):
                 if getattr(param, 'is_variadic', False):
-                    # Collect all remaining args into a list
                     call_env.define(param.name, arg_vals[i:])
                     break
                 if i < len(arg_vals):
-                    call_env.define(param.name, arg_vals[i])
+                    val = arg_vals[i]
                 elif param.default:
-                    call_env.define(param.name, self.visit(param.default))
+                    val = self.visit(param.default)
                 else:
-                    call_env.define(param.name, None)
+                    val = None
+                # ── Phase 1.1: enforce param type annotation ──────────────
+                if param.type_ann and val is not None:
+                    val = self._enforce_type(val, param.type_ann.name, line,
+                                             context=f"param '{param.name}' of fn '{fn.name}'")
+                call_env.define(param.name, val)
 
         # Execute body
         result = None
@@ -1491,6 +1720,7 @@ class Interpreter(Visitor):
         finally:
             self._env = prev_env
             self._call_depth -= 1
+            self._call_stack.pop()   # Phase 3.4
 
         return result
 

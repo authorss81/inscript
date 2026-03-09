@@ -848,14 +848,22 @@ except KeyError:
         "post": _http_post,
     })
 
-# Extended stdlib Part 1
+# ── Extended stdlib (Part 1): collections, datetime, fs, process, log, test, compress
 try:
-    import stdlib_extended
+    import stdlib_extended  # noqa: F401
 except Exception as _e:
-    import sys; print(f'[stdlib_extended] {_e}', file=sys.stderr)
+    import sys; print(f'[stdlib_extended load error] {_e}', file=sys.stderr)
 
-# Extended stdlib Part 1
+# ── Extended stdlib (Part 2): iter, format, url, xml, toml, yaml, argparse, hash, base64, database, bench, template, net, thread
 try:
-    import stdlib_extended
-except Exception as _e:
-    import sys; print(f'[stdlib_extended] {_e}', file=sys.stderr)
+    import stdlib_extended_2  # noqa: F401
+except Exception as _e2:
+    import sys; print(f'[stdlib_extended_2 load error] {_e2}', file=sys.stderr)
+
+# ── Game stdlib (Phase 4 remainder + Phase 5): ssl, image, atlas, animation,
+#    physics2d, tilemap, camera2d, particle, pathfind, ecs, input, fsm,
+#    save, localize, net_game, shader, audio
+try:
+    import stdlib_game  # noqa: F401
+except Exception as _e3:
+    import sys; print(f'[stdlib_game load error] {_e3}', file=sys.stderr)

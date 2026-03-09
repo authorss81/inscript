@@ -14,7 +14,10 @@
 from __future__ import annotations
 from typing import Dict, List, Optional, Set, Any
 from ast_nodes import *
-from errors import SemanticError
+from errors import (
+    SemanticError, MultiError, InScriptWarning,
+    hint_for_name, levenshtein, did_you_mean
+)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -173,10 +176,17 @@ class Analyzer(Visitor):
       Pass 2: Full type-checking walk
     """
 
-    def __init__(self, source_lines: List[str] = None):
-        self._src      = source_lines or []
-        self._scope    = Scope(kind="global")
-        self._warnings: List[str] = []
+    def __init__(self, source_lines: List[str] = None,
+                 multi_error: bool = True,
+                 warn_as_error: bool = False,
+                 no_warn: bool = False):
+        self._src         = source_lines or []
+        self._scope       = Scope(kind="global")
+        self._errors:   List[SemanticError]    = []   # collected (multi-error)
+        self._warnings: List[InScriptWarning]  = []
+        self._multi_error  = multi_error
+        self._warn_as_error = warn_as_error
+        self._no_warn      = no_warn
 
         # State for context-sensitive checks
         self._current_fn_return_type: Optional[InScriptType] = None
@@ -191,13 +201,52 @@ class Analyzer(Visitor):
     def _src_line(self, line: int) -> str:
         return self._src[line - 1] if self._src and 0 < line <= len(self._src) else ""
 
-    def _error(self, msg: str, line: int = 0, col: int = 0):
-        raise SemanticError(msg, line, col, self._src_line(line))
+    def _error(self, msg: str, line: int = 0, col: int = 0,
+               candidates: List[str] = None):
+        """
+        Emit a semantic error.
+        In multi-error mode: collect it and continue.
+        In single-error mode: raise immediately.
+        Automatically appends a 'did you mean?' hint when candidates are provided.
+        """
+        hint = ""
+        if candidates:
+            suggestion = did_you_mean(
+                # Extract bare name from message like "Undefined name: 'foo'"
+                msg.split("'")[1] if "'" in msg else msg,
+                candidates
+            )
+            if suggestion:
+                hint = f"Did you mean: '{suggestion}'?"
 
-    def _warn(self, msg: str, line: int = 0):
-        self._warnings.append(f"Warning (line {line}): {msg}")
+        err = SemanticError(msg, line, col, self._src_line(line), hint=hint)
+
+        if self._multi_error:
+            self._errors.append(err)
+            if len(self._errors) >= MultiError.MAX_ERRORS:
+                raise MultiError(self._errors)
+        else:
+            raise err
+
+    def _warn(self, kind: str, msg: str, line: int = 0):
+        if self._no_warn:
+            return
+        w = InScriptWarning(kind, msg, line, self._src_line(line))
+        if self._warn_as_error:
+            self._error(f"[warning as error] {msg}", line)
+        else:
+            self._warnings.append(w)
 
     def _define(self, sym: Symbol):
+        # Warn if this name already exists in an outer scope (shadowing)
+        if self._scope.parent:
+            outer = self._scope.parent.lookup(sym.name)
+            if outer and not self._no_warn:
+                self._warn(
+                    "shadow",
+                    f"'{sym.name}' shadows outer declaration from line {outer.line}",
+                    sym.line
+                )
         self._scope.define(sym, self._error)
 
     def _lookup(self, name: str, line: int = 0, col: int = 0) -> Symbol:
@@ -207,8 +256,20 @@ class Analyzer(Visitor):
             # injected at runtime — treat them as any rather than erroring
             if self._in_match_arm:
                 return Symbol(name, T_ANY, kind="var")
-            self._error(f"Undefined name: '{name}'", line, col)
+            # Collect all visible names for "did you mean?"
+            candidates = list(self._all_visible_names())
+            self._error(f"Undefined name: '{name}'", line, col, candidates)
+            return Symbol(name, T_ANY, kind="var")   # dummy to continue analysis
         return sym
+
+    def _all_visible_names(self) -> List[str]:
+        """Walk scope chain and return all reachable names."""
+        seen = []
+        scope = self._scope
+        while scope:
+            seen.extend(scope.symbols.keys())
+            scope = scope.parent
+        return seen
 
     def _resolve_type_ann(self, ann: Optional[TypeAnnotation]) -> InScriptType:
         """Convert a TypeAnnotation AST node into an InScriptType."""
@@ -231,7 +292,13 @@ class Analyzer(Visitor):
         if ann.name in self._struct_defs:
             return InScriptType(ann.name)
 
+        # Check user-defined enums (registered in global scope with kind='enum')
+        enum_sym = self._scope.lookup(ann.name)
+        if enum_sym and enum_sym.kind == "enum":
+            return InScriptType(ann.name)
+
         self._error(f"Unknown type: '{ann.name}'", ann.line, ann.col)
+        return T_ANY  # multi-error: continue safely
 
     def _push_scope(self, kind: str = "block") -> Scope:
         self._scope = Scope(parent=self._scope, kind=kind)
@@ -325,12 +392,20 @@ class Analyzer(Visitor):
         """
         Analyze a full program.
         Returns the global symbol table on success.
-        Raises SemanticError on the first error found.
+
+        In multi-error mode (default): raises MultiError with ALL errors found.
+        In single-error mode: raises SemanticError on first error.
+        Warnings are available in self._warnings after the call.
         """
         # Pass 1: hoist top-level names so they can reference each other
         self._hoist_top_level(program)
         # Pass 2: full type-checking walk
         self.visit(program)
+
+        # Flush any collected errors
+        if self._errors:
+            raise MultiError(self._errors)
+
         return self._scope.symbols
 
     def _hoist_top_level(self, program: Program):
@@ -357,6 +432,7 @@ class Analyzer(Visitor):
             elif isinstance(node, EnumDecl):
                 self._scope.symbols[node.name] = Symbol(
                     node.name, InScriptType(node.name), kind="enum",
+                    fn_node=node,  # store EnumDecl for exhaustiveness checks
                     line=node.line, col=node.col
                 )
 
@@ -420,6 +496,14 @@ class Analyzer(Visitor):
                 node.name, ret_type, kind="fn",
                 fn_node=node, line=node.line, col=node.col
             ))
+
+        # 3.6: warn when a non-private function has no return type annotation
+        if node.return_type is None and not node.name.startswith("_"):
+            self._warn(
+                "missing_return_ann",
+                f"Function '{node.name}' has no return type annotation",
+                node.line
+            )
 
         # Analyze body in a new scope
         self._push_scope("fn")
@@ -540,8 +624,17 @@ class Analyzer(Visitor):
 
     def visit_BlockStmt(self, node: BlockStmt) -> InScriptType:
         self._push_scope("block")
+        returned = False
         for stmt in node.body:
+            if returned:
+                # 3.6: warn about unreachable code after return/break/continue
+                line = getattr(stmt, "line", 0)
+                self._warn("unreachable",
+                           "Unreachable code after return/break/continue", line)
+                break
             self.visit(stmt)
+            if isinstance(stmt, (ReturnStmt, BreakStmt, ContinueStmt)):
+                returned = True
         self._pop_scope()
         return T_VOID
 
@@ -556,6 +649,7 @@ class Analyzer(Visitor):
     def visit_ReturnStmt(self, node: ReturnStmt) -> InScriptType:
         if self._current_fn_return_type is None:
             self._error("'return' outside of function", node.line, node.col)
+            return T_VOID   # multi-error: continue safely
 
         ret_type = T_VOID
         if node.value:
@@ -621,6 +715,12 @@ class Analyzer(Visitor):
 
     def visit_MatchStmt(self, node: MatchStmt) -> InScriptType:
         self.visit(node.subject)
+
+        # 1.6 — Exhaustiveness check for enum matches
+        has_wildcard = any(arm.pattern is None for arm in node.arms)
+        if not has_wildcard:
+            self._check_match_exhaustiveness(node)
+
         for arm in node.arms:
             self._push_scope("match_arm")
             if arm.binding:
@@ -635,6 +735,52 @@ class Analyzer(Visitor):
             self._in_match_arm = prev
             self._pop_scope()
         return T_VOID
+
+    def _check_match_exhaustiveness(self, node: MatchStmt) -> None:
+        """
+        If the match subject is a typed variable whose type is a known enum,
+        warn when not all variants are covered and there is no wildcard arm.
+        """
+        subject = node.subject
+        enum_name = None
+
+        if isinstance(subject, IdentExpr):
+            sym = self._scope.lookup(subject.name)
+            if sym and sym.type_ and sym.type_.name in self._scope.symbols:
+                candidate = self._scope.symbols[sym.type_.name]
+                if candidate.kind == "enum":
+                    enum_name = sym.type_.name
+
+        if enum_name is None:
+            return  # can't determine enum — skip
+
+        enum_sym = self._scope.symbols.get(enum_name)
+        if not enum_sym or enum_sym.fn_node is None:
+            return
+        enum_decl = enum_sym.fn_node
+        all_variants = {v.name for v in getattr(enum_decl, 'variants', [])}
+        if not all_variants:
+            return
+
+        # Collect explicitly covered variants: case EnumName.Variant
+        covered = set()
+        for arm in node.arms:
+            p = arm.pattern
+            if p is None:
+                return  # wildcard — exhaustive
+            if (isinstance(p, GetAttrExpr)
+                    and isinstance(p.obj, IdentExpr)
+                    and p.obj.name == enum_name):
+                covered.add(p.attr)
+
+        missing = sorted(all_variants - covered)
+        if missing:
+            self._warn(
+                "exhaustive_match",
+                f"Non-exhaustive match on '{enum_name}': "
+                f"variants {missing} not covered. Add missing cases or a wildcard 'case _'",
+                node.line
+            )
 
     def visit_ThrowStmt(self, node: ThrowStmt) -> InScriptType:
         self.visit(node.value)
@@ -823,6 +969,7 @@ class Analyzer(Visitor):
                 f"Unknown struct: '{node.struct_name}'",
                 node.line, node.col
             )
+            return T_ANY   # multi-error: continue safely
         # Collect fields from the full inheritance chain
         field_map = {}
         chain = []
@@ -837,10 +984,14 @@ class Analyzer(Visitor):
 
         for field_name, value_node in node.fields:
             if field_name not in field_map:
+                field_candidates = list(field_map.keys())
                 self._error(
                     f"Struct '{node.struct_name}' has no field '{field_name}'",
-                    node.line, node.col
+                    node.line, node.col,
+                    candidates=field_candidates
                 )
+                self.visit(value_node)   # still visit to catch inner errors
+                continue
             val_type = self.visit(value_node)
             expected = self._resolve_type_ann(field_map[field_name].type_ann)
             if not types_compatible(expected, val_type):

@@ -275,6 +275,7 @@ class StructDecl(Node):
     mixins:         List[str] = None
     properties:     List["PropertyDecl"] = None   # get/set accessor pairs
     type_params:    List[str] = None              # generic type parameters e.g. ["T", "U"]
+    operators:      List["OperatorDecl"] = None   # Phase 7: operator overloads
 
     def __post_init__(self):
         if self.static_methods is None: self.static_methods = []
@@ -282,12 +283,23 @@ class StructDecl(Node):
         if self.mixins         is None: self.mixins         = []
         if self.properties     is None: self.properties     = []
         if self.type_params    is None: self.type_params    = []
+        if self.operators      is None: self.operators      = []
 
 @dataclass
 class StructInitExpr(Node):
     """Player { pos: Vec2(0, 0), health: 100 }"""
     struct_name: str
     fields:      List[tuple]   # [(field_name, value_expr), ...]
+
+
+@dataclass
+class OperatorDecl(Node):
+    """Phase 7: operator +(other: Vec2) -> Vec2 { ... }"""
+    op_symbol:  str          # '+', '-', '*', '==', 'str', 'len', '[]', etc.
+    params:     List["Param"]
+    body:       Node
+    return_type: Optional["TypeAnnotation"] = None
+    is_unary:   bool = False  # True for unary -, unary !
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -626,6 +638,18 @@ class ListComprehensionExpr(Node):
     def __post_init__(self):
         if self.extra_clauses is None:
             self.extra_clauses = []
+
+@dataclass
+class CastExpr(Node):
+    """expr as Type — explicit type cast: 'let n = \"5\" as int'"""
+    expr:      "Node"
+    cast_type: str    # "int", "float", "string", "bool"
+
+@dataclass
+class IsExpr(Node):
+    """expr is Type — runtime type check: 'if x is int { }'"""
+    expr:       "Node"
+    check_type: str   # "int", "float", "string", "bool", "nil", struct name
 
 @dataclass
 class ExportDecl(Node):

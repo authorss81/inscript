@@ -62,6 +62,8 @@ class TT(Enum):
     CASE_SELECT = auto()   # re-used "case" inside select blocks
     ABSTRACT    = auto()
     YIELD       = auto()       # yield value
+    IS          = auto()       # is  (type check: x is int)
+    DIV         = auto()       # div (floor division keyword: 10 div 3)
 
     # ── Arithmetic ────────────────────────────────
     PLUS        = auto()
@@ -164,6 +166,8 @@ KEYWORDS: dict = {
     "import":    TT.IMPORT,
     "from":      TT.FROM,
     "as":        TT.AS,
+    "is":        TT.IS,
+    "div":       TT.DIV,
     "export":    TT.EXPORT,
     "try":       TT.TRY,
     "catch":     TT.CATCH,
@@ -188,6 +192,7 @@ KEYWORDS: dict = {
     "get":        TT.IDENT,
     "set":        TT.IDENT,
     "comptime":   TT.IDENT,
+    "operator":   TT.IDENT,   # Phase 7: treated as ident, parser checks value
 }
 
 
@@ -273,19 +278,10 @@ class Lexer:
         # Key rule: look at what comes AFTER the second /
         #   - digit or ( → always floor division
         #   - letter/word → always comment
-        #   - space then digit → floor division  
-        #   - space then letter → comment
+        # Phase 1.2: // is now ALWAYS a line comment. Floor division uses 'div' keyword.
         if ch == "/" and self.current == "/":
             self.advance()  # consume second /
-            # Now look at remaining source after both slashes
-            rest = self.source[self.pos:]
-            rest_stripped = rest.lstrip(" \t")
-            if rest_stripped and (rest_stripped[0].isdigit() or rest_stripped[0] == "("):
-                # e.g. `10//3` or `x // 3` or `x//(y+1)`
-                self._emit(TT.SLASH_SLASH, "//", sl, sc)
-            else:
-                # e.g. `// comment` or `x = 5 // comment`
-                self._skip_line_comment()
+            self._skip_line_comment()
             return
         if ch == "/" and self.current == "*":
             self._skip_block_comment(sl, sc); return
@@ -305,6 +301,10 @@ class Lexer:
             # Check for f"..." string prefix BEFORE general identifier scan
             if ch in ("f", "F") and self.current in ('"', "'"):
                 self._scan_fstring(self.advance(), sl, sc)
+                return
+            # Check for r"..." raw string prefix
+            if ch in ("r", "R") and self.current in ('"', "'"):
+                self._scan_raw_string(self.advance(), sl, sc)
                 return
             self._scan_identifier(ch, sl, sc); return
 
@@ -371,6 +371,19 @@ class Lexer:
         self._emit(TT.FSTRING, "".join(chars), sl, sc)
 
     # ── Strings ───────────────────────────────────────
+
+    def _scan_raw_string(self, quote: str, sl: int, sc: int):
+        """r\"...\" — no escape processing at all. Backslashes are literal."""
+        chars = []
+        while self.current is not None and self.current != quote:
+            ch = self.advance()
+            if ch == "\n":
+                self._error("Unterminated raw string — newline inside string", sl, sc)
+            chars.append(ch)
+        if self.current is None:
+            self._error("Unterminated raw string literal", sl, sc)
+        self.advance()  # closing quote
+        self._emit(TT.STRING, "".join(chars), sl, sc)
 
     def _scan_string(self, quote: str, sl: int, sc: int):
         chars = []
@@ -533,6 +546,11 @@ class Lexer:
         elif ch == "]":         emit(TT.RBRACKET)
         elif ch == ",":         emit(TT.COMMA)
         elif ch == ";":         emit(TT.SEMICOLON)
+        elif ord(ch) > 127:
+            # Non-ASCII character outside a string/comment — silently skip.
+            # This handles box-drawing, em-dashes, arrows etc. in comments
+            # where the comment scanner may not have consumed them yet.
+            pass
         else:
             self._error(f"Unexpected character: {ch!r}", sl, sc)
 

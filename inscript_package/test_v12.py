@@ -164,7 +164,7 @@ test('select recv from full channel',
 
 # ── v1.1 features still working ───────────────────────────────────────────────
 test('v1.1 str index',  'print("hello"[0])',  'h')
-test('v1.1 floor //',   'print(7//2)',         '3')
+test('v1.1 floor div',  'print(7 div 2)',      '3')
 test('v1.1 fstring {{', 'print(f"{{lit}}")',   '{lit}')
 test('v1.1 enum iter',
      'enum D{A B C}\nlet c=0\nfor v in D{c+=1}\nprint(c)', '3')

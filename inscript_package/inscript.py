@@ -1,5 +1,5 @@
-﻿#!/usr/bin/env python3
-# inscript.py  â€” InScript Language Entry Point
+#!/usr/bin/env python3
+# inscript.py  — InScript Language Entry Point
 #
 # Usage:
 #   python inscript.py mygame.ins              # run a file
@@ -19,7 +19,8 @@ from parser   import parse
 from analyzer import analyze
 from interpreter import Interpreter
 from errors   import (InScriptError, LexerError, ParseError,
-                       SemanticError, InScriptRuntimeError)
+                       SemanticError, InScriptRuntimeError,
+                       MultiError, InScriptWarning)
 
 VERSION = "1.0.1"
 LANG    = "InScript"
@@ -27,9 +28,9 @@ PACKAGES_DIR = os.path.join(os.path.expanduser("~"), ".inscript", "packages")
 REGISTRY_URL = "https://raw.githubusercontent.com/authorss81/inscript-packages/main/registry.json"
 
 
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ─────────────────────────────────────────────────────────────────────────────
 # RUN A FILE
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ─────────────────────────────────────────────────────────────────────────────
 
 def install_package(pkg_name: str) -> int:
     """Download and install an InScript package to ~/.inscript/packages/"""
@@ -68,7 +69,7 @@ def install_package(pkg_name: str) -> int:
             data = resp.read()
         with zipfile.ZipFile(io.BytesIO(data)) as zf:
             zf.extractall(PACKAGES_DIR)
-        print(f"[InScript] âœ… {pkg_name}@{version} installed to {pkg_dir}")
+        print(f"[InScript] ✅ {pkg_name}@{version} installed to {pkg_dir}")
         return 0
     except Exception as e:
         print(f"[InScript] Install failed: {e}", file=sys.stderr)
@@ -94,11 +95,11 @@ def list_packages() -> int:
             if os.path.exists(pkg_json):
                 import json as _j
                 try:
-                    info = _j.loads(open(pkg_json, encoding="utf-8").read())
+                    info = _j.loads(open(pkg_json).read())
                     version = f"@{info.get('version','?')}"
                 except Exception:
                     pass
-            print(f"  â€¢ {p}{version}")
+            print(f"  • {p}{version}")
     return 0
 
 
@@ -110,7 +111,7 @@ def remove_package(pkg_name: str) -> int:
         print(f"[InScript] Package '{pkg_name}' is not installed.", file=sys.stderr)
         return 1
     shutil.rmtree(pkg_dir)
-    print(f"[InScript] âœ… Removed {pkg_name}")
+    print(f"[InScript] ✅ Removed {pkg_name}")
     return 0
 
 
@@ -138,7 +139,7 @@ def search_packages(query: str) -> int:
         for name, info in sorted(matches):
             desc = info.get("description", "")
             ver  = info.get("version", "?")
-            print(f"  â€¢ {name}@{ver} â€” {desc}")
+            print(f"  • {name}@{ver} — {desc}")
     return 0
 
 
@@ -180,64 +181,92 @@ def run_file(path: str, type_check: bool = True) -> int:
 
 
 def run_source(source: str, filename: str = "<stdin>",
-               type_check: bool = True) -> int:
+               type_check: bool = True,
+               no_warn: bool = False,
+               warn_as_error: bool = False) -> int:
     """Lex, parse, analyze, and interpret InScript source code."""
-    # â”€â”€ 1. Lex â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── 1. Lex ────────────────────────────────────────────────────────────
     try:
         tokens = tokenize(source, filename)
     except LexerError as e:
         print(e, file=sys.stderr)
         return 1
 
-    # â”€â”€ 2. Parse â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── 2. Parse ──────────────────────────────────────────────────────────
     try:
         program = parse(source, filename)
     except ParseError as e:
         print(e, file=sys.stderr)
         return 1
 
-    # â”€â”€ 3. Analyze (optional) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── 3. Analyze (optional) — Phase 3: multi-error + warnings ──────────
     if type_check:
+        from analyzer import Analyzer
+        _analyzer = Analyzer(
+            source.splitlines(),
+            multi_error=True,
+            warn_as_error=warn_as_error,
+            no_warn=no_warn,
+        )
         try:
-            analyze(program, source)
+            _analyzer.analyze(program)
+        except MultiError as me:
+            print(me, file=sys.stderr)
+            return 1
         except SemanticError as e:
             print(e, file=sys.stderr)
             return 1
 
-    # â”€â”€ 4. Interpret â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        # Print warnings
+        if not no_warn and _analyzer._warnings:
+            for w in _analyzer._warnings:
+                print(w.format(), file=sys.stderr)
+            n = len(_analyzer._warnings)
+            print(f"[InScript] {n} warning{'s' if n != 1 else ''}", file=sys.stderr)
+
+    # ── 4. Interpret — Phase 3: Python-leak guard ─────────────────────────
     try:
-        interp = Interpreter(source.splitlines())
+        interp = Interpreter(source.splitlines(), filename=filename)
         interp.run(program)
         return 0
-    except InScriptRuntimeError as e:
+    except InScriptError as e:
         print(e, file=sys.stderr)
         return 1
     except KeyboardInterrupt:
         print("\n[InScript] Interrupted.", file=sys.stderr)
         return 130
+    except Exception as e:
+        # Phase 3.3: Zero Python leaking
+        print(
+            f"\n[InScript Internal Error] An unexpected error occurred.\n"
+            f"  {type(e).__name__}: {e}\n"
+            f"  Please report at: https://github.com/inscript-language/inscript/issues",
+            file=sys.stderr
+        )
+        return 1
 
 
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ─────────────────────────────────────────────────────────────────────────────
 # REPL
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ─────────────────────────────────────────────────────────────────────────────
 
 REPL_BANNER = f"""
-â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—
-â•‘   InScript v{VERSION} â€” Interactive Shell                  â•‘
-â•‘   Type 'exit' or Ctrl+C to quit, 'help' for tips    â•‘
-â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+╔══════════════════════════════════════════════════════╗
+║   InScript v{VERSION} — Interactive Shell                  ║
+║   Type 'exit' or Ctrl+C to quit, 'help' for tips    ║
+╚══════════════════════════════════════════════════════╝
 """
 
 REPL_HELP = """
 InScript REPL Tips:
-  â€¢ Type any expression to evaluate it:   2 + 2
-  â€¢ Declare variables:                    let x = 10
-  â€¢ Define functions:                     fn add(a,b) { return a+b }
-  â€¢ Import stdlib modules:                import "math"
-  â€¢ Multiline input: end line with \\      let x = 1 + \\
-  â€¢ .clear  â€” clear the current session
-  â€¢ .vars   â€” list all defined variables
-  â€¢ .exit   â€” quit
+  • Type any expression to evaluate it:   2 + 2
+  • Declare variables:                    let x = 10
+  • Define functions:                     fn add(a,b) { return a+b }
+  • Import stdlib modules:                import "math"
+  • Multiline input: end line with \\      let x = 1 + \\
+  • .clear  — clear the current session
+  • .vars   — list all defined variables
+  • .exit   — quit
 """
 
 def run_repl():
@@ -257,7 +286,7 @@ def run_repl():
     def show_result(val):
         if val is None: return
         from interpreter import _inscript_str
-        print(f"  â†’ {_inscript_str(val)}")
+        print(f"  → {_inscript_str(val)}")
 
     def handle_dot_cmd(cmd):
         """Handle .help .vars .modules .type .clear .exit etc."""
@@ -364,14 +393,14 @@ def run_repl():
             print(f"[InScript Internal Error] {e}")
 
 
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ─────────────────────────────────────────────────────────────────────────────
 # CLI
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ─────────────────────────────────────────────────────────────────────────────
 
 def main():
     parser = argparse.ArgumentParser(
         prog="inscript",
-        description=f"InScript {VERSION} â€” Game-focused programming language",
+        description=f"InScript {VERSION} — Game-focused programming language",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -389,6 +418,10 @@ Examples:
     parser.add_argument("--ast",    action="store_true", help="Print parsed AST")
     parser.add_argument("--no-typecheck", action="store_true",
                         help="Skip semantic analysis (faster, less safe)")
+    parser.add_argument("--no-warn", action="store_true",
+                        help="Suppress all warnings")
+    parser.add_argument("--warn-as-error", action="store_true",
+                        help="Treat any warning as an error (CI strictness)")
     parser.add_argument("--version", action="store_true", help="Print version and exit")
     parser.add_argument("--install", metavar="PKG",
                         help="Install a package: inscript install math-utils")
@@ -402,6 +435,14 @@ Examples:
                         help="Show package info: inscript --info math-utils")
     parser.add_argument("--lsp", action="store_true",
                         help="Start the Language Server (requires: pip install pygls)")
+    parser.add_argument("--game", action="store_true",
+                        help="Run .ins file in pygame window (requires: pip install pygame)")
+    parser.add_argument("--width",  type=int, default=800,
+                        help="Window width for --game mode  (default: 800)")
+    parser.add_argument("--height", type=int, default=600,
+                        help="Window height for --game mode (default: 600)")
+    parser.add_argument("--fps",    type=int, default=60,
+                        help="Target FPS for --game mode   (default: 60)")
     args = parser.parse_args()
 
     if args.version:
@@ -427,6 +468,26 @@ Examples:
 
     if args.info:
         return info_package(args.info)
+
+    # --game: launch pygame window
+    if args.game:
+        if not args.file:
+            print("[InScript] --game requires a .ins file", file=sys.stderr)
+            return 1
+        if not os.path.exists(args.file):
+            print(f"[InScript] file not found: '{args.file}'", file=sys.stderr)
+            return 1
+        try:
+            _here = os.path.dirname(os.path.abspath(__file__))
+            sys.path.insert(0, _here)
+            from pygame_backend import run_scene
+            run_scene(args.file,
+                      width=args.width, height=args.height, fps=args.fps,
+                      title=os.path.basename(args.file))
+            return 0
+        except ImportError:
+            print("[InScript] pygame_backend not found next to inscript.py", file=sys.stderr)
+            return 1
 
     if args.repl:
         run_repl()
@@ -490,16 +551,21 @@ Examples:
         try:
             prog = parse(source, args.file)
             analyze(prog, source)
-            print(f"âœ… {args.file} â€” type check passed")
+            print(f"✅ {args.file} — type check passed")
         except (LexerError, ParseError, SemanticError) as e:
             print(e, file=sys.stderr); return 1
         return 0
 
     # Normal run
     type_check = not args.no_typecheck
-    return run_file(args.file, type_check=type_check)
+    no_warn      = getattr(args, "no_warn", False)
+    warn_as_error= getattr(args, "warn_as_error", False)
+
+    with open(args.file, "r", encoding="utf-8") as _f:
+        _source = _f.read()
+    return run_source(_source, filename=args.file, type_check=type_check,
+                      no_warn=no_warn, warn_as_error=warn_as_error)
 
 
 if __name__ == "__main__":
     sys.exit(main())
-

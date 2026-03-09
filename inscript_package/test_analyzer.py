@@ -4,7 +4,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 
 from parser import parse
 from analyzer import analyze, Analyzer, T_INT, T_FLOAT, T_STRING, T_BOOL, T_VEC2
-from errors import SemanticError
+from errors import SemanticError, MultiError
 
 PASS, FAIL = "✅", "❌"
 results = []
@@ -22,6 +22,8 @@ def err(src):
         prog = parse(src)
         analyze(prog, src)
         return None   # no error raised
+    except MultiError as me:
+        return me.errors[0] if me.errors else None  # return first error
     except SemanticError as e:
         return e
 

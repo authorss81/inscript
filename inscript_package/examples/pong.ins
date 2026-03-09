@@ -1,0 +1,165 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// pong.ins — Classic Pong in InScript
+// Run: python inscript.py --game examples/pong.ins
+//
+// Controls:
+//   Left paddle  : W / S
+//   Right paddle : UP / DOWN
+//   Restart      : R  (after game over)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const W: int = 800
+const H: int = 600
+const PAD_W: int = 12
+const PAD_H: int = 80
+const BALL_R: float = 8.0
+const PAD_SPEED: float = 320.0
+const BALL_SPEED: float = 280.0
+const MAX_SCORE: int = 7
+
+fn clamp(v: float, lo: float, hi: float) -> float {
+    if v < lo { return lo }
+    if v > hi { return hi }
+    return v
+}
+
+scene Pong {
+    let ball_x: float = W / 2
+    let ball_y: float = H / 2
+    let bvx: float = BALL_SPEED
+    let bvy: float = BALL_SPEED * 0.5
+    let ly: float = H / 2 - PAD_H / 2
+    let ry: float = H / 2 - PAD_H / 2
+    let sl: int = 0
+    let sr: int = 0
+    let winner: int = 0
+    let speed: float = 1.0
+
+    on_start {
+        screen.set_title("Pong — InScript")
+        screen.set_background({"r": 0.07, "g": 0.07, "b": 0.09, "a": 1.0})
+    }
+
+    on_update(dt: float) {
+        if winner != 0 {
+            if input.key_pressed("r") {
+                sl = 0
+                sr = 0
+                winner = 0
+                speed = 1.0
+                ball_x = W / 2
+                ball_y = H / 2
+                bvx = BALL_SPEED
+                bvy = BALL_SPEED * 0.5
+            }
+            return
+        }
+
+        // Paddle movement
+        if input.key_down("w") { ly = ly - PAD_SPEED * dt }
+        if input.key_down("s") { ly = ly + PAD_SPEED * dt }
+        if input.key_down("up")   { ry = ry - PAD_SPEED * dt }
+        if input.key_down("down") { ry = ry + PAD_SPEED * dt }
+        ly = clamp(ly, 0.0, H - PAD_H)
+        ry = clamp(ry, 0.0, H - PAD_H)
+
+        // Ball movement
+        ball_x = ball_x + bvx * dt * speed
+        ball_y = ball_y + bvy * dt * speed
+
+        // Top / bottom bounce
+        if ball_y - BALL_R < 0.0    { ball_y = BALL_R;        bvy = -bvy }
+        if ball_y + BALL_R > H      { ball_y = H - BALL_R;    bvy = -bvy }
+
+        // Left paddle collision
+        let lpad_x: float = 20.0
+        if bvx < 0.0 && ball_x - BALL_R < lpad_x + PAD_W && ball_x + BALL_R > lpad_x {
+            if ball_y > ly && ball_y < ly + PAD_H {
+                bvx = -bvx
+                ball_x = lpad_x + PAD_W + BALL_R
+                let rel: float = (ball_y - ly - PAD_H / 2) / (PAD_H / 2)
+                bvy = rel * BALL_SPEED * 1.2
+                speed = speed + 0.04
+            }
+        }
+
+        // Right paddle collision
+        let rpad_x: float = W - 20.0 - PAD_W
+        if bvx > 0.0 && ball_x + BALL_R > rpad_x && ball_x - BALL_R < rpad_x + PAD_W {
+            if ball_y > ry && ball_y < ry + PAD_H {
+                bvx = -bvx
+                ball_x = rpad_x - BALL_R
+                let rel: float = (ball_y - ry - PAD_H / 2) / (PAD_H / 2)
+                bvy = rel * BALL_SPEED * 1.2
+                speed = speed + 0.04
+            }
+        }
+
+        // Scoring
+        if ball_x < 0.0 {
+            sr = sr + 1
+            if sr >= MAX_SCORE { winner = 2 } else {
+                ball_x = W / 2
+                ball_y = H / 2
+                bvx = BALL_SPEED
+                bvy = BALL_SPEED * 0.5
+                speed = 1.0
+            }
+        }
+        if ball_x > W {
+            sl = sl + 1
+            if sl >= MAX_SCORE { winner = 1 } else {
+                ball_x = W / 2
+                ball_y = H / 2
+                bvx = -BALL_SPEED
+                bvy = BALL_SPEED * 0.5
+                speed = 1.0
+            }
+        }
+    }
+
+    on_draw {
+        screen.clear()
+
+        // Centre dashed line
+        let cy: int = 0
+        while cy < H {
+            draw.rect(W / 2 - 2, cy, 4, 14, {"r":0.25,"g":0.25,"b":0.28,"a":1.0})
+            cy = cy + 28
+        }
+
+        // Paddles
+        draw.rounded_rect(20, ly, PAD_W, PAD_H,
+                          {"r":0.2,"g":0.8,"b":1.0,"a":1.0}, 4)
+        draw.rounded_rect(W - 20 - PAD_W, ry, PAD_W, PAD_H,
+                          {"r":1.0,"g":0.8,"b":0.2,"a":1.0}, 4)
+
+        // Ball
+        draw.circle(ball_x, ball_y, BALL_R, {"r":1.0,"g":1.0,"b":1.0,"a":1.0})
+
+        // Scores
+        draw.text_centered(W / 4, 40, string(sl),
+                           {"r":0.2,"g":0.8,"b":1.0,"a":1.0}, 52, true)
+        draw.text_centered(W * 3 / 4, 40, string(sr),
+                           {"r":1.0,"g":0.8,"b":0.2,"a":1.0}, 52, true)
+
+        // FPS
+        draw.text(4, H - 20, "FPS: " + string(screen.fps),
+                  {"r":0.4,"g":0.4,"b":0.4,"a":1.0}, 12)
+
+        // Controls hint
+        draw.text(8, H - 36, "W/S", {"r":0.35,"g":0.35,"b":0.4,"a":1.0}, 12)
+        draw.text(W - 70, H - 36, "UP/DOWN", {"r":0.35,"g":0.35,"b":0.4,"a":1.0}, 12)
+
+        // Winner overlay
+        if winner != 0 {
+            screen.fade(160)
+            let msg: string = "LEFT WINS!"
+            if winner == 2 { msg = "RIGHT WINS!" }
+            draw.text_centered(W / 2, H / 2 - 40, msg,
+                               {"r":0.2,"g":1.0,"b":0.5,"a":1.0}, 54, true)
+            draw.text_centered(W / 2, H / 2 + 30, "Press R to restart",
+                               {"r":0.8,"g":0.8,"b":0.8,"a":1.0}, 20, false)
+        }
+    }
+}

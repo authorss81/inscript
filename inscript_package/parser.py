@@ -652,6 +652,17 @@ class Parser:
                 methods.append(m)
             elif self.check(TT.FN):
                 methods.append(self.parse_function_decl(is_method=True))
+            elif self.check(TT.LET) or self.check(TT.CONST):
+                # let _x: int = 0  or  const MAX: int = 100
+                # Parse as a var decl then convert to StructField
+                vd = self.parse_var_decl()
+                from ast_nodes import StructField
+                fields.append(StructField(
+                    name=vd.name,
+                    type_ann=vd.type_ann,
+                    default=vd.initializer,
+                    line=vd.line, col=vd.col
+                ))
             else:
                 fields.append(self.parse_struct_field())
 
@@ -1051,6 +1062,14 @@ class Parser:
     def parse_print(self) -> PrintStmt:
         line, col = self._pos()
         self.advance()  # consume 'print'
+
+        # 1.7 — Detect old-style `print "x"` and give a helpful error
+        if not self.check(TT.LPAREN):
+            self._error(
+                f"Expected '(' after 'print' — use print(...) not print \"...\"  "
+                f"(old-style statement syntax was removed; call print as a function)"
+            )
+
         self.expect(TT.LPAREN, "Expected '(' after 'print'")
         args = []
         if not self.check(TT.RPAREN):
@@ -1270,8 +1289,10 @@ class Parser:
     def parse_multiplication(self) -> Node:
         line, col = self._pos()
         left = self.parse_power()
-        while self.check(TT.STAR, TT.SLASH, TT.SLASH_SLASH, TT.PERCENT):
-            op    = self.advance().value
+        while self.check(TT.STAR, TT.SLASH, TT.SLASH_SLASH, TT.PERCENT) or self.check(TT.DIV):
+            op_tok = self.advance()
+            # 'div' keyword maps to floor division operator
+            op    = "//" if op_tok.type == TT.DIV else op_tok.value
             right = self.parse_power()
             left  = BinaryExpr(left=left, op=op, right=right,
                                 line=line, col=col)
@@ -1404,6 +1425,39 @@ class Parser:
             # Namespace: Name::member (already parsed in primary — but handle chaining)
             else:
                 break
+
+        # ── Postfix 'as' cast: expr as int / expr as float / expr as string / expr as bool
+        while self.check(TT.AS):
+            self.advance()  # consume 'as'
+            cast_tok = self.current
+            _CAST_TYPES = {
+                TT.INT_TYPE: "int", TT.FLOAT_TYPE: "float",
+                TT.STRING_TYPE: "string", TT.BOOL_TYPE: "bool",
+                TT.IDENT: None,  # struct name cast
+            }
+            if cast_tok.type in _CAST_TYPES:
+                cast_type = _CAST_TYPES[cast_tok.type] or str(cast_tok.value)
+                self.advance()
+                expr = CastExpr(expr=expr, cast_type=cast_type, line=line, col=col)
+            else:
+                self._error(f"Expected type name after 'as', got '{cast_tok.value}'")
+
+        # ── Postfix 'is' type check: expr is int / expr is nil / expr is MyStruct
+        while self.check(TT.IS):
+            self.advance()  # consume 'is'
+            check_tok = self.current
+            _CHECK_TYPES = {
+                TT.INT_TYPE: "int", TT.FLOAT_TYPE: "float",
+                TT.STRING_TYPE: "string", TT.BOOL_TYPE: "bool",
+                TT.VOID_TYPE: "void", TT.NULL: "nil",
+                TT.IDENT: None,
+            }
+            if check_tok.type in _CHECK_TYPES:
+                check_type = _CHECK_TYPES[check_tok.type] or str(check_tok.value)
+                self.advance()
+                expr = IsExpr(expr=expr, check_type=check_type, line=line, col=col)
+            else:
+                self._error(f"Expected type name after 'is', got '{check_tok.value}'")
 
         return expr
 

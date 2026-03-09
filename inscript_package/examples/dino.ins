@@ -1,0 +1,337 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// dino.ins — Side-scrolling endless runner in InScript
+// Run: python inscript.py --game examples/dino.ins
+//
+// Controls:
+//   SPACE / UP : Jump (double-jump allowed once in air)
+//   DOWN       : Duck (lowers hitbox)
+//   R          : Restart after death
+// ─────────────────────────────────────────────────────────────────────────────
+
+import "random"
+
+const W: int = 800
+const H: int = 600
+const GROUND_Y: int = H - 100
+const GRAVITY: float = 1400.0
+const JUMP_VEL: float = -560.0
+const DINO_X: int = 120
+const DINO_W: int = 40
+const DINO_H: int = 56
+const DUCK_H: int = 30
+const SCROLL_BASE: float = 320.0
+
+fn randf(lo: float, hi: float) -> float {
+    return lo + random.float() * (hi - lo)
+}
+
+fn randi(lo: int, hi: int) -> int {
+    return lo + int(random.float() * (hi - lo + 1))
+}
+
+scene Dino {
+    let dino_y: float = GROUND_Y - DINO_H
+    let dino_vy: float = 0.0
+    let on_ground: bool = true
+    let ducking: bool = false
+    let jumps_left: int = 2
+
+    // Obstacles: x, width, height, is_tall (cactus vs low cactus)
+    let obs_x: float[] = []
+    let obs_w: float[] = []
+    let obs_h: float[] = []
+    let obs_tall: bool[] = []
+
+    // Clouds
+    let cloud_x: float[] = []
+    let cloud_y: float[] = []
+    let cloud_w: float[] = []
+
+    let score: int = 0
+    let scroll: float = SCROLL_BASE
+    let dead: bool = false
+    let started: bool = false
+    let anim_t: float = 0.0
+    let spawn_t: float = 0.0
+    let spawn_gap: float = 2.2
+    let dust_x: float[] = []
+    let dust_y: float[] = []
+    let dust_l: float[] = []
+
+    fn spawn_obs() {
+        let tall: bool = random.float() > 0.4
+        let h: float = randf(44.0, 72.0)
+        if tall { h = randf(72.0, 95.0) }
+        let w: float = randf(22.0, 38.0)
+        obs_x.push(W + 10.0)
+        obs_w.push(w)
+        obs_h.push(h)
+        obs_tall.push(tall)
+    }
+
+    fn spawn_cloud() {
+        cloud_x.push(W + 30.0)
+        cloud_y.push(randf(60.0, 180.0))
+        cloud_w.push(randf(60.0, 120.0))
+    }
+
+    fn reset_all() {
+        dino_y = GROUND_Y - DINO_H
+        dino_vy = 0.0
+        on_ground = true
+        ducking = false
+        jumps_left = 2
+        obs_x = []; obs_w = []; obs_h = []; obs_tall = []
+        cloud_x = []; cloud_y = []; cloud_w = []
+        dust_x = []; dust_y = []; dust_l = []
+        score = 0
+        scroll = SCROLL_BASE
+        dead = false
+        started = false
+        spawn_t = 0.0
+        spawn_gap = 2.2
+        anim_t = 0.0
+    }
+
+    on_start {
+        screen.set_title("Dino Runner — InScript")
+        screen.set_background({"r":0.93,"g":0.93,"b":0.9,"a":1.0})
+        // Spawn a few starting clouds
+        cloud_x.push(200.0); cloud_y.push(110.0); cloud_w.push(90.0)
+        cloud_x.push(500.0); cloud_y.push(80.0);  cloud_w.push(70.0)
+    }
+
+    on_update(dt: float) {
+        if dead {
+            if input.key_pressed("r") { reset_all() }
+            return
+        }
+
+        if !started {
+            if input.key_pressed("space") || input.key_pressed("up") {
+                started = true
+                dino_vy = JUMP_VEL
+                on_ground = false
+                jumps_left = 1
+            }
+            return
+        }
+
+        anim_t = anim_t + dt
+        score = score + int(scroll * dt * 0.12)
+
+        // Speed ramp
+        scroll = SCROLL_BASE + float(score) * 0.18
+        if scroll > 750.0 { scroll = 750.0 }
+
+        // Spawn gap shrinks with speed
+        spawn_gap = 2.2 - float(score) * 0.0004
+        if spawn_gap < 1.0 { spawn_gap = 1.0 }
+
+        // Jump input
+        if (input.key_pressed("space") || input.key_pressed("up")) && jumps_left > 0 {
+            dino_vy = JUMP_VEL
+            jumps_left = jumps_left - 1
+            on_ground = false
+        }
+
+        // Duck
+        ducking = input.key_down("down") && on_ground
+
+        // Physics
+        dino_vy = dino_vy + GRAVITY * dt
+        dino_y = dino_y + dino_vy * dt
+
+        // Landing
+        let dino_h: float = DINO_H
+        if ducking { dino_h = DUCK_H }
+        if dino_y >= GROUND_Y - dino_h {
+            dino_y = GROUND_Y - dino_h
+            dino_vy = 0.0
+            on_ground = true
+            jumps_left = 2
+        }
+
+        // Dust when running
+        if on_ground && anim_t as int % 2 == 0 {
+            dust_x.push(DINO_X + 5.0)
+            dust_y.push(GROUND_Y - 2.0)
+            dust_l.push(0.25)
+        }
+
+        // Update dust
+        let ndx: float[] = []; let ndy: float[] = []; let ndl: float[] = []
+        let i: int = 0
+        while i < dust_x.length {
+            let l: float = dust_l[i] - dt
+            if l > 0.0 {
+                ndx.push(dust_x[i] - 40.0 * dt)
+                ndy.push(dust_y[i] - 10.0 * dt)
+                ndl.push(l)
+            }
+            i = i + 1
+        }
+        dust_x = ndx; dust_y = ndy; dust_l = ndl
+
+        // Spawn obstacles
+        spawn_t = spawn_t + dt
+        if spawn_t >= spawn_gap {
+            spawn_t = 0.0
+            spawn_obs()
+        }
+
+        // Spawn clouds
+        if random.float() < dt * 0.3 { spawn_cloud() }
+
+        // Move clouds
+        let ncx: float[] = []; let ncy: float[] = []; let ncw: float[] = []
+        i = 0
+        while i < cloud_x.length {
+            let nx: float = cloud_x[i] - scroll * 0.18 * dt
+            if nx > -150.0 {
+                ncx.push(nx); ncy.push(cloud_y[i]); ncw.push(cloud_w[i])
+            }
+            i = i + 1
+        }
+        cloud_x = ncx; cloud_y = ncy; cloud_w = ncw
+
+        // Move & check obstacles
+        let nox: float[] = []; let now2: float[] = []; let noh: float[] = []; let not2: bool[] = []
+        i = 0
+        while i < obs_x.length {
+            let nx: float = obs_x[i] - scroll * dt
+            if nx + obs_w[i] > 0.0 {
+                nox.push(nx); now2.push(obs_w[i]); noh.push(obs_h[i]); not2.push(obs_tall[i])
+
+                // AABB collision
+                let dino_h2: float = DINO_H
+                if ducking { dino_h2 = DUCK_H }
+                let dino_top: float = dino_y
+                let dino_left: float = DINO_X + 8.0
+                let dino_right: float = DINO_X + DINO_W - 8.0
+                let obs_top: float = GROUND_Y - obs_h[i]
+                let obs_left: float = nx + 4.0
+                let obs_right: float = nx + obs_w[i] - 4.0
+                if dino_right > obs_left && dino_left < obs_right {
+                    if dino_y + dino_h2 > obs_top && dino_top < GROUND_Y {
+                        dead = true
+                    }
+                }
+            }
+            i = i + 1
+        }
+        obs_x = nox; obs_w = now2; obs_h = noh; obs_tall = not2
+    }
+
+    on_draw {
+        screen.clear()
+
+        // Sky gradient (simple — just a lighter rect at top)
+        draw.rect(0, 0, W, GROUND_Y - 10,
+                  {"r":0.94,"g":0.96,"b":1.0,"a":1.0})
+
+        // Clouds
+        let i: int = 0
+        while i < cloud_x.length {
+            let cx: float = cloud_x[i]; let cy: float = cloud_y[i]; let cw: float = cloud_w[i]
+            draw.ellipse(cx, cy, cw, 28.0, {"r":1.0,"g":1.0,"b":1.0,"a":0.9})
+            draw.ellipse(cx + cw * 0.25, cy - 12.0, cw * 0.55, 24.0,
+                         {"r":1.0,"g":1.0,"b":1.0,"a":0.9})
+            i = i + 1
+        }
+
+        // Ground
+        draw.rect(0, GROUND_Y, W, H - GROUND_Y,
+                  {"r":0.62,"g":0.56,"b":0.48,"a":1.0})
+        draw.rect(0, GROUND_Y, W, 3,
+                  {"r":0.4,"g":0.35,"b":0.28,"a":1.0})
+
+        // Dust particles
+        i = 0
+        while i < dust_x.length {
+            let a: float = dust_l[i] / 0.25
+            draw.circle(dust_x[i], dust_y[i], 5.0 * a,
+                        {"r":0.7,"g":0.65,"b":0.58,"a":a * 0.5})
+            i = i + 1
+        }
+
+        // Obstacles (stylised cacti)
+        i = 0
+        while i < obs_x.length {
+            let ox: float = obs_x[i]; let ow: float = obs_w[i]; let oh: float = obs_h[i]
+            let oy: float = GROUND_Y - oh
+            // Body
+            draw.rounded_rect(ox, oy, ow, oh, {"r":0.2,"g":0.55,"b":0.2,"a":1.0}, 6)
+            // Arms
+            let arm_y: float = oy + oh * 0.35
+            if obs_tall[i] {
+                draw.rounded_rect(ox - ow * 0.55, arm_y, ow * 0.5, oh * 0.3,
+                                  {"r":0.2,"g":0.55,"b":0.2,"a":1.0}, 4)
+                draw.rounded_rect(ox + ow, arm_y + oh * 0.05, ow * 0.5, oh * 0.28,
+                                  {"r":0.2,"g":0.55,"b":0.2,"a":1.0}, 4)
+            }
+            i = i + 1
+        }
+
+        // Dino body
+        let dino_h_draw: float = DINO_H
+        let dino_col: string = "{"
+        if dead { dino_h_draw = DINO_H }
+        if ducking { dino_h_draw = DUCK_H }
+        let dino_top_draw: float = dino_y
+
+        // Legs (animated)
+        if on_ground && !ducking {
+            let leg_phase: float = anim_t * 8.0
+            let leg1_h: float = 14.0 + 4.0 * math.sin(leg_phase)
+            let leg2_h: float = 14.0 - 4.0 * math.sin(leg_phase)
+            draw.rounded_rect(DINO_X + 8, GROUND_Y - 14.0, 10.0, leg1_h,
+                              {"r":0.15,"g":0.15,"b":0.15,"a":1.0}, 3)
+            draw.rounded_rect(DINO_X + 22, GROUND_Y - 14.0, 10.0, leg2_h,
+                              {"r":0.15,"g":0.15,"b":0.15,"a":1.0}, 3)
+        }
+
+        // Body
+        let bc: string = "r"
+        if dead {
+            draw.rounded_rect(DINO_X, dino_top_draw, DINO_W, dino_h_draw,
+                              {"r":0.7,"g":0.15,"b":0.15,"a":1.0}, 8)
+        } else {
+            draw.rounded_rect(DINO_X, dino_top_draw, DINO_W, dino_h_draw,
+                              {"r":0.15,"g":0.15,"b":0.15,"a":1.0}, 8)
+        }
+        // Eye
+        if !ducking {
+            draw.circle(DINO_X + DINO_W - 8, dino_top_draw + 10,
+                        5.0, {"r":1.0,"g":1.0,"b":1.0,"a":1.0})
+            draw.circle(DINO_X + DINO_W - 6, dino_top_draw + 10,
+                        2.5, {"r":0.1,"g":0.1,"b":0.1,"a":1.0})
+        }
+        // Tail
+        draw.rounded_rect(DINO_X - 14, dino_top_draw + dino_h_draw - 16, 16.0, 10.0,
+                          {"r":0.15,"g":0.15,"b":0.15,"a":1.0}, 5)
+
+        // HUD
+        draw.text(8, 8, "SCORE: " + string(score),
+                  {"r":0.2,"g":0.2,"b":0.2,"a":1.0}, 20, true)
+        draw.text(W - 130, 8, "FPS: " + string(screen.fps),
+                  {"r":0.5,"g":0.5,"b":0.5,"a":1.0}, 14)
+
+        if !started && !dead {
+            draw.text_centered(W / 2, GROUND_Y - 120,
+                               "Press SPACE to start",
+                               {"r":0.3,"g":0.3,"b":0.3,"a":1.0}, 22, true)
+            draw.text_centered(W / 2, GROUND_Y - 88,
+                               "SPACE/UP: Jump   DOWN: Duck   R: Restart",
+                               {"r":0.5,"g":0.5,"b":0.5,"a":1.0}, 14)
+        }
+
+        if dead {
+            draw.text_centered(W / 2, GROUND_Y - 120, "GAME OVER",
+                               {"r":0.8,"g":0.1,"b":0.1,"a":1.0}, 36, true)
+            draw.text_centered(W / 2, GROUND_Y - 76,
+                               "Score: " + string(score) + "    R to restart",
+                               {"r":0.4,"g":0.4,"b":0.4,"a":1.0}, 18)
+        }
+    }
+}
