@@ -616,6 +616,7 @@ class Parser:
         methods         = []
         static_methods  = []
         properties      = {}   # name -> PropertyDecl
+        operators       = []   # Phase 7: operator overloads
 
         while not self.check(TT.RBRACE) and not self.is_at_end():
             if self.match(TT.SEMICOLON):
@@ -663,6 +664,9 @@ class Parser:
                     default=vd.initializer,
                     line=vd.line, col=vd.col
                 ))
+            # operator + (rhs: T) -> T { ... }   Phase 7
+            elif self.check(TT.IDENT) and self.current.value == "operator":
+                operators.append(self._parse_operator_decl())
             else:
                 fields.append(self.parse_struct_field())
 
@@ -672,6 +676,7 @@ class Parser:
                           interfaces=interfaces, mixins=mixins,
                           properties=list(properties.values()),
                           type_params=type_params,
+                          operators=operators,
                           line=line, col=col)
 
     def _parse_getter(self) -> "PropertyDecl":
@@ -704,6 +709,95 @@ class Parser:
         from ast_nodes import PropertyDecl
         return PropertyDecl(name=name, setter_body=body, setter_param=param_name,
                             line=line, col=col)
+
+    # Valid operator symbols for Phase 7
+    _OP_SYMBOLS = {'+', '-', '*', '/', '%', '**', '==', '!=',
+                   '<', '>', '<=', '>=', '[]', '[]=', '()', 'str', 'len', 'iter'}
+
+    def _parse_operator_decl(self) -> "OperatorDecl":
+        """
+        operator + (rhs: Vec2) -> Vec2 { return Vec2{x:self.x+rhs.x, y:self.y+rhs.y} }
+        operator str () -> string { return f"({self.x},{self.y})" }
+        operator - ()  -> Vec2 { return Vec2{x:-self.x, y:-self.y} }   # unary
+        """
+        from ast_nodes import OperatorDecl, Param
+        line, col = self._pos()
+        self.advance()  # consume 'operator' ident
+
+        # Collect the operator symbol (may be multi-char like <=, [], []=)
+        op_sym = self._collect_op_symbol()
+
+        # Parameters
+        self.expect(TT.LPAREN, "Expected '(' after operator symbol")
+        params = []
+        while not self.check(TT.RPAREN) and not self.is_at_end():
+            pline, pcol = self._pos()
+            pname = self.expect_ident("Expected parameter name")
+            ptype = None
+            if self.match(TT.COLON):
+                ptype = self.parse_type_annotation()
+            params.append(Param(name=pname, type_ann=ptype, default=None,
+                                line=pline, col=pcol))
+            if not self.check(TT.RPAREN):
+                self.expect(TT.COMMA, "Expected ',' between parameters")
+        self.expect(TT.RPAREN, "Expected ')' after operator parameters")
+
+        # Optional return type
+        ret_type = None
+        if self.match(TT.ARROW):
+            ret_type = self.parse_type_annotation()
+
+        body = self.parse_block()
+        is_unary = len(params) == 0
+
+        return OperatorDecl(op_symbol=op_sym, params=params, body=body,
+                            return_type=ret_type, is_unary=is_unary,
+                            line=line, col=col)
+
+    def _collect_op_symbol(self) -> str:
+        """Collect an operator symbol from the current token(s)."""
+        from lexer import TT
+        tok = self.current
+        self.advance()
+
+        # Multi-character symbols assembled from consecutive tokens
+        sym = tok.value if tok.value else tok.type.name
+
+        # Named special ops (treated as IDENT by lexer)
+        if tok.type == TT.IDENT and tok.value in ('str', 'len', 'iter', 'neg'):
+            return tok.value
+
+        # [] and []=
+        if tok.type == TT.LBRACKET:
+            self.expect(TT.RBRACKET, "Expected ']' in [] operator")
+            if self.check(TT.ASSIGN):
+                self.advance(); return '[]='
+            return '[]'
+
+        # ()
+        if tok.type == TT.LPAREN:
+            self.expect(TT.RPAREN, "Expected ')' in () operator")
+            return '()'
+
+        # Single and double-char symbols derived from token type
+        type_to_sym = {
+            TT.PLUS: '+', TT.MINUS: '-', TT.STAR: '*', TT.SLASH: '/',
+            TT.PERCENT: '%', TT.EQ: '==', TT.NEQ: '!=',
+            TT.LT: '<', TT.GT: '>',
+        }
+        if tok.type in type_to_sym:
+            base = type_to_sym[tok.type]
+            # Check for ** (STAR STAR)
+            if tok.type == TT.STAR and self.check(TT.STAR):
+                self.advance(); return '**'
+            # Check for <=, >=
+            if tok.type == TT.LT and self.check(TT.ASSIGN):
+                self.advance(); return '<='
+            if tok.type == TT.GT and self.check(TT.ASSIGN):
+                self.advance(); return '>='
+            return base
+
+        return sym
 
     def parse_struct_field(self) -> StructField:
         line, col = self._pos()

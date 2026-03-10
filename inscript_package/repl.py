@@ -5,7 +5,7 @@
 #   • Persistent history across sessions (~/.inscript/history)
 #   • Multi-line smart detection (auto-continues on open braces)
 #   • Syntax highlighting in terminal (ANSI colours)
-#   • .help  .vars  .fns  .clear  .save  .load  .time  .bytecode commands
+#   • .help  .vars  .fns  .clear  .save  .load  .time  .bytecode  .asm commands
 #   • Session recording: .save session.ins writes current session to file
 #   • :time expression  — measure execution time
 #   • Web playground server: python -m inscript.repl --web [--port 8080]
@@ -60,7 +60,8 @@ HELP_TEXT = f"""
   {YELLOW('.save')} <file>       Save session to .ins file
   {YELLOW('.load')} <file>       Load and run a .ins file
   {YELLOW('.time')} <expr>       Measure execution time of expression
-  {YELLOW('.bytecode')}          Show bytecode for last expression
+  {YELLOW('.bytecode')} [expr]      Show compact bytecode for last (or given) expression
+  {YELLOW('.asm')} [expr]          Show full annotated assembly with constants/names tables
   {YELLOW('.history')}           Show command history
   {YELLOW('.reset')}             Full reset (interpreter + history)
   {YELLOW('.type')} <expr>       Show the type of an expression
@@ -318,15 +319,100 @@ class EnhancedREPL:
                       f"max {YELLOW(f'{mx:.2f}ms')}  (10 runs)")
 
         elif command == ".bytecode":
-            if not self._last_src:
-                print(DIM("  (no expression yet)"))
+            src = arg.strip() if arg.strip() else self._last_src
+            if not src:
+                print(DIM("  (no expression yet — run something first, or: .bytecode <expr>)"))
             else:
                 try:
-                    from compiler.bytecode import BytecodeCompiler, disassemble_proto
-                    proto = BytecodeCompiler().compile_source(self._last_src)
-                    print(DIM(disassemble_proto(proto)))
+                    from compiler import compile_source
+                    proto = compile_source(src)
+                    asm   = proto.disassemble()
+                    # Colour the disassembly output
+                    for line in asm.splitlines():
+                        if line.startswith("==="):
+                            print(BOLD(CYAN(line)))
+                        elif line.strip() == "":
+                            print()
+                        else:
+                            # Highlight opcode name
+                            parts = line.split(None, 1)
+                            addr_op = parts[0]
+                            rest    = parts[1] if len(parts) > 1 else ""
+                            # find opcode (second token)
+                            toks_  = line.split()
+                            if len(toks_) >= 2 and toks_[0].isdigit():
+                                op_   = toks_[1]
+                                anno  = "  " + "  ".join(toks_[5:]) if len(toks_) > 5 else ""
+                                operands = "  ".join(f"{int(t):5}" for t in toks_[2:5] if t.lstrip("-").isdigit())
+                                print(f"  {DIM(toks_[0]:>4)}  {YELLOW(op_):<22} {CYAN(operands)}{DIM(anno)}")
+                            else:
+                                print(DIM(line))
                 except Exception as e:
                     print(RED(f"  Bytecode error: {e}"))
+
+        elif command == ".asm":
+            # .asm <expr>  — compile and show full annotated assembly
+            src = arg.strip() if arg.strip() else self._last_src
+            if not src:
+                print(DIM("  Usage: .asm <expression or statement>"))
+            else:
+                try:
+                    from compiler import compile_source, FnProto
+                    proto = compile_source(src)
+
+                    def _print_proto(p: FnProto, indent: int = 0):
+                        pad = "  " * indent
+                        print(f"{pad}{BOLD(CYAN(f'=== fn {p.name} ===')):}")
+                        # Constants table
+                        if p.consts:
+                            print(f"{pad}  {DIM('Constants:')}")
+                            for ci, cv in enumerate(p.consts):
+                                if isinstance(cv, FnProto):
+                                    print(f"{pad}    [{ci}] <fn {cv.name}>")
+                                else:
+                                    print(f"{pad}    [{ci}] {GREEN(repr(cv))}")
+                        # Names table
+                        if p.names:
+                            print(f"{pad}  {DIM('Names:')}")
+                            for ni, nv in enumerate(p.names):
+                                print(f"{pad}    [{ni}] {YELLOW(nv)}")
+                        # Upvals
+                        if p.upval_descs:
+                            print(f"{pad}  {DIM('Upvalues:')}")
+                            for ui, ud in enumerate(p.upval_descs):
+                                print(f"{pad}    [{ui}] {ud}")
+                        # Instructions
+                        print(f"{pad}  {DIM('Code  ({} instrs, {} locals):'.format(len(p.code), p.n_locals))}")
+                        for idx, ins in enumerate(p.code):
+                            ann = ""
+                            from compiler import Op
+                            if ins.op == Op.LOAD_CONST and ins.b < len(p.consts):
+                                v = p.consts[ins.b]
+                                ann = f"; {v!r}" if not isinstance(v, FnProto) else f"; <fn {v.name}>"
+                            elif ins.op in (Op.LOAD_GLOBAL, Op.STORE_GLOBAL):
+                                ni = ins.b if ins.op == Op.LOAD_GLOBAL else ins.a
+                                if ni < len(p.names): ann = f"; '{p.names[ni]}'"
+                            elif ins.op in (Op.GET_FIELD, Op.SET_FIELD, Op.CALL_METHOD, Op.OP_CALL):
+                                ni = ins.c if ins.op == Op.GET_FIELD else ins.b
+                                if ni < len(p.names): ann = f"; '{p.names[ni]}'"
+                            elif ins.op == Op.LOAD_INT:
+                                ann = f"; {ins.b}"
+                            row = (f"{pad}    {DIM(str(idx)):>4}  "
+                                   f"{YELLOW(ins.op.name):<22}"
+                                   f"  {CYAN(str(ins.a)):>5}  {CYAN(str(ins.b)):>5}  {CYAN(str(ins.c)):>5}"
+                                   f"  {DIM(ann)}")
+                            print(row)
+                        # Recurse into nested protos
+                        for sp in p.protos:
+                            print()
+                            _print_proto(sp, indent + 1)
+
+                    _print_proto(proto)
+                    print(DIM(f"  ({len(proto.code)} top-level instructions)"))
+                except Exception as e:
+                    import traceback
+                    print(RED(f"  ASM error: {e}"))
+                    traceback.print_exc()
 
         elif command == ".history":
             for i, h in enumerate(self._history[-20:], 1):

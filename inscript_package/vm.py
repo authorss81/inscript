@@ -110,7 +110,20 @@ def _ins_str(v):
     if isinstance(v, float):
         if v == int(v) and abs(v)<1e15: return str(int(v))
         return str(v)
-    if isinstance(v, VMInstance):   return repr(v)
+    if isinstance(v, VMInstance):
+        desc = v._desc or {}
+        ops  = desc.get('__operators__', {})
+        fn   = ops.get('str')
+        if fn is not None:
+            # Lazy-import VM to call the overload
+            from vm import VM as _VM
+            _vm = _VM.__new__(_VM)
+            _vm._globals = {}
+            cl = VMClosure(fn, [])
+            cl._self = v
+            result = _vm._do_call(cl, [], v)
+            return _ins_str(result)
+        return repr(v)
     if isinstance(v, VMEnumVariant):return f"{v.enum_name}.{v.name}"
     if isinstance(v, VMClosure):    return f"<fn {v.proto.name}>"
     if isinstance(v, list):  return '['+', '.join(_ins_str(x) for x in v)+']'
@@ -120,7 +133,16 @@ def _ins_str(v):
 
 def _ins_len(v):
     if isinstance(v,(list,dict,str)): return len(v)
-    if isinstance(v,VMInstance): return len(v.fields)
+    if isinstance(v,VMInstance):
+        desc = v._desc or {}
+        ops  = desc.get('__operators__',{})
+        fn   = ops.get('len')
+        if fn is not None:
+            from vm import VM as _VM
+            _vm = _VM.__new__(_VM); _vm._globals = {}
+            cl = VMClosure(fn,[]); cl._self = v
+            return _vm._do_call(cl, [], v)
+        return len(v.fields)
     if isinstance(v,InScriptRange): return abs(int(v.end)-int(v.start))
     return 0
 
@@ -144,7 +166,16 @@ def _get_idx(obj,idx):
         try: return obj[int(idx)]
         except IndexError: raise InScriptRuntimeError(f"index {idx} out of range",0,0,"")
     if isinstance(obj,dict): return obj.get(idx)
-    if isinstance(obj,VMInstance): return obj.fields.get(idx if isinstance(idx,str) else str(idx))
+    if isinstance(obj,VMInstance):
+        desc = obj._desc or {}
+        ops  = desc.get('__operators__',{})
+        fn   = ops.get('[]')
+        if fn is not None:
+            from vm import VM as _VM
+            _vm = _VM.__new__(_VM); _vm._globals = {}
+            cl = VMClosure(fn,[]); cl._self = obj
+            return _vm._do_call(cl, [idx], obj)
+        return obj.fields.get(idx if isinstance(idx,str) else str(idx))
     if isinstance(obj,VMModule): return obj._data.get(idx)
     return None
 
@@ -399,29 +430,54 @@ class VM:
                     W(a, math.floor(av/bv))
                 elif op==Op.NEG:
                     av=R(b)
-                    W(a, self._op_overload(av,'__neg__',None) if isinstance(av,VMInstance) else -av)
+                    if isinstance(av,VMInstance):
+                        # unary - stored as '-u', binary - stored as '-'
+                        r = self._op_overload(av, '-u', None)
+                        if r is _NOTFOUND: r = self._op_overload(av, '-', None)
+                        W(a, r if r is not _NOTFOUND else -av)
+                    else: W(a, -av)
 
                 # ── comparison ────────────────────────────────────────────────
                 elif op==Op.EQ:
                     av,bv=R(b),R(c)
-                    if isinstance(av,VMInstance): W(a,self._op_overload(av,'==',bv))
+                    if isinstance(av,VMInstance):
+                        r=self._op_overload(av,'==',bv)
+                        W(a, _eq(av,bv) if r is _NOTFOUND else r)
                     else: W(a,_eq(av,bv))
                 elif op==Op.NEQ:
                     av,bv=R(b),R(c)
-                    if isinstance(av,VMInstance): W(a,self._op_overload(av,'!=',bv))
+                    if isinstance(av,VMInstance):
+                        r=self._op_overload(av,'!=',bv)
+                        if r is _NOTFOUND:
+                            # fall back: negate == overload
+                            r2=self._op_overload(av,'==',bv)
+                            W(a, not _eq(av,bv) if r2 is _NOTFOUND else not r2)
+                        else: W(a, r)
                     else: W(a,not _eq(av,bv))
                 elif op==Op.LT:
                     av,bv=R(b),R(c)
-                    W(a,self._op_overload(av,'<',bv) if isinstance(av,VMInstance) else av<bv)
+                    if isinstance(av,VMInstance):
+                        r=self._op_overload(av,'<',bv)
+                        W(a, av<bv if r is _NOTFOUND else r)
+                    else: W(a,av<bv)
                 elif op==Op.LTE:
                     av,bv=R(b),R(c)
-                    W(a,self._op_overload(av,'<=',bv) if isinstance(av,VMInstance) else av<=bv)
+                    if isinstance(av,VMInstance):
+                        r=self._op_overload(av,'<=',bv)
+                        W(a, av<=bv if r is _NOTFOUND else r)
+                    else: W(a,av<=bv)
                 elif op==Op.GT:
                     av,bv=R(b),R(c)
-                    W(a,self._op_overload(av,'>',bv) if isinstance(av,VMInstance) else av>bv)
+                    if isinstance(av,VMInstance):
+                        r=self._op_overload(av,'>',bv)
+                        W(a, av>bv if r is _NOTFOUND else r)
+                    else: W(a,av>bv)
                 elif op==Op.GTE:
                     av,bv=R(b),R(c)
-                    W(a,self._op_overload(av,'>=',bv) if isinstance(av,VMInstance) else av>=bv)
+                    if isinstance(av,VMInstance):
+                        r=self._op_overload(av,'>=',bv)
+                        W(a, av>=bv if r is _NOTFOUND else r)
+                    else: W(a,av>=bv)
 
                 # ── logical ───────────────────────────────────────────────────
                 elif op==Op.NOT: W(a, not _truthy(R(b)))
@@ -489,9 +545,10 @@ class VM:
                     for i in range(c): d[R(b+i*2)] = R(b+i*2+1)
                     W(a, d)
                 elif op==Op.MAKE_RANGE:
-                    # NOP immediately following carries inclusive flag in its .a field
-                    inc_nop = code[ip]; ip += 1
-                    W(a, InScriptRange(R(b), R(c), bool(inc_nop.a)))
+                    # Inclusive flag packed in high bit of c by compiler
+                    inc = bool(c & 0x8000)
+                    end_reg = c & 0x7FFF
+                    W(a, InScriptRange(R(b), R(end_reg), inclusive=inc))
 
                 elif op==Op.GET_INDEX: W(a, _get_idx(R(b), R(c)))
                 elif op==Op.SET_INDEX: _set_idx(R(a), R(b), R(c))
@@ -561,7 +618,7 @@ class VM:
 
                 elif op in (Op.LINE, Op.NOP): pass
 
-            except InScriptRuntimeError: raise
+            # All exceptions (including InScriptRuntimeError) go through _handle_exc
             except Exception as e:
                 r = self._handle_exc(e, frame)
                 if r is _RETHROW: raise InScriptRuntimeError(str(e),0,0,"")
@@ -580,6 +637,16 @@ class VM:
     def _get_field(self, obj, name):
         if obj is None:
             raise InScriptRuntimeError(f"null pointer: .{name} on nil",0,0,"")
+        # Handle enum/struct descriptor dicts stored in globals
+        if isinstance(obj, dict) and '__type__' in obj:
+            if obj['__type__'] == 'enum_decl':
+                variants = obj.get('__variants__', {})
+                if name in variants:
+                    return VMEnumVariant(obj['__name__'], name, variants[name])
+                return None
+            if obj['__type__'] == 'struct_decl':
+                # Struct used as constructor — return the descriptor itself
+                return obj
         if isinstance(obj, VMInstance):
             desc   = obj._desc or {}
             fields = obj.fields

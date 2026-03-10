@@ -387,7 +387,10 @@ class Compiler:
                 self._scope.proto.protos.append(p); methods[f'__set_{prop.name}'] = p
         for op_d in (node.operators or []):  # Phase 7
             p = self._compile_fn(f"{node.name}.__op_{op_d.op_symbol}", op_d.params, op_d.body, is_method=True)
-            self._scope.proto.protos.append(p); operators[op_d.op_symbol] = p
+            self._scope.proto.protos.append(p)
+            # Unary minus stored as '-u' to distinguish from binary '-'
+            key = '-u' if (op_d.op_symbol == '-' and op_d.is_unary) else op_d.op_symbol
+            operators[key] = p
         desc = {'__type__':'struct_decl','__name__':node.name,
                 '__fields__':{sf.name:sf.default for sf in node.fields},
                 '__methods__':methods,'__operators__':operators,
@@ -463,7 +466,7 @@ class Compiler:
 
     # ── expressions ───────────────────────────────────────────────────────────
     _ARITH = {'+':Op.ADD,'-':Op.SUB,'*':Op.MUL,'/':Op.DIV,
-              '%':Op.MOD,'**':Op.POW,'div':Op.IDIV,'++':Op.CONCAT}
+              '%':Op.MOD,'**':Op.POW,'div':Op.IDIV,'//':Op.IDIV,'++':Op.CONCAT}
     _CMP   = {'==':Op.EQ,'!=':Op.NEQ,'<':Op.LT,'<=':Op.LTE,'>':Op.GT,'>=':Op.GTE}
 
     def _expr(self, node):
@@ -526,11 +529,10 @@ class Compiler:
 
         elif isinstance(node, RangeExpr):
             s = self._expr(node.start); e = self._expr(node.end)
-            self._e(Op.MAKE_RANGE, dst, s, e)
-            self._e(Op.MAKE_RANGE, dst, s, e)
-            # NOP immediately following carries inclusive in its .a field
-            self._e(Op.NOP, 1 if node.inclusive else 0, 0, 0)
-
+            # Pack inclusive flag into high bit of c operand (register numbers are always < 0x8000)
+            inc_bit = 0x8000 if node.inclusive else 0
+            self._e(Op.MAKE_RANGE, dst, s, e | inc_bit)
+            self._free(s); self._free(e)
 
         elif isinstance(node, FStringExpr):
             self._free(dst); dst = self._fstring(node)
@@ -664,33 +666,76 @@ class Compiler:
 
     # ── array / dict / struct ─────────────────────────────────────────────────
     def _array_from(self, elems):
-        t = self._top(); s = t
-        for e in elems:
-            r = self._alloc(); v = self._expr(e)
-            if v != r: self._e(Op.MOVE, r, v); self._free(v)
-        dst = self._alloc(); self._e(Op.MAKE_ARRAY, dst, s, len(elems))
-        self._free_to(s); self._scope.n_regs = dst+1; return dst
+        t = self._top()
+        for i, e in enumerate(elems):
+            slot = t + i
+            # Ensure n_regs is at slot so _expr fills from there
+            if self._scope.n_regs < slot:
+                self._scope.n_regs = slot
+            v = self._expr(e)
+            if v != slot:
+                self._e(Op.MOVE, slot, v)
+            # Seal slot: release any temps above it
+            self._scope.n_regs = slot + 1
+            if slot + 1 > self._scope.proto.n_locals:
+                self._scope.proto.n_locals = slot + 1
+        dst = self._alloc()
+        self._e(Op.MAKE_ARRAY, dst, t, len(elems))
+        self._free_to(t); self._scope.n_regs = dst + 1
+        return dst
 
     def _dict_lit(self, node):
-        t = self._top(); s = t
-        for k, v in node.pairs:
-            kr = self._alloc(); vr = self._alloc()
-            kv = self._expr(k); vv = self._expr(v)
-            if kv != kr: self._e(Op.MOVE, kr, kv); self._free(kv)
-            if vv != vr: self._e(Op.MOVE, vr, vv); self._free(vv)
-        dst = self._alloc(); self._e(Op.MAKE_DICT, dst, s, len(node.pairs))
-        self._free_to(s); self._scope.n_regs = dst+1; return dst
+        t = self._top()
+        for i, (k, v) in enumerate(node.pairs):
+            kslot = t + i * 2
+            vslot = t + i * 2 + 1
+            # Key
+            if self._scope.n_regs < kslot:
+                self._scope.n_regs = kslot
+            kv = self._expr(k)
+            if kv != kslot:
+                self._e(Op.MOVE, kslot, kv)
+            self._scope.n_regs = kslot + 1
+            if kslot + 1 > self._scope.proto.n_locals:
+                self._scope.proto.n_locals = kslot + 1
+            # Value
+            vv = self._expr(v)
+            if vv != vslot:
+                self._e(Op.MOVE, vslot, vv)
+            self._scope.n_regs = vslot + 1
+            if vslot + 1 > self._scope.proto.n_locals:
+                self._scope.proto.n_locals = vslot + 1
+        dst = self._alloc()
+        self._e(Op.MAKE_DICT, dst, t, len(node.pairs))
+        self._free_to(t); self._scope.n_regs = dst + 1
+        return dst
 
     def _struct_init(self, node):
-        t = self._top(); s = t; pairs = node.fields
-        for fname, fval in pairs:
-            kr = self._alloc(); vr = self._alloc()
-            self._e(Op.LOAD_CONST, kr, self._const(fname))
-            val = self._expr(fval)
-            if val != vr: self._e(Op.MOVE, vr, val); self._free(val)
-        dst = self._alloc(); ti = self._name(node.struct_name)
+        t = self._top()
+        # Allocate dst FIRST — VM reads pairs starting at a+1 (dst+1)
+        dst = self._alloc()
+        pairs = node.fields
+        for i, (fname, fval) in enumerate(pairs):
+            kslot = dst + 1 + i * 2
+            vslot = dst + 1 + i * 2 + 1
+            if self._scope.n_regs < kslot:
+                self._scope.n_regs = kslot
+            # Key is always a field-name string constant
+            self._e(Op.LOAD_CONST, kslot, self._const(fname))
+            self._scope.n_regs = kslot + 1
+            if kslot + 1 > self._scope.proto.n_locals:
+                self._scope.proto.n_locals = kslot + 1
+            # Value
+            vv = self._expr(fval)
+            if vv != vslot:
+                self._e(Op.MOVE, vslot, vv)
+            self._scope.n_regs = vslot + 1
+            if vslot + 1 > self._scope.proto.n_locals:
+                self._scope.proto.n_locals = vslot + 1
+        ti = self._name(node.struct_name)
         self._e(Op.MAKE_INSTANCE, dst, ti, len(pairs))
-        self._free_to(s); self._scope.n_regs = dst+1; return dst
+        self._free_to(t); self._scope.n_regs = dst + 1
+        return dst
 
     # ── lambda ────────────────────────────────────────────────────────────────
     def _lambda(self, node):
@@ -725,7 +770,7 @@ class Compiler:
             try:
                 from lexer import Lexer; from parser import Parser as P
                 toks = Lexer(expr_src,'<fstr>').tokenize()
-                sub  = P(toks, expr_src).parse_expression()
+                sub  = P(toks, expr_src).parse_expr()
                 parts.append(sub)
             except Exception:
                 parts.append(StringLiteralExpr(value=expr_src,line=node.line,col=node.col))
@@ -752,14 +797,24 @@ class Compiler:
         if node.condition:
             cr = self._expr(node.condition); js = self._e(Op.JUMP_IF_FALSE, cr, 0); self._free(cr)
         er = self._expr(node.expr)
-        self._e(Op.CALL_METHOD, res, self._name('append'), 1); self._free(er)
+        # Use GET_FIELD + CALL instead of CALL_METHOD:
+        # CALL_METHOD reads args from a+1 which conflicts with iter state at low registers.
+        fn_r  = self._alloc()
+        self._e(Op.GET_FIELD, fn_r, res, self._name('append'))
+        arg_r = self._alloc()
+        if er != arg_r: self._e(Op.MOVE, arg_r, er)
+        self._e(Op.CALL, fn_r, 1, fn_r)
+        self._scope.n_regs = fn_r   # release fn_r and arg_r
         if js: self._patch_b(js)
         self._scope.end_block()
         self._e(Op.JUMP, 0, ls - len(self._scope.proto.code) - 1)
         ep = len(self._scope.proto.code); self._patch_c(jx, ep-jx-1)
         self._free(vr); self._free_to(t)
         self._break_patches.pop(); self._cont_patches.pop()
-        dst = self._alloc(); self._e(Op.MOVE, dst, res); self._free(res); return dst
+        # res holds the completed list; just return it directly
+        # (do NOT free res — the result must stay alive for callers to use)
+        self._scope.n_regs = res + 1
+        return res
 
 
 # ─── IBC SERIALIZATION ────────────────────────────────────────────────────────
