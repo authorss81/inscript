@@ -1,0 +1,216 @@
+// ╔══════════════════════════════════════════════════════╗
+// ║   PONG — Terminal Edition                            ║
+// ║   InScript v1.0.1                                   ║
+// ║                                                      ║
+// ║   Controls:                                          ║
+// ║     Left paddle:  W / S                             ║
+// ║     Right paddle: UP / DOWN arrows (O / L keys)     ║
+// ║     Quit: Q                                          ║
+// ╚══════════════════════════════════════════════════════╝
+//
+// Run with:
+//   python pong_runner.py
+//
+// This file contains ALL game logic. The runner handles rendering only.
+
+// ── Constants ─────────────────────────────────────────────────────────────────
+const WIDTH:  int = 60
+const HEIGHT: int = 20
+const PADDLE_H: int = 4
+const BALL_SPEED_INIT: float = 1.0
+const SPEED_INCREMENT: float = 0.05
+const MAX_SCORE: int = 7
+
+// ── Structs ───────────────────────────────────────────────────────────────────
+
+struct Paddle {
+    y: float
+    score: int = 0
+
+    fn move_up() {
+        self.y -= 1.0
+        if self.y < 1.0 { self.y = 1.0 }
+    }
+
+    fn move_down() {
+        self.y += 1.0
+        let max_y = (HEIGHT - PADDLE_H - 1) as float
+        if self.y > max_y { self.y = max_y }
+    }
+
+    fn top()    -> int { return self.y as int }
+    fn bottom() -> int { return (self.y + PADDLE_H) as int }
+}
+
+struct Ball {
+    x:  float
+    y:  float
+    vx: float
+    vy: float
+
+    fn move(dt: float) {
+        self.x += self.vx * dt
+        self.y += self.vy * dt
+    }
+
+    fn bounce_wall() {
+        if self.y <= 1.0 {
+            self.y = 1.0
+            self.vy = -self.vy
+        }
+        if self.y >= (HEIGHT - 2) as float {
+            self.y = (HEIGHT - 2) as float
+            self.vy = -self.vy
+        }
+    }
+
+    fn reset(dir: int) {
+        self.x = (WIDTH // 2) as float
+        self.y = (HEIGHT // 2) as float
+        self.vx = BALL_SPEED_INIT * dir
+        self.vy = BALL_SPEED_INIT * (random() > 0.5 ? 1.0 : -1.0)
+    }
+}
+
+// ── Game State ────────────────────────────────────────────────────────────────
+
+struct GameState {
+    ball:    Ball
+    left:    Paddle
+    right:   Paddle
+    winner:  int = 0       // 0 = no winner, 1 = left, 2 = right
+    running: bool = true
+    ticks:   int = 0
+
+    fn update(left_up: bool, left_down: bool, right_up: bool, right_down: bool) {
+        if self.winner != 0 { return }
+
+        self.ticks += 1
+
+        // Move paddles
+        if left_up   { self.left.move_up() }
+        if left_down { self.left.move_down() }
+        if right_up  { self.right.move_up() }
+        if right_down { self.right.move_down() }
+
+        // Move ball
+        let speed_mult = 1.0 + (self.ticks as float * SPEED_INCREMENT / 100.0)
+        self.ball.vx = self.ball.vx
+        self.ball.move(speed_mult)
+        self.ball.bounce_wall()
+
+        // Check paddle collisions
+        let bx = self.ball.x as int
+        let by = self.ball.y as int
+
+        // Left paddle at x=2
+        if bx <= 2 {
+            if by >= self.left.top() && by <= self.left.bottom() {
+                self.ball.vx = -self.ball.vx
+                self.ball.x = 3.0
+                // Vary angle based on where ball hit paddle
+                let hit_pos = (self.ball.y - self.left.y) / PADDLE_H as float - 0.5
+                self.ball.vy += hit_pos * 2.0
+                // Clamp vy
+                if self.ball.vy >  3.0 { self.ball.vy =  3.0 }
+                if self.ball.vy < -3.0 { self.ball.vy = -3.0 }
+            }
+        }
+
+        // Right paddle at x=WIDTH-3
+        if bx >= WIDTH - 3 {
+            if by >= self.right.top() && by <= self.right.bottom() {
+                self.ball.vx = -self.ball.vx
+                self.ball.x = (WIDTH - 4) as float
+                let hit_pos = (self.ball.y - self.right.y) / PADDLE_H as float - 0.5
+                self.ball.vy += hit_pos * 2.0
+                if self.ball.vy >  3.0 { self.ball.vy =  3.0 }
+                if self.ball.vy < -3.0 { self.ball.vy = -3.0 }
+            }
+        }
+
+        // Score
+        if self.ball.x < 0.0 {
+            self.right.score += 1
+            if self.right.score >= MAX_SCORE {
+                self.winner = 2
+            } else {
+                self.ball.reset(1)
+                self.ticks = 0
+            }
+        }
+
+        if self.ball.x >= WIDTH as float {
+            self.left.score += 1
+            if self.left.score >= MAX_SCORE {
+                self.winner = 1
+            } else {
+                self.ball.reset(-1)
+                self.ticks = 0
+            }
+        }
+    }
+
+    fn render() -> [[str]] {
+        // Build a 2D grid of characters
+        let grid = [[" " for x in 0..WIDTH] for y in 0..HEIGHT]
+
+        // Borders
+        for x in 0..WIDTH {
+            grid[0][x] = "─"
+            grid[HEIGHT - 1][x] = "─"
+        }
+
+        // Center line (dotted)
+        for y in 1..(HEIGHT - 1) {
+            if y % 2 == 0 {
+                grid[y][WIDTH // 2] = "┆"
+            }
+        }
+
+        // Left paddle
+        for i in 0..PADDLE_H {
+            let row = self.left.top() + i
+            if row >= 0 && row < HEIGHT {
+                grid[row][1] = "█"
+                grid[row][2] = "█"
+            }
+        }
+
+        // Right paddle
+        for i in 0..PADDLE_H {
+            let row = self.right.top() + i
+            if row >= 0 && row < HEIGHT {
+                grid[row][WIDTH - 2] = "█"
+                grid[row][WIDTH - 3] = "█"
+            }
+        }
+
+        // Ball
+        let bx = self.ball.x as int
+        let by = self.ball.y as int
+        if bx >= 0 && bx < WIDTH && by >= 0 && by < HEIGHT {
+            grid[by][bx] = "●"
+        }
+
+        return grid
+    }
+}
+
+// ── Factory function (called by runner) ──────────────────────────────────────
+
+fn create_game() -> GameState {
+    let ball = Ball{
+        x: (WIDTH // 2) as float,
+        y: (HEIGHT // 2) as float,
+        vx: BALL_SPEED_INIT,
+        vy: BALL_SPEED_INIT * 0.5
+    }
+    let left  = Paddle{y: ((HEIGHT - PADDLE_H) // 2) as float}
+    let right = Paddle{y: ((HEIGHT - PADDLE_H) // 2) as float}
+    return GameState{ball: ball, left: left, right: right}
+}
+
+fn game_width()  -> int { return WIDTH }
+fn game_height() -> int { return HEIGHT }
+fn game_max_score() -> int { return MAX_SCORE }

@@ -1,3 +1,7 @@
+﻿import sys, io
+if sys.platform == "win32":
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
 #!/usr/bin/env python3
 """
 Inscript - A clean, Python-like interpreted programming language.
@@ -106,3 +110,5 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+
