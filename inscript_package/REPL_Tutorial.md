@@ -1,961 +1,1230 @@
 # InScript REPL — Complete Tutorial
 
-> **Version:** 1.0.1  
+> **Version:** 1.0.2  
 > **Start the REPL:** `python repl.py` or `python inscript.py --repl`  
-> **Web Playground:** `python repl.py --web` (opens in your browser at `localhost:8080`)
+> **Web Playground:** `python repl.py --web` (opens browser at `localhost:8080`)
 
 ---
 
 ## Table of Contents
 
-1. [Starting the REPL](#1-starting-the-repl)
-2. [Your First Lines](#2-your-first-lines)
-3. [Multi-line Input](#3-multi-line-input)
-4. [Tab Completion](#4-tab-completion)
-5. [Session History](#5-session-history)
-6. [Dot Commands Reference](#6-dot-commands-reference)
-   - [.help](#help)
-   - [.vars](#vars)
-   - [.fns](#fns)
-   - [.types](#types)
-   - [.type \<expr\>](#type-expr)
-   - [.time \<expr\>](#time-expr)
-   - [.bytecode](#bytecode)
-   - [.asm](#asm)
-   - [.modules](#modules)
-   - [.packages](#packages)
-   - [.history](#history)
-   - [.save and .load](#save-and-load)
-   - [.clear and .reset](#clear-and-reset)
-7. [Working with Variables](#7-working-with-variables)
-8. [Working with Functions](#8-working-with-functions)
-9. [Working with Structs](#9-working-with-structs)
-10. [Working with Imports](#10-working-with-imports)
-11. [Error Messages](#11-error-messages)
-12. [The Web Playground](#12-the-web-playground)
-13. [Practical Workflows](#13-practical-workflows)
-14. [Known Limitations](#14-known-limitations)
+1. [What is the REPL?](#1-what-is-the-repl)
+2. [Starting the REPL](#2-starting-the-repl)
+3. [Auto-Print — Expressions Show Their Value](#3-auto-print)
+4. [Variables and Persistent State](#4-variables-and-persistent-state)
+5. [Multiline Input](#5-multiline-input)
+6. [Functions](#6-functions)
+7. [Structs and Enums](#7-structs-and-enums)
+8. [Error Handling](#8-error-handling)
+9. [Imports and the Standard Library](#9-imports-and-the-standard-library)
+10. [History and Repeat](#10-history-and-repeat)
+11. [Dot Commands — Overview](#11-dot-commands-overview)
+12. [Inspecting Your Session](#12-inspecting-your-session)
+13. [Timing and Benchmarking](#13-timing-and-benchmarking)
+14. [Bytecode Inspection](#14-bytecode-inspection)
+15. [VM Mode](#15-vm-mode)
+16. [Session Management](#16-session-management)
+17. [Tab Completion](#17-tab-completion)
+18. [The Web Playground](#18-the-web-playground)
+19. [Practical Workflows](#19-practical-workflows)
+20. [Known Limitations](#20-known-limitations)
 
 ---
 
-## 1. Starting the REPL
+## 1. What is the REPL?
+
+**REPL** stands for **Read → Evaluate → Print → Loop**.
+
+You type one line (or a block) of InScript, press Enter, and the result appears immediately. You do not need to write a file, save it, and run it — the REPL lets you try things out instantly.
+
+Think of it like a calculator that also knows the entire InScript language.
+
+Basic idea:
+- Type an expression → see its value
+- Define a variable → use it in the next line
+- Define a function → call it immediately
+- Make a mistake → see the error with the line highlighted
+
+Everything you define stays alive until you type `exit` or run `.reset`.
+
+---
+
+## 2. Starting the REPL
 
 ```bash
-# From the project directory:
+# Standard way:
 python repl.py
 
-# Or via the main CLI:
+# Via the main CLI:
 python inscript.py --repl
 
-# Web playground (opens browser):
+# Web playground in browser:
 python repl.py --web
-python repl.py --web --port 9000
 ```
 
-When you start, you'll see the banner:
+You will see the banner:
 
 ```
-  ___       ____            _       _   
- |_ _|_ __ / ___|  ___ _ __(_)_ __ | |_ 
-  | || `_ \\___ \ / __| `__| | `_ \| __|
-  | || | | |___) | (__| |  | | |_) | |_ 
- |___|_| |_|____/ \___|_|  |_| .__/ \__|
-                              |_|        
-  InScript v1.0.1 — Interactive Shell
+  InScript v1.0.2 — Interactive Shell
   Type .help for commands, exit to quit
 
 >>>
 ```
 
-The `>>>` prompt means the REPL is ready. Type `exit` or `quit` (or press `Ctrl+D`) to leave.
+The `>>>` is the prompt. Type here and press Enter.
+
+To leave the REPL at any time:
+```
+>>> exit
+```
+or `quit`, or press **`Ctrl+C`** (Windows) / `Ctrl+D` (Linux/macOS).
+
+> **If you see `v1.0.1` in the banner** — you are running the old REPL. Follow the publish guide to copy the new `repl.py` to your machine.
+
+> **Windows note:** Tab-completion and persistent arrow-key history require the `readline` module which is not available on Windows by default. The REPL still works fully — you just use the normal terminal Up/Down keys for history instead.
 
 ---
 
-## 2. Your First Lines
+## 3. Auto-Print
 
-Each expression you type is evaluated immediately. If it produces a value, the REPL shows it with a `→` arrow.
+**Basic idea:** You do not need `print()` for expressions. If you type a bare expression, the REPL shows its value automatically with a `→` arrow.
 
 ```
 >>> 2 + 2
   → 4
 
->>> "hello" + " world"
-  → hello world
+>>> 3 ** 4
+  → 81
 
->>> 10 * 10
-  → 100
+>>> "hello".upper()
+  → HELLO
 
->>> true && false
-  → false
+>>> true
+  → true
+
+>>> nil
+  → nil
 ```
 
-`print()` outputs to stdout directly — the REPL shows that output without the `→` arrow:
+**Statements do not auto-print.** A `let` or `print()` call is a statement — it runs but shows nothing extra:
 
 ```
->>> print("hello from InScript")
-hello from InScript
-
->>> print(1, 2, 3)
-1 2 3
+>>> let x = 10
+>>> print(x)
+10
 ```
 
-Statements like `let`, `fn`, `struct` don't produce a value, so the REPL stays quiet:
+**Advanced: any expression works**, including method calls, array indexing, dict access:
 
 ```
->>> let x = 42
->>> x
-  → 42
+>>> [1, 2, 3, 4, 5]
+  → [1, 2, 3, 4, 5]
 
->>> x * 2
-  → 84
+>>> [10, 20, 30][1]
+  → 20
+
+>>> {"name": "Alice", "age": 30}["name"]
+  → Alice
+
+>>> len("hello world")
+  → 11
+
+>>> range(5)
+  → [0, 1, 2, 3, 4]
+```
+
+If execution takes more than 100ms, the REPL also shows the time taken:
+
+```
+>>> sort(range(10000))
+  → [0, 1, 2, ...]
+  (143ms)
 ```
 
 ---
 
-## 3. Multi-line Input
+## 4. Variables and Persistent State
 
-The REPL detects when your input is incomplete (unclosed `{`, `[`, or `(`) and switches to a `...` continuation prompt automatically.
+**Basic idea:** Variables you define in one line are available in every line after it. The REPL remembers everything until you reset.
 
-**Functions:**
+```
+>>> let x = 10
+>>> let y = 20
+>>> x + y
+  → 30
+```
+
+You can reassign variables freely:
+
+```
+>>> let score = 0
+>>> score += 100
+>>> score += 50
+>>> score
+  → 150
+```
+
+**All compound assignment operators work:**
+
+```
+>>> let n = 2
+>>> n **= 10
+>>> n
+  → 1024
+
+>>> let flags = 0xFF
+>>> flags &= 0x0F
+>>> flags
+  → 15
+
+>>> let bits = 0b0101
+>>> bits |= 0b1010
+>>> bits
+  → 15
+
+>>> let v = 0b1100
+>>> v ^= 0b0110
+>>> v
+  → 10
+```
+
+**Advanced: closures capture state across calls:**
+
+```
+>>> fn make_counter() {\
+...   let n = 0\
+...   return fn() { n += 1; return n }\
+... }
+>>> let c = make_counter()
+>>> c()
+  → 1
+>>> c()
+  → 2
+>>> c()
+  → 3
+```
+
+The counter's internal `n` persists between calls — that is closure state.
+
+---
+
+## 5. Multiline Input
+
+**Basic idea:** Some code spans multiple lines. The REPL handles this in two ways.
+
+### Method 1 — End a line with `\`
+
+End any line with a backslash `\` to force continuation to the next line. The REPL strips the `\` and joins the lines together before evaluating. This is the **reliable method that works everywhere**.
+
+```
+>>> while x <= 100 { \
+... print(x)\
+... x = x + 1}
+1
+2
+3
+...
+```
+
+```
+>>> let result = 1 + \
+...   2 + \
+...   3
+>>> result
+  → 6
+```
+
+Long expressions split across lines:
+
+```
+>>> let message = "Hello, " + \
+...   "world!"
+>>> message
+  → Hello, world!
+```
+
+Multiline function with `\` on every line:
+
+```
+>>> fn make_counter() {\
+...   let n = 0\
+...   return fn() { n += 1; return n }\
+... }
+>>> let c = make_counter()
+>>> c()
+  → 1
+>>> c()
+  → 2
+>>> c()
+  → 3
+```
+
+### Method 2 — Open a brace `{` and press Enter
+
+When you open a `{` and press Enter, the REPL detects the unbalanced brace and waits for you to close it. Continuation lines show `...` as a prompt.
+
+```
+>>> fn add(a: int, b: int) -> int {
+...   return a + b
+... }
+>>> add(3, 7)
+  → 10
+```
+
+> **Note:** The line numbers (`...2`, `...3`) shown in this tutorial are for readability. Your terminal may show plain `...` — that is normal and correct.
+
+### Cancel multiline input
+
+Press `Ctrl+C` to cancel whatever you have typed and return to the `>>>` prompt.
+
+---
+
+## 6. Functions
+
+**Basic idea:** Define a function, then call it. It stays defined for the rest of the session.
+
 ```
 >>> fn greet(name: string) -> string {
-...     return "Hello, " + name + "!"
-... }
+...2   return f"Hello, {name}!"
+...3 }
 >>> greet("Alice")
   → Hello, Alice!
+>>> greet("World")
+  → Hello, World!
 ```
 
-**Structs:**
+Functions with default parameters:
+
+```
+>>> fn power(base: int, exp: int = 2) -> int {
+...2   return base ** exp
+...3 }
+>>> power(5)
+  → 25
+>>> power(3, 4)
+  → 81
+```
+
+**Advanced: pipe operator `|>`**
+
+The pipe operator passes the result of the left side as the first argument to the right:
+
+```
+>>> fn double(x: int) -> int { return x * 2 }
+>>> fn add_one(x: int) -> int { return x + 1 }
+
+>>> 5 |> double
+  → 10
+
+>>> 5 |> double |> add_one
+  → 11
+```
+
+**Advanced: generator functions with `fn*`**
+
+Generator functions yield values one at a time and are iterable in `for` loops:
+
+```
+>>> fn* countdown(n: int) {
+...2   while n > 0 {
+...3     yield n
+...4     n -= 1
+...5   }
+...6 }
+>>> for v in countdown(5) {
+...2   print(v)
+...3 }
+5
+4
+3
+2
+1
+```
+
+**Advanced: closures and higher-order functions**
+
+```
+>>> fn make_adder(n: int) {
+...2   return fn(x: int) { return x + n }
+...3 }
+>>> let add10 = make_adder(10)
+>>> add10(5)
+  → 15
+>>> add10(100)
+  → 110
+```
+
+---
+
+## 7. Structs and Enums
+
+**Basic idea:** Define a struct type, then create instances of it.
+
 ```
 >>> struct Point {
-...     x: float
-...     y: float
-...     fn distance() -> float {
-...         import "math" as M
-...         return M.sqrt(x * x + y * y)
-...     }
-... }
->>> let p = Point { x: 3.0, y: 4.0 }
->>> p.distance()
+...2   x: float
+...3   y: float
+...4 }
+>>> let p = Point{x: 3.0, y: 4.0}
+>>> p.x
+  → 3.0
+>>> p.y
+  → 4.0
+```
+
+Structs with methods:
+
+```
+>>> struct Circle {
+...2   radius: float
+...3   fn area() -> float {
+...4     return 3.14159 * self.radius * self.radius
+...5   }
+...6   fn describe() -> string {
+...7     return f"Circle with radius {self.radius}"
+...8   }
+...9 }
+>>> let c = Circle{radius: 5.0}
+>>> c.area()
+  → 78.53975
+>>> c.describe()
+  → Circle with radius 5.0
+```
+
+**Advanced: inheritance with `extends`**
+
+```
+>>> struct Animal {
+...2   name: string
+...3   fn speak() -> string { return "..." }
+...4 }
+>>> struct Dog extends Animal {
+...2   fn speak() -> string { return f"{self.name} says: Woof!" }
+...3 }
+>>> let d = Dog{name: "Rex"}
+>>> d.speak()
+  → Rex says: Woof!
+```
+
+**Enums:**
+
+```
+>>> enum Direction { North; South; East; West }
+>>> let dir = Direction.North
+>>> dir
+  → Direction.North
+```
+
+---
+
+## 8. Error Handling
+
+**Basic idea:** The REPL shows errors clearly with the line that caused them.
+
+```
+>>> 1 / 0
+  ✗ [InScript InScriptRuntimeError] E0010  Line 1: Division by zero
+    1 / 0
+    ^
+  See: https://docs.inscript.dev/errors/E0010
+```
+
+The `^` caret points to the exact position of the error.
+
+After an error, the session continues normally — nothing is lost:
+
+```
+>>> let x = 10
+>>> x / 0
+  ✗ Division by zero
+>>> x
+  → 10
+```
+
+**`try / catch / finally`:**
+
+```
+>>> try {
+...2   throw "something went wrong"
+...3 } catch e {
+...4   print("caught:", e)
+...5 } finally {
+...6   print("always runs")
+...7 }
+caught: something went wrong
+always runs
+```
+
+**Typed catch clauses:**
+
+```
+>>> try {
+...2   throw 42
+...3 } catch e: int {
+...4   print("caught int:", e)
+...5 } catch e: string {
+...6   print("caught string:", e)
+...7 }
+caught int: 42
+```
+
+**Result type (`Ok` / `Err`):**
+
+```
+>>> fn safe_divide(a: int, b: int) {
+...2   if b == 0 { return Err("division by zero") }
+...3   return Ok(a / b)
+...4 }
+>>> let r = safe_divide(10, 2)
+>>> is_ok(r)
+  → true
+>>> unwrap(r)
   → 5.0
-```
 
-**Control flow:**
+>>> let bad = safe_divide(10, 0)
+>>> is_err(bad)
+  → true
+>>> unwrap_err(bad)
+  → division by zero
 ```
->>> for i in range(5) {
-...     print(i * i)
-... }
-0
-1
-4
-9
-16
-```
-
-**If/else:**
-```
->>> let score = 85
->>> if score >= 90 {
-...     print("A")
-... } else if score >= 80 {
-...     print("B")
-... } else {
-...     print("C")
-... }
-B
-```
-
-> **Tip:** Press `Ctrl+C` on a `...` line to cancel the current multi-line input and return to `>>>`.
 
 ---
 
-## 4. Tab Completion
+## 9. Imports and the Standard Library
 
-Press `Tab` at any point to auto-complete. The REPL completes:
+**Basic idea:** Use `import` to bring in a stdlib module, then access its functions with dot notation.
 
-- All language keywords (`let`, `fn`, `struct`, `match`, `for`, `while`, `return`, …)
-- All built-in functions (`print`, `len`, `sort`, `filter`, `map`, `range`, `typeof`, …)
-- All names you have defined in the current session (variables, functions, structs)
-
-**Examples:**
 ```
->>> pri<Tab>          → print
->>> str<Tab>          → starts_with  string  stringify  str
->>> ran<Tab>          → range
->>> my_fu<Tab>        → my_function   (if you defined it earlier)
+>>> import "math" as M
+>>> M.PI
+  → 3.141592653589793
+>>> M.sqrt(16.0)
+  → 4.0
+>>> M.sin(M.PI / 2.0)
+  → 1.0
 ```
 
-Completion is context-free — it matches any defined name that starts with what you typed.
+Common modules:
+
+```
+>>> import "random" as R
+>>> R.int(1, 10)
+  → 7
+
+>>> import "json" as J
+>>> J.encode({"name": "Alice", "age": 30})
+  → {"name": "Alice", "age": 30}
+
+>>> import "string" as S
+>>> S.split("hello world foo", " ")
+  → [hello, world, foo]
+```
+
+Use `.doc <module>` to see what a module exports (see [Section 12](#12-inspecting-your-session)).
+
+Use `.modules` to list every available module:
+
+```
+>>> .modules
+  Importable stdlib modules:
+    math      string    array     io
+    json      random    time      color
+    tween     grid      events    debug    ...
+```
+
+**Advanced: chaining stdlib calls**
+
+```
+>>> import "string" as S
+>>> S.split("apple,banana,cherry", ",")
+  → [apple, banana, cherry]
+
+>>> map(S.split("apple,banana,cherry", ","), fn(s) { return upper(s) })
+  → [APPLE, BANANA, CHERRY]
+```
 
 ---
 
-## 5. Session History
+## 10. History and Repeat
 
-- Use the **Up/Down arrow keys** to scroll through previous commands
-- History is **saved between sessions** to `~/.inscript/history` — your commands persist after you close the REPL
-- Use `.history` to see the last 20 commands (see below)
+**Basic idea:** The REPL remembers what you have typed. Use the Up/Down arrow keys to navigate back through previous commands.
+
+> **Windows note:** Arrow-key history navigation requires `readline`. On Windows without readline, use `!!` to repeat the last command, or retype commands manually.
+
+**`!!` — repeat the last command:**
+
+Type `!!` and press Enter to re-run the last thing you typed.
+
+```
+>>> let n = 0
+>>> n += 1
+>>> !!
+>>> !!
+>>> n
+  → 3
+```
+
+> **Note:** `!!` only works in the new REPL v1.0.2. In v1.0.1 it was not supported.
+
+**`.history` — see recent commands:**
+
+```
+>>> .history
+```
+
+Shows the last 20 commands. To see more or fewer:
+
+```
+>>> .history 5
+>>> .history 50
+```
+
+Example output:
+
+```
+  [1]  let x = 10
+  [2]  let y = 20
+  [3]  x + y
+  [4]  fn add(a,b) { return a+b }
+  [5]  add(x, y)
+```
+
+> **Note:** `.history` and all dot commands (`.time`, `.doc`, `.bench`, etc.) are features of the **new REPL v1.0.2** (`repl.py`). If you see `(history not available in fallback REPL)` or a parse error on `.time`, you are running the old v1.0.1 REPL. Copy the new `repl.py` from the zip to your machine.
 
 ---
 
-## 6. Dot Commands Reference
+## 11. Dot Commands — Overview
 
-All special REPL commands start with a `.` (dot). They only work at the top-level `>>>` prompt, not inside a multi-line block.
+**Basic idea:** All REPL meta-commands start with a dot `.`. They let you inspect your session, manage files, measure performance, and more.
 
----
-
-### `.help`
-
-Prints the command reference.
+Type `.help` to see the full list at any time:
 
 ```
 >>> .help
 
 REPL Commands:
-  .help              Show this help
-  .vars              List all defined variables
-  .fns               List all defined functions
-  .types             List all defined structs
-  .clear             Clear session (reset all variables)
-  .save <file>       Save session to .ins file
-  .load <file>       Load and run a .ins file
-  .time <expr>       Measure execution time of expression
-  .bytecode [expr]   Show compact bytecode for last (or given) expression
-  .asm [expr]        Show full annotated assembly with constants/names tables
-  .history           Show command history
-  .reset             Full reset (interpreter + history)
-  .type <expr>       Show the type of an expression
-  .modules           List all importable stdlib modules
-  .packages          List installed packages
+  .help                Show this help
+  .vars                List all defined variables
+  .fns                 List all defined functions
+  .types               List all defined struct/enum types
+  .env                 Show full environment tree
+  .inspect <expr>      Deep field/method inspection
+  .type <expr>         Show the type of an expression
+  .doc <module>        Show stdlib module exports
+  .clear               Reset session variables
+  .reset               Full reset (interpreter + history)
+  .save <file>         Save session to .ins file
+  .load / .run <file>  Load and run a .ins file
+  .export [file]       Export session as Markdown
+  .time <expr>         Measure execution time (10 runs)
+  .bench <expr>        Statistical benchmark (100 runs)
+  .bytecode [expr]     Compact bytecode listing
+  .asm [expr]          Full annotated assembly
+  .vm                  Toggle VM / interpreter execution mode
+  .history [n]         Show last n commands (default 20)
+  .modules             List importable stdlib modules
+  .packages            List installed packages
+  exit / quit          Leave REPL
+
+Shortcuts:
+  Up/Down   Navigate history        Tab   Auto-complete
+  !!        Repeat last command      Ctrl+C  Cancel input
 ```
 
 ---
 
-### `.vars`
+## 12. Inspecting Your Session
 
-Lists every variable defined in the current session, with its current value.
+These commands let you see what is currently defined and understand types and values.
+
+---
+
+### `.vars` — all defined names
+
+Shows every name in scope — your variables, built-in functions, and global stubs.
 
 ```
->>> let x = 10
+>>> let x = 42
 >>> let name = "Alice"
->>> let scores = [95, 87, 72]
+>>> let scores = [10, 20, 30]
 >>> .vars
-  name    = Alice
-  scores  = [95, 87, 72]
-  x       = 10
+  ...
+  name          :string     Alice
+  scores        :array      [10, 20, 30]
+  x             :int        42
+  ...
 ```
 
-Variables are shown in alphabetical order. Built-in functions and internal names (prefixed with `_`) are hidden.
+Your user-defined names appear alphabetically mixed with builtins. User variables show their type and value. Built-in functions show `:function` or `:builtin_function_or_method`.
 
 ---
 
-### `.fns`
+### `.fns` — all user-defined functions
 
-Lists every function you have defined, with its parameter names.
+Shows only functions you have defined (not builtins):
 
 ```
->>> fn add(a: int, b: int) -> int { return a + b }
->>> fn greet(name: string) { print("Hi, " + name) }
->>> fn double(x: float) -> float { return x * 2.0 }
+>>> fn add(a, b) { return a + b }
+>>> fn greet(name) { return f"Hello, {name}!" }
 >>> .fns
   fn add(a, b)
-  fn double(x)
   fn greet(name)
 ```
 
 ---
 
-### `.types`
-
-Lists every struct and enum defined in the current session.
+### `.types` — all struct and enum types
 
 ```
->>> struct Vec2 { x: float; y: float }
->>> struct Player { name: string; hp: int }
->>> enum Dir { North South East West }
+>>> struct Point { x: float; y: float }
+>>> enum Color { Red; Green; Blue }
 >>> .types
-  struct Vec2
-  struct Player
-  enum Dir
+  struct Point
+    x: float
+    y: float
+  enum Color
+    Red
+    Green
+    Blue
 ```
 
 ---
 
-### `.type <expr>`
+### `.type <expr>` — type of any expression
 
-Evaluates an expression and shows its **InScript type** and **current value**. Useful for understanding what you are working with.
+**Basic idea:** Find out the type of any value or expression.
 
 ```
 >>> .type 42
-  type: int
-  value: 42
+  int  →  42
 
 >>> .type 3.14
-  type: float
-  value: 3.14
+  float  →  3.14
 
 >>> .type "hello"
-  type: str
-  value: hello
+  string  →  hello
 
 >>> .type [1, 2, 3]
-  type: array
-  value: [1, 2, 3]
-
->>> .type {"a": 1, "b": 2}
-  type: dict
-  value: {'a': 1, 'b': 2}
+  array  →  [1, 2, 3]
 
 >>> .type true
-  type: bool
-  value: True
+  bool  →  true
 
 >>> .type nil
-  type: nil
-  value: None
+  nil  →  nil
+```
 
->>> struct Point { x: float; y: float }
->>> let p = Point { x: 1.0, y: 2.0 }
->>> .type p
-  type: Point
-  value: Point{x: 1.0, y: 2.0}
+Works on variables and expressions too:
 
->>> .type 2 + 2
-  type: int
-  value: 4
+```
+>>> let x = 100
+>>> .type x
+  int  →  100
 
->>> .type typeof(42)
-  type: str
-  value: int
+>>> .type x * 3.14
+  float  →  314.0
 ```
 
 ---
 
-### `.time <expr>`
+### `.inspect <expr>` — deep inspection
 
-Runs an expression **10 times** and reports average, minimum, and maximum execution time in milliseconds.
-
-```
->>> .time 100 * 100
-  avg 0.02ms  min 0.01ms  max 0.04ms  (10 runs)
-
->>> fn fib(n: int) -> int {
-...     if n <= 1 { return n }
-...     return fib(n - 1) + fib(n - 2)
-... }
-
->>> .time fib(20)
-  avg 187.34ms  min 184.12ms  max 192.67ms  (10 runs)
-
->>> .time sort([5, 3, 1, 4, 2])
-  avg 0.08ms  min 0.06ms  max 0.14ms  (10 runs)
-```
-
-Use this to profile hot paths and compare implementations. The 10-run average smooths out noise.
-
----
-
-### `.bytecode`
-
-Shows the **compact bytecode disassembly** for the last expression you ran, or for a given expression.
+**Basic idea:** For structs and complex values, `.inspect` shows every field and method.
 
 ```
->>> 1 + 2 * 3
-  → 7
->>> .bytecode
-     0  LOAD_INT               1          1
-     1  LOAD_INT               2          2
-     2  LOAD_INT               3          3
-     3  MUL                    3    1    2
-     4  ADD                    4    0    3
-     5  RETURN                 4    0    0
-
-# Or give it an expression directly:
->>> .bytecode 10 > 5 ? "big" : "small"
-     0  LOAD_INT              ...
-     ...
+>>> struct Vec2 { x: float; y: float }
+>>> let v = Vec2{x: 1.0, y: 2.0}
+>>> .inspect v
+  InScriptInstance: Vec2{ x=1.0, y=2.0 }
+    methods: get, set
 ```
 
-The columns are: `address  OPCODE  dst  src1  src2`.
-
----
-
-### `.asm`
-
-Shows the **full annotated assembly** — constants table, names table, upvalues, and every instruction with inline annotations. More detailed than `.bytecode`.
+**Advanced:** Inspect anything — arrays, dicts, imported modules:
 
 ```
->>> .asm fn sq(x: int) -> int { return x * x }
+>>> .inspect [10, 20, 30]
+  array (3 items): [10, 20, 30]
 
-=== fn <main> ===
-  Constants:
-    [0] <fn sq>
-  Names:
-    [0] 'sq'
-  Code  (2 instrs, 0 locals):
-       0  LOAD_CONST            0      0      0  ; <fn sq>
-       1  STORE_GLOBAL          0      0      0  ; 'sq'
-
-  === fn sq ===
-    Code  (4 instrs, 1 locals):
-         0  LOAD_LOCAL            0      0      0
-         1  LOAD_LOCAL            0      0      0
-         2  MUL                   1      0      0
-         3  RETURN                1      0      0
-  (2 top-level instructions)
-```
-
-`.asm` also recurses into nested function definitions, making it useful for understanding how closures compile:
-
-```
->>> .asm fn make_counter(start: int) { let n = start; return fn() { n += 1; return n } }
-
-=== fn <main> ===
-  ...
-  === fn make_counter ===
-    Upvalues:
-      [0] (local 0)          ← 'n' captured from make_counter
-    Code ...
-      === fn <lambda> ===
-        Upvalues:
-          [0] (upval 0)      ← 'n' re-captured in the closure
-        ...
+>>> .inspect {"a": 1, "b": 2}
+  dict (2 keys): a, b
 ```
 
 ---
 
-### `.modules`
+### `.env` — full environment tree
 
-Lists all 18 importable standard library modules.
+Shows the raw environment scope chain — every name at every scope level. More detailed than `.vars`, useful when debugging scope issues:
 
 ```
->>> .modules
-  Importable stdlib modules:
-    math        string      array       io
-    json        random      time        color
-    tween       grid        events      debug
-    http        path        regex       csv
-    uuid        crypto
-  Usage: import "math"  or  from "math" import sin, cos
+>>> .env
+global:
+  x: int = 42
+  name: string = Alice
+  add: function = ...
 ```
 
 ---
 
-### `.packages`
+### `.doc <module>` — stdlib module exports
 
-Lists any packages installed via the package manager (`inscript --install <name>`).
-
-```
->>> .packages
-  No packages installed.
-  Install with: inscript --install <name>
-```
-
-When packages are installed they appear as:
-```
->>> .packages
-  Installed packages (2):
-    • inscript-vec
-    • inscript-noise
-```
-
----
-
-### `.history`
-
-Shows the last 20 commands from your current session.
+**Basic idea:** Find out what functions a module provides before or after importing it.
 
 ```
->>> .history
-     1  let x = 10
-     2  let name = "Alice"
-     3  fn greet(n: string) { print("Hi " + n) }
-     4  greet(name)
-     5  .vars
+>>> .doc math
+  math stdlib module (17 exports):
+    sin(x)     cos(x)     tan(x)
+    sqrt(x)    pow(x,y)   abs(x)
+    floor(x)   ceil(x)    round(x)
+    log(x)     log2(x)    log10(x)
+    PI         E          ...
 ```
 
-Full history (across sessions) is stored in `~/.inscript/history` and browsable with the Up arrow.
-
----
-
-### `.save` and `.load`
-
-**`.save <filename>`** writes everything you have typed in the current session to a `.ins` file. This is how you turn an interactive exploration session into a script.
-
 ```
->>> let pi = 3.14159
->>> fn circle_area(r: float) -> float { return pi * r * r }
->>> print(circle_area(5.0))
-78.53975
->>> .save my_math.ins
-  Saved 3 lines → my_math.ins
-```
-
-**`.load <filename>`** reads a `.ins` file and executes it in the current session, as if you had typed it all in.
-
-```
->>> .load my_math.ins
-  Loading my_math.ins…
-  Loaded in 1.2ms
->>> circle_area(10.0)
-  → 314.159
-```
-
-You can load any `.ins` file — example games, libraries, or scripts saved from a previous session.
-
-```
->>> .load examples/pong.ins
+>>> .doc json
+>>> .doc random
+>>> .doc string
+>>> .doc array
 ```
 
 ---
 
-### `.clear` and `.reset`
+## 13. Timing and Benchmarking
 
-**`.clear`** resets all variables and functions you have defined, but keeps your command history.
+**Basic idea:** Measure how fast your code runs.
 
-```
->>> let x = 999
->>> .clear
-  (session cleared — all variables reset)
->>> x
-  [InScript NameError] E0042  Line 1: Undefined variable 'x'
-```
+### `.time <expr>` — quick timing
 
-**`.reset`** is a full wipe — clears everything including the readline history buffer.
+Runs the expression 10 times and reports average, min, and max:
 
 ```
->>> .reset
-  (full reset)
+>>> .time 1 + 1
+  avg 0.03ms  min 0.02ms  max 0.04ms  (10 runs)
 ```
 
-Use `.clear` when you want a fresh slate without losing your history. Use `.reset` to start completely over.
-
----
-
-## 7. Working with Variables
-
-The session is stateful — everything you define persists until you `.clear` or exit.
-
 ```
->>> let health = 100
->>> let name = "Hero"
->>> let position = {"x": 0.0, "y": 0.0}
-
->>> health -= 25
->>> health
-  → 75
-
->>> position.x = 10.5
->>> position
-  → {'x': 10.5, 'y': 0.0}
-
->>> const MAX_HP = 100
->>> MAX_HP = 200
-  [InScript SemanticError] E0020  Line 1: Cannot assign to constant 'MAX_HP'
+>>> .time sort(range(1000))
+  avg 2.1ms  min 1.9ms  max 2.8ms  (10 runs)
 ```
 
-Check types as you go:
+### `.bench <expr>` — full statistical benchmark
+
+Runs 100 times with a warm-up phase, then gives full statistics:
 
 ```
->>> .type health
-  type: int
-  value: 75
-
->>> .type position
-  type: dict
-  value: {'x': 10.5, 'y': 0.0}
+>>> .bench 1 + 1
+  Warming up (5 runs)…
+  Benchmarking (100 runs)…
+  Benchmark (100 runs):
+    mean   0.023ms   stddev 0.005ms
+    min    0.020ms   max    0.039ms
+    p50    0.021ms   p95    0.035ms
 ```
 
----
-
-## 8. Working with Functions
-
-Functions accumulate across the session. You can redefine them — the new definition replaces the old one.
-
-```
->>> fn double(x: int) -> int { return x * 2 }
->>> double(5)
-  → 10
-
->>> fn double(x: int) -> int { return x * 3 }   // redefine
->>> double(5)
-  → 15
-
->>> fn apply(f, value: int) -> int { return f(value) }
->>> apply(double, 4)
-  → 12
-```
-
-**Closures work correctly across the REPL:**
-
-```
->>> fn make_adder(n: int) {
-...     return fn(x: int) -> int { return x + n }
-... }
->>> let add5 = make_adder(5)
->>> let add10 = make_adder(10)
->>> add5(3)
-  → 8
->>> add10(3)
-  → 13
-```
-
-**Recursive functions:**
-
-```
->>> fn fib(n: int) -> int {
-...     if n <= 1 { return n }
-...     return fib(n - 1) + fib(n - 2)
-... }
->>> fib(10)
-  → 55
->>> .time fib(15)
-  avg 24.1ms  min 23.6ms  max 25.8ms  (10 runs)
-```
-
----
-
-## 9. Working with Structs
-
-Structs persist and can be used immediately after definition.
-
-```
->>> struct Vec2 {
-...     x: float
-...     y: float
-...
-...     fn length() -> float {
-...         import "math" as M
-...         return M.sqrt(x*x + y*y)
-...     }
-...
-...     fn add(other: Vec2) -> Vec2 {
-...         return Vec2 { x: x + other.x, y: y + other.y }
-...     }
-... }
-
->>> let a = Vec2 { x: 3.0, y: 4.0 }
->>> let b = Vec2 { x: 1.0, y: 2.0 }
->>> a.length()
-  → 5.0
->>> let c = a.add(b)
->>> c.x
-  → 4.0
->>> c.y
-  → 6.0
-```
-
-**Enums and pattern matching:**
-
-```
->>> enum Direction { North South East West }
-
->>> fn describe(d: Direction) -> string {
-...     match d {
-...         case Direction.North { return "going up" }
-...         case Direction.South { return "going down" }
-...         case _               { return "going sideways" }
-...     }
-... }
-
->>> describe(Direction.North)
-  → going up
->>> describe(Direction.East)
-  → going sideways
-```
-
-**Inheritance:**
-
-```
->>> struct Animal {
-...     name: string
-...     fn speak() -> string { return "..." }
-... }
-
->>> struct Dog extends Animal {
-...     fn speak() -> string { return "Woof! I'm " + name }
-... }
-
->>> let d = Dog { name: "Rex" }
->>> d.speak()
-  → Woof! I'm Rex
->>> d is Dog
-  → true
->>> d is Animal
-  → true
-```
-
----
-
-## 10. Working with Imports
-
-Import any of the 18 stdlib modules at any time.
-
-```
->>> import "math" as M
->>> M.sqrt(144.0)
-  → 12.0
->>> M.PI
-  → 3.141592653589793
->>> M.floor(3.9)
-  → 3
-
->>> import "random" as R
->>> R.int(1, 6)        // roll a die
-  → 4
->>> R.choice(["rock", "paper", "scissors"])
-  → paper
-
->>> import "json" as J
->>> let data = {"name": "Alice", "score": 99}
->>> J.encode(data)
-  → {"name": "Alice", "score": 99}
-
->>> import "uuid" as U
->>> U.v4()
-  → "a3f4c1d2-8b7e-4f9a-bc3d-1e2f3a4b5c6d"
-
->>> import "time" as T
->>> T.now()
-  → 1741234567.891
-```
-
-**Selective imports:**
-
-```
->>> from "math" import sqrt, PI, floor
->>> sqrt(25.0)
-  → 5.0
->>> PI
-  → 3.141592653589793
-```
-
-**Importing a local `.ins` file:**
-
-```
->>> import "./my_math.ins" as mymath
->>> mymath.circle_area(5.0)
-  → 78.53975
-```
-
----
-
-## 11. Error Messages
-
-The REPL catches all errors and shows them cleanly — it never crashes, even on syntax errors.
-
-**Parse error** (with source location):
-```
->>> let x = (1 + 2
-  [InScript ParseError] E0010  Line 1, Col 14: Expected ')' — got end of input
-    let x = (1 + 2
-                  ^
-  See: https://docs.inscript.dev/errors/E0010
-```
-
-**Semantic error** (caught by the static analyzer before running):
-```
->>> print(undefined_variable)
-  [InScript SemanticError] E0020  Line 1, Col 7: Undefined name: 'undefined_variable'
-    Did you mean: 'undefined'?
-  See: https://docs.inscript.dev/errors/E0020
-```
-
-**Runtime error**:
-```
->>> let a = [1, 2, 3]
->>> a[10]
-  [InScript InScriptRuntimeError] E0040  Line 1: Index 10 out of range (length 3)
-  See: https://docs.inscript.dev/errors/E0040
-```
-
-**Type error**:
-```
->>> let x: int = "hello"
-  [InScript TypeError] E0030  Line 1: Type mismatch: expected 'int', got 'string'
-  See: https://docs.inscript.dev/errors/E0030
-```
-
-After any error, your session state is **preserved** — variables you defined before the error are still there.
-
-```
->>> let x = 10
->>> print(oops_undefined)
-  [InScript SemanticError] ...
->>> x                        // x is still here
-  → 10
-```
-
----
-
-## 12. The Web Playground
-
-```bash
-python repl.py --web
-# Opens http://localhost:8080 in your default browser
-
-python repl.py --web --port 9000
-# Use a different port
-```
-
-The web playground is a simple browser interface where you can type InScript code and run it. It is useful for:
-- Sharing code examples without requiring a terminal
-- Running InScript on any machine with a browser
-- Testing snippets without installing anything beyond Python
-
-**How it works:** The playground runs a local HTTP server. Your browser sends code to `localhost:8080/run` as a POST request. The server runs it through the interpreter and returns the output as JSON. Output is displayed in the browser.
-
-**Limitations of the web playground:**
-- No persistent state between runs (each click is a fresh interpreter)
-- No tab completion or history
-- No dot commands (`.vars`, `.asm`, etc.)
-- No access to the filesystem (`import "io"` will not be able to read local files)
-- No real-time output — all output appears at once after the run completes
-
----
-
-## 13. Practical Workflows
-
-### Workflow 1: Explore → Script
-
-Use the REPL to experiment, then save your work:
-
-```
->>> import "math" as M
->>> fn circle_area(r: float) -> float { return M.PI * r * r }
->>> fn circle_perimeter(r: float) -> float { return 2.0 * M.PI * r }
->>> circle_area(5.0)
-  → 78.53981633974483
->>> circle_perimeter(5.0)
-  → 31.41592653589793
->>> .save geometry.ins
-  Saved 3 lines → geometry.ins
-```
-
-Now `geometry.ins` is a reusable module:
-```
->>> .clear
->>> .load geometry.ins
->>> circle_area(10.0)
-  → 314.1592653589793
-```
-
----
-
-### Workflow 2: Profile and Optimise
+**Advanced: compare two implementations**
 
 ```
 >>> fn slow_sum(n: int) -> int {
-...     let total = 0
-...     for i in range(n) { total += i }
-...     return total
-... }
->>> .time slow_sum(10000)
-  avg 48.2ms  min 47.1ms  max 51.3ms  (10 runs)
+...2   let s = 0
+...3   for i in range(n) { s += i }
+...4   return s
+...5 }
 
->>> fn fast_sum(n: int) -> int { return n * (n - 1) div 2 }
->>> .time fast_sum(10000)
-  avg 0.04ms  min 0.03ms  max 0.07ms  (10 runs)
+>>> fn fast_sum(n: int) -> int {
+...2   return n * (n - 1) / 2
+...3 }
 
->>> fast_sum(10000) == slow_sum(10000)
-  → true
+>>> .bench slow_sum(1000)
+    mean  1.2ms
+
+>>> .bench fast_sum(1000)
+    mean  0.03ms
 ```
 
 ---
 
-### Workflow 3: Inspect Bytecode
+## 14. Bytecode Inspection
 
-Use `.asm` to understand how InScript compiles your code — useful when learning or debugging:
+**Basic idea:** InScript has a bytecode compiler (Phase 6). These commands let you see what bytecode the compiler produces. Useful for learning and for debugging performance.
+
+### `.bytecode [expr]` — compact bytecode
+
+Shows a compact listing of opcodes:
 
 ```
->>> .asm let x = 1 + 2 * 3
-
+>>> .bytecode 1 + 2 * 3
 === fn <main> ===
-  Constants:
-    [0] 1
-    [1] 2
-    [2] 3
-  Code  (5 instrs, 1 locals):
-       0  LOAD_CONST             0     0     0  ; 1
-       1  LOAD_CONST             1     1     0  ; 2
-       2  LOAD_CONST             2     2     0  ; 3
-       3  MUL                    3     1     2
-       4  ADD                    4     0     3
-       5  STORE_GLOBAL           4     0     0  ; 'x'
+  LOAD_INT  1
+  LOAD_INT  2
+  LOAD_INT  3
+  MUL
+  ADD
+  RETURN
 ```
 
-Notice `*` is evaluated before `+` — the opcode order confirms correct precedence.
+Notice `MUL` comes before `ADD` — the compiler correctly applies `*` before `+`.
+
+### `.asm [expr]` — full annotated assembly
+
+Shows the full register-level assembly with instruction numbers, register slots, and constants:
+
+```
+>>> .asm 1 + 2 * 3
+=== fn <main> ===
+  Code (6 instrs, 5 locals):
+       0  LOAD_INT                    1      1      0  ; 1
+       1  LOAD_INT                    3      2      0  ; 2
+       2  LOAD_INT                    4      3      0  ; 3
+       3  MUL                         2      3      4
+       4  ADD                         0      1      2
+       5  RETURN                  65535      0      0
+```
+
+**Advanced: inspect a function's compiled form**
+
+```
+>>> fn factorial(n: int) -> int {
+...2   if n <= 1 { return 1 }
+...3   return n * factorial(n - 1)
+...4 }
+>>> .asm factorial(5)
+```
+
+This shows exactly how the recursion is compiled — registers allocated, the conditional jump, the recursive call opcode.
 
 ---
 
-### Workflow 4: Interactive Debugging
+## 15. VM Mode
 
-The REPL is great for narrowing down bugs:
+**Basic idea:** InScript has two execution engines — the tree-walk **interpreter** (default) and the register-based **bytecode VM**. Toggle between them with `.vm`.
 
 ```
->>> .load buggy_game.ins
-  Error: [InScript InScriptRuntimeError] E0040  Line 47: ...
+>>> .vm
+  Execution mode: VM (bytecode)
 
->>> // Reproduce the minimal case:
->>> let player = { "hp": 100, "x": 0.0 }
->>> // test the function that was failing:
->>> take_damage(player, 150)
-  [InScript InScriptRuntimeError] ...
+>>> .vm
+  Execution mode: Interpreter (tree-walk)
+```
 
->>> // Inspect intermediate values:
->>> .type player
-  type: dict
-  value: {'hp': 100, 'x': 0.0}
->>> .vars
+When VM mode is active, the prompt shows `[VM]`:
+
+```
+>>> [VM] let x = 10
+>>> [VM] x * 2
+  → 20
+```
+
+**State persists across the toggle.** Variables defined in interpreter mode are available in VM mode and vice versa.
+
+**Why use VM mode?**
+
+The VM mode is the future direction of InScript. Use it to:
+- Test that your code works the same way in both engines
+- Inspect bytecode output with `.asm` for code you are running in VM
+- Develop a feel for how the compiler works
+
+```
+>>> .vm
+>>> fn fib(n: int) -> int {
+...2   if n <= 1 { return n }
+...3   return fib(n-1) + fib(n-2)
+...4 }
+>>> fib(10)
+  → 55
+>>> .asm fib(10)
 ```
 
 ---
 
-### Workflow 5: Quick Calculations
+## 16. Session Management
 
-The REPL doubles as a scientific calculator:
+**Basic idea:** Save your session to a file, load files to run them, and export a session as a Markdown report.
+
+### `.save <file>` — save session as runnable code
+
+Saves every statement from the session as a `.ins` file you can run later:
+
+```
+>>> let x = 10
+>>> fn double(n) { return n * 2 }
+>>> .save my_session.ins
+  Session saved to my_session.ins
+```
+
+The saved file contains:
+
+```inscript
+let x = 10
+fn double(n) { return n * 2 }
+```
+
+### `.load <file>` / `.run <file>` — run a file
+
+Load and execute a `.ins` file as if you had typed it in:
+
+```
+>>> .load my_session.ins
+>>> .run examples/pong.ins
+```
+
+After loading, all definitions from the file are available in the REPL.
+
+### `.export [file]` — export session as Markdown
+
+Exports the session as an annotated Markdown document, useful for sharing or documentation:
+
+```
+>>> .export
+```
+
+Prints the Markdown to the screen. To save it to a file:
+
+```
+>>> .export session_notes.md
+  Exported to session_notes.md
+```
+
+The Markdown file includes each command you ran with its output, formatted as code blocks.
+
+### `.clear` — reset variables, keep history
+
+Clears all user-defined variables and functions. History and REPL settings are kept.
+
+```
+>>> let x = 10
+>>> .clear
+  Session cleared.
+>>> x
+  ✗ Undefined variable 'x'
+```
+
+### `.reset` — full reset
+
+Clears everything — variables, functions, history, interpreter state — as if you just started the REPL.
+
+```
+>>> .reset
+  REPL reset.
+```
+
+---
+
+## 17. Tab Completion
+
+Press **Tab** to auto-complete:
+
+- **Dot commands:** type `.` then Tab to see all commands; type `.h` then Tab to complete to `.help`
+- **Variable names:** type the start of a name then Tab
+- **Method access:** type `myobj.` then Tab to see available methods and fields
+
+```
+>>> .h[Tab]
+  .help   .history
+
+>>> let person = {name: "Alice"}
+>>> person.[Tab]
+  (shows available dict methods)
+```
+
+---
+
+## 18. The Web Playground
+
+**Basic idea:** A browser-based version of the REPL, useful when you want a graphical interface or want to share InScript with someone who does not have Python installed locally.
+
+```bash
+python repl.py --web
+```
+
+Opens at `http://localhost:8080` in your browser.
+
+Features:
+- Full InScript editor with syntax highlighting
+- Run button (or `Ctrl+Enter`) to execute
+- VM / Interpreter toggle switch
+- 8 built-in example programs to load and run
+- Tab key inserts 2 spaces (not a tab character)
+- Output appears in the panel below the editor
+
+The 8 built-in examples cover: hello world, fibonacci, structs, closures, generators, error handling, imports, and pattern matching.
+
+The web playground uses the same interpreter as the terminal REPL — all language features work identically.
+
+---
+
+## 19. Practical Workflows
+
+### Workflow 1: Explore an idea quickly
+
+Start the REPL and try things without planning a file structure:
 
 ```
 >>> import "math" as M
->>> M.PI * 5.0 * 5.0
+
+>>> fn circle_area(r: float) -> float {
+...2   return M.PI * r * r
+...3 }
+
+>>> circle_area(5.0)
   → 78.53981633974483
 
->>> 2 ** 32
-  → 4294967296
+>>> circle_area(10.0)
+  → 314.1592653589793
 
->>> 0xFF & 0x0F
-  → 15
-
->>> M.log2(1024.0)
-  → 10.0
-
->>> M.sin(M.PI / 6.0)
-  → 0.49999999999999994
+>>> // happy with this? save it.
+>>> .save geometry.ins
 ```
 
 ---
 
-## 14. Known Limitations
+### Workflow 2: Incremental struct development
 
-These are current issues to be aware of when using the REPL:
+Build a struct step by step, testing each method as you add it:
 
-| Limitation | Detail |
-|-----------|--------|
-| **Operator overloading only works in the VM** | `operator +` on a struct will crash in the REPL (interpreter path). Use `.load` with `inscript run` for operator overloading. |
-| **`async/await` is not real** | `async fn` and `await` parse and run, but execute synchronously. No event loop exists yet. |
-| **F-strings can't contain string literals** | `f"{x > 0 ? \"yes\" : \"no\"}"` will fail to parse. Use a variable instead: `let msg = ...; f"{msg}"` |
-| **`super` does not exist** | Calling `super.method()` in an override raises `NameError`. |
-| **`finally` does not parse** | `try {} catch e {} finally {}` will raise a ParseError. |
-| **Typed `catch` does not parse** | `catch e: string {}` raises ParseError. All catch blocks are untyped. |
-| **Generators only work in `for` loops** | `let g = counter(); g()` will fail. Use `for v in counter() {}`. |
-| **Math INF/NAN cannot be printed** | `import "math" as M; print(M.INF)` will crash. Use comparisons or `is_inf()`/`is_nan()` instead. |
-| **Regex argument order is inverted** | `R.match("hello", "h.*o")` fails — the first argument is the pattern, second is the text. Correct call: `R.match("h.*o", "hello")`. |
-| **Events module callbacks crash** | `E.on("event", fn(x){})` will crash when the event fires. The event system is broken in this version. |
-| **`**=` compound assignment missing** | `x **= 2` raises ParseError. Use `x = x ** 2`. |
-| **Static struct fields don't parse** | `static PI: float = 3.14` inside a struct body raises ParseError. Only `static fn` works. |
-| **Missing struct fields become nil silently** | `Point { x: 1.0 }` with `y` omitted gives `p.y == nil` with no warning. |
+```
+>>> struct Stack {
+...2   items: array
+...3   fn push(val) { items = items ++ [val] }
+...4   fn pop() { let v = last(items); items = items[:len(items)-1]; return v }
+...5   fn peek() { return last(items) }
+...6   fn is_empty() -> bool { return len(items) == 0 }
+...7 }
+
+>>> let s = Stack{items: []}
+>>> s.is_empty()
+  → true
+
+>>> s.push(10)
+>>> s.push(20)
+>>> s.push(30)
+>>> s.peek()
+  → 30
+
+>>> s.pop()
+  → 30
+>>> s.pop()
+  → 20
+```
 
 ---
 
-*Tutorial covers InScript v1.0.1 — REPL as implemented in `repl.py`.*  
+### Workflow 3: Load a file and poke at its internals
+
+```
+>>> .load my_game.ins
+>>> .vars
+>>> .fns
+>>> // test a specific function with edge cases:
+>>> handle_collision(player, wall, 0.0)
+>>> handle_collision(player, wall, 90.0)
+```
+
+---
+
+### Workflow 4: Compare two implementations
+
+```
+>>> fn naive_fib(n: int) -> int {
+...2   if n <= 1 { return n }
+...3   return naive_fib(n-1) + naive_fib(n-2)
+...4 }
+
+>>> fn fast_fib(n: int) -> int {
+...2   let a = 0; let b = 1
+...3   for i in range(n) { let t = a + b; a = b; b = t }
+...4   return a
+...5 }
+
+>>> .bench naive_fib(20)
+    mean  48ms
+
+>>> .bench fast_fib(20)
+    mean  0.04ms
+```
+
+---
+
+### Workflow 5: Use the REPL as a calculator
+
+```
+>>> import "math" as M
+
+>>> // Area of a sphere radius 7
+>>> 4.0 * M.PI * 7.0 ** 2
+  → 615.7521601035994
+
+>>> // Convert 98.6°F to Celsius
+>>> (98.6 - 32.0) * 5.0 / 9.0
+  → 37.0
+
+>>> // Bits in a 32-bit value
+>>> 2 ** 32
+  → 4294967296
+
+>>> // Bitwise AND mask
+>>> 0b11001100 & 0b10101010
+  → 136
+
+>>> // Hex to int
+>>> 0xFF
+  → 255
+```
+
+---
+
+### Workflow 6: Multiline with backslash for long expressions
+
+When an expression is very long, break it across lines with `\`:
+
+```
+>>> let result = filter([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], \
+...2               fn(x) { return x % 2 == 0 })
+>>> result
+  → [2, 4, 6, 8, 10]
+```
+
+```
+>>> let total = 100 + 200 + 300 + \
+...2            400 + 500
+>>> total
+  → 1500
+```
+
+---
+
+### Workflow 7: Inspect bytecode to understand operator precedence
+
+```
+>>> .asm 2 + 3 * 4 - 1
+```
+
+Read the opcode order — `MUL` before `ADD` confirms `*` binds tighter than `+`.
+
+```
+>>> .asm -2 ** 2
+```
+
+Confirm that `-2 ** 2` equals `-4` (unary minus applied after exponentiation).
+
+---
+
+## 20. Known Limitations
+
+These are known issues in v1.0.2. Workarounds are provided where they exist.
+
+| Limitation | Workaround |
+|-----------|------------|
+| **`async/await` is not real** | `async fn` parses and runs but is synchronous. No event loop exists yet. |
+| **F-strings cannot contain string literals** | `f"{x > 0 ? \"yes\" : \"no\"}"` fails. Use a variable: `let msg = x > 0 ? "yes" : "no"; f"{msg}"` |
+| **Static struct fields do not parse** | `static PI: float = 3.14` inside a struct body raises ParseError. Only `static fn` works. |
+| **Missing struct fields become nil silently** | `Point{x: 1.0}` with `y` omitted gives `p.y == nil` with no warning. |
+| **Math INF/NAN crash when printed** | `import "math" as M; print(M.INF)` crashes. Use `is_inf(x)` / `is_nan(x)` for comparisons instead. |
+| **Regex argument order is inverted** | `R.match("hello", "h.*o")` fails. Correct: `R.match("h.*o", "hello")` — pattern first, text second. |
+| **Events module callbacks crash** | `E.on("event", fn(x){})` crashes when the event fires. Avoid the events module for now. |
+| **Generators only work in `for` loops** | `let g = counter(); g()` fails. Use `for v in counter() {}`. |
+| **`.vars` includes all builtins** | You cannot currently filter `.vars` to show only user-defined variables. Use `.fns` for functions and `.types` for structs. |
+
+---
+
+*Tutorial covers InScript v1.0.2 — REPL as implemented in `repl.py`.*  
 *For the full language reference, see the InScript Language Guide.*  
 *For known bugs and design issues, see `InScript_Language_Audit.md`.*

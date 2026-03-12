@@ -20,7 +20,18 @@
 #   python -m inscript.repl --web [--port 8080]
 
 from __future__ import annotations
-import os, sys, json, time, math, readline, atexit, re as _re
+import os, sys, json, time, math, atexit, re as _re
+
+# Python 3.11+ limits integer-to-string conversion; raise limit for large numbers
+if hasattr(sys, "set_int_max_str_digits"):
+    sys.set_int_max_str_digits(100_000)
+
+try:
+    import readline
+    _HAS_READLINE = True
+except ImportError:
+    readline = None          # Windows — readline not available; tab/history still work via fallback
+    _HAS_READLINE = False
 from pathlib import Path
 from typing import List, Optional, Any, Tuple
 
@@ -170,7 +181,7 @@ class InScriptCompleter:
 
     def complete(self, text, state):
         if state == 0:
-            buf = readline.get_line_buffer()
+            buf = readline.get_line_buffer() if _HAS_READLINE else text
             dot_match = _re.match(r'.*?(\w+)\.([\w]*)$', buf)
             if dot_match:
                 obj_name = dot_match.group(1)
@@ -282,6 +293,8 @@ class EnhancedREPL:
         self._setup_readline()
 
     def _setup_readline(self):
+        if not _HAS_READLINE:
+            return          # Windows: readline not available; skip tab/history setup
         completer = InScriptCompleter(self)
         readline.set_completer(completer.complete)
         readline.parse_and_bind("tab: complete")
@@ -520,7 +533,7 @@ class EnhancedREPL:
             self._interp = Interpreter()
             self._vm     = VM()
             self._session.clear(); self._history.clear()
-            readline.clear_history()
+            if _HAS_READLINE: readline.clear_history()
             print(DIM("  (full reset — interpreter, session and history cleared)"))
 
         elif c == ".save":
