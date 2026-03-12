@@ -271,8 +271,12 @@ class Interpreter(Visitor):
             "find":       lambda lst, fn: next((x for x in lst if self._call_fn(fn,[x])), None),
             "includes":   lambda lst, v: v in lst,
             "index_of":   lambda lst, v: lst.index(v) if v in lst else -1,
-            "fill":       lambda n, v: [v]*n,
-            "repeat":     lambda v, n: [v]*n,
+            # fill(n, val) → new list;  fill(lst, val) → fill existing list in-place
+            "fill":       lambda a, b: ([b]*int(a)) if isinstance(a, int) else (a.__setitem__(slice(None), [b]*len(a)) or a),
+            "repeat":     lambda v, n: [v]*int(n),
+            # push/pop as free functions (BUG-18)
+            "push":       lambda lst, val: lst.append(val) or lst,
+            "pop":        lambda lst: lst.pop() if lst else None,
             # ── Dict global builtins ──────────────────────────────────────────
             "has_key":    lambda d, k: k in d,
             "keys":       lambda d: [k for k in d.keys() if not str(k).startswith("_")],
@@ -576,6 +580,9 @@ class Interpreter(Visitor):
                 return_type=sm.return_type,
             )
             static_ns[sm.name] = fn
+        # BUG-14 fix: evaluate static fields and store in static namespace
+        for sf in (node.static_fields or []):
+            static_ns[sf.name] = self.visit(sf.default) if sf.default else None
         node._static_ns = static_ns
 
         # Track interface implementations
@@ -700,6 +707,11 @@ class Interpreter(Visitor):
             # ── Built-in stdlib module ────────────────────────────────────────
             try:
                 mod = _stdlib.load_module(path)
+                # Wire interpreter reference into EventBus so InScript callbacks work
+                if path == "events":
+                    import stdlib as _s
+                    if hasattr(_s, '_global_bus'):
+                        _s._global_bus._set_interp(self)
             except ImportError:
                 self._error(
                     f"Module not found: '{path}'\n"
@@ -1067,8 +1079,24 @@ class Interpreter(Visitor):
             for arm in node.arms
         )
         if not has_wildcard:
+            # Show readable pattern names for each arm
+            def _pat_str(arm):
+                if arm.pattern is None: return "_"
+                p = arm.pattern
+                from ast_nodes import GetAttrExpr, IdentExpr, IntLiteralExpr, FloatLiteralExpr, StringLiteralExpr, BoolLiteralExpr
+                if isinstance(p, GetAttrExpr): return f"{p.obj.name}.{p.attr}" if hasattr(p.obj,'name') else str(p)
+                if isinstance(p, IdentExpr): return p.name
+                if isinstance(p, (IntLiteralExpr, FloatLiteralExpr, StringLiteralExpr, BoolLiteralExpr)): return repr(p.value)
+                return type(p).__name__
+            matched_patterns = [_pat_str(arm) for arm in node.arms]
+            subject_str = _inscript_str(subject)
+            subject_type = "value"
+            if isinstance(subject, dict) and "_variant" in subject:
+                subject_type = f"{subject.get('_enum','enum')} variant"
             self._error(
-                f"MatchError: no arm matched value {_inscript_str(subject)!r}",
+                f"MatchError: no arm matched {subject_type} {subject_str!r}\n"
+                f"  Arms checked: {', '.join(matched_patterns)}\n"
+                f"  Hint: add 'case _ {{ }}' to handle unmatched values",
                 node.line
             )
         return None
@@ -1348,7 +1376,7 @@ class Interpreter(Visitor):
     _COERCE_RULES = {
         # to int
         ("int",   "int"):    lambda v: v,
-        ("float", "int"):    lambda v: int(v),
+        ("float", "int"):    None,            # handled specially below — warns on lossy truncation
         ("bool",  "int"):    lambda v: int(v),
         ("str",   "int"):    lambda v: int(v),   # raises ValueError if bad
         # to float
@@ -1418,6 +1446,14 @@ class Interpreter(Visitor):
         py_type = self._py_type_name(value)
         key = (py_type, type_name)
         rule = self._COERCE_RULES.get(key)
+
+        # BUG-17 fix: float→int is a lossy truncation — warn instead of silently coerce
+        if key == ("float", "int"):
+            truncated = int(value)
+            if value != truncated:
+                ctx_msg = f" in {context}" if context else ""
+                print(f"\033[33m  Warning: float {value} truncated to int {truncated}{ctx_msg} — use 'as int' for explicit cast\033[0m")
+            return truncated
 
         if rule is None:
             ins_type = self._inscript_type_name(value)
@@ -1653,6 +1689,12 @@ class Interpreter(Visitor):
             return self._call_function(callee, arg_vals, arg_names, node.line,
                                        self_instance=self_val)
 
+        # Generator: calling gen() advances it (same as gen.next())
+        if isinstance(callee, InScriptGenerator):
+            if callee._done:
+                self._error("Generator is exhausted — check gen.done before calling", node.line)
+            return callee.next()
+
         self._error(f"'{node.callee}' is not callable — got {type(callee).__name__}", node.line)
 
     def _create_struct(self, decl: StructDecl, arg_vals, arg_names, line) -> InScriptInstance:
@@ -1699,6 +1741,23 @@ class Interpreter(Visitor):
             for i, val in enumerate(arg_vals):
                 if i < len(decl.fields):
                     fields[decl.fields[i].name] = val
+
+        # BUG-16 fix: warn about fields that have no default and were not provided
+        provided = set(arg_names[i] for i in range(len(arg_names))
+                       if arg_names[i] is not None) if arg_names else set()
+        if not (arg_names and any(n is not None for n in arg_names)):
+            # positional — provided by index
+            provided = {decl.fields[i].name for i in range(len(arg_vals)) if i < len(decl.fields)}
+        else:
+            provided = {n for n in arg_names if n}
+        missing_required = [
+            f.name for f in decl.fields
+            if not f.default and f.name not in provided and not getattr(f, 'is_method', False)
+        ]
+        if missing_required:
+            names = ', '.join(f"'{n}'" for n in missing_required)
+            import warnings as _warnings
+            print(f"\033[33m  Warning: struct '{decl.name}' missing required field(s) {names} — set to nil\033[0m")
 
         # Register struct methods as bound functions
         inst = InScriptInstance(decl.name, fields)
@@ -1824,8 +1883,19 @@ class Interpreter(Visitor):
             fields[field.name] = self.visit(field.default) if field.default else None
 
         # Then overrides from initializer
+        provided_names = set()
         for name, value_node in node.fields:
             fields[name] = self.visit(value_node)
+            provided_names.add(name)
+
+        # BUG-16 fix: warn about required fields (no default) that were not provided
+        missing_required = [
+            f.name for f in decl.fields
+            if not f.default and f.name not in provided_names
+        ]
+        if missing_required:
+            names = ', '.join(f"'{n}'" for n in missing_required)
+            print(f"\033[33m  Warning: struct '{decl.name}' missing required field(s) {names} — initialised to nil\033[0m")
 
         inst = InScriptInstance(decl.name, fields)
         for method in decl.methods:
@@ -2325,8 +2395,11 @@ def _inscript_str(val) -> str:
     if isinstance(val, list):
         return "[" + ", ".join(_inscript_str(v) for v in val) + "]"
     if isinstance(val, float):
+        # Handle special IEEE values first to avoid OverflowError on int(inf)
+        if math.isinf(val): return "Infinity" if val > 0 else "-Infinity"
+        if math.isnan(val): return "NaN"
         # Always show at least one decimal place: 4.0 → "4.0", 3.14 → "3.14"
-        if val == int(val) and not (val != val):  # not NaN
+        if val == int(val):
             return f"{int(val)}.0"
         return str(val)
     if isinstance(val, str):

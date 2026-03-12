@@ -273,6 +273,7 @@ class StructDecl(Node):
     static_methods: List[FunctionDecl] = None
     interfaces:     List[str] = None
     mixins:         List[str] = None
+    static_fields:  List[StructField] = None   # BUG-14: static TYPE fields
     properties:     List["PropertyDecl"] = None   # get/set accessor pairs
     type_params:    List[str] = None              # generic type parameters e.g. ["T", "U"]
     operators:      List["OperatorDecl"] = None   # Phase 7: operator overloads

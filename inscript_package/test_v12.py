@@ -63,29 +63,30 @@ test('path.abs non-empty',
      'true')
 
 # ── regex module ─────────────────────────────────────────────────────────────
+# API is now (text, pattern) — text first, pattern second
 test('regex.test true',
-     'import "regex" as regex\nprint(regex.test("\\\\d+", "hello123world"))',
+     'import "regex" as regex\nprint(regex.test("hello123world", "\\\\d+"))',
      'true')
 test('regex.test false',
-     'import "regex" as regex\nprint(regex.test("^\\\\d+$", "hello"))',
+     'import "regex" as regex\nprint(regex.test("hello", "^\\\\d+$"))',
      'false')
 test('regex.find_all digits',
-     'import "regex" as regex\nlet m = regex.find_all("\\\\d+", "a1 b22 c333")\nprint(len(m))',
+     'import "regex" as regex\nlet m = regex.find_all("a1 b22 c333", "\\\\d+")\nprint(len(m))',
      '3')
 test('regex.sub replace',
-     'import "regex" as regex\nprint(regex.sub("o+", "0", "foobar"))',
+     'import "regex" as regex\nprint(regex.sub("foobar", "o+", "0"))',
      'f0bar')
 test('regex.match success',
-     'import "regex" as regex\nlet m = regex.match("(\\\\w+)", "hello")\nprint(m["matched"])',
+     'import "regex" as regex\nlet m = regex.match("hello", "(\\\\w+)")\nprint(m["matched"])',
      'true')
 test('regex.search value',
-     'import "regex" as regex\nlet m = regex.search("\\\\d+", "abc123def")\nprint(m["value"])',
+     'import "regex" as regex\nlet m = regex.search("abc123def", "\\\\d+")\nprint(m["value"])',
      '123')
 test('regex.split',
-     'import "regex" as regex\nlet parts = regex.split(",\\\\s*", "a, b,c, d")\nprint(len(parts))',
+     'import "regex" as regex\nlet parts = regex.split("a, b,c, d", ",\\\\s*")\nprint(len(parts))',
      '4')
 test('regex.escape',
-     'import "regex" as regex\nlet e = regex.escape("a.b+c")\nprint(regex.test("^"+e+"$", "a.b+c"))',
+     'import "regex" as regex\nlet e = regex.escape("a.b+c")\nprint(regex.test("a.b+c", "^"+e+"$"))',
      'true')
 
 # ── csv module ────────────────────────────────────────────────────────────────

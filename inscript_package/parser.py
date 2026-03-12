@@ -615,17 +615,23 @@ class Parser:
         fields          = []
         methods         = []
         static_methods  = []
+        static_fields   = []   # BUG-14 fix: typed static fields
         properties      = {}   # name -> PropertyDecl
         operators       = []   # Phase 7: operator overloads
 
         while not self.check(TT.RBRACE) and not self.is_at_end():
             if self.match(TT.SEMICOLON):
                 continue
-            # static fn foo() { ... }
+            # static fn foo() { ... }  OR  static PI: float = 3.14
             if self.check(TT.IDENT) and self.current.value == "static":
                 self.advance()  # consume 'static'
-                m = self.parse_function_decl(is_method=False)
-                static_methods.append(m)
+                if self.check(TT.FN):
+                    m = self.parse_function_decl(is_method=False)
+                    static_methods.append(m)
+                else:
+                    # static field:  NAME : TYPE = DEFAULT
+                    sf = self.parse_struct_field()
+                    static_fields.append(sf)
             # get name() -> T { ... }
             elif self.check(TT.IDENT) and self.current.value == "get":
                 p = self._parse_getter()
@@ -677,6 +683,7 @@ class Parser:
                           properties=list(properties.values()),
                           type_params=type_params,
                           operators=operators,
+                          static_fields=static_fields,
                           line=line, col=col)
 
     def _parse_getter(self) -> "PropertyDecl":

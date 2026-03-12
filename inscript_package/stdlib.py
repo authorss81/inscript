@@ -203,11 +203,16 @@ register_module("array", {
     "max":      _arr_max,
     "range":    _arr_range,
     "reverse":  lambda lst: lst[::-1],
-    "fill":     lambda val, n: [val] * int(n),
+    # fill(n, val) → new array of n copies of val
+    # fill(arr, val) → fill existing array in-place with val, return it
+    "fill":     lambda a, b: ([b] * int(a)) if isinstance(a, int) else (a.__setitem__(slice(None), [b]*len(a)) or a),
     "repeat":   lambda lst, n: lst * int(n),
     "count":    lambda lst, val: lst.count(val),
     "index_of": lambda lst, val: lst.index(val) if val in lst else -1,
     "includes": lambda lst, val: val in lst,
+    # push/pop as free functions (BUG-18: previously method-only)
+    "push":     lambda lst, val: lst.append(val) or lst,
+    "pop":      lambda lst: lst.pop() if lst else None,
     "any":      lambda lst, fn: any(_call_fn(fn, x) for x in lst),
     "all":      lambda lst, fn: all(_call_fn(fn, x) for x in lst),
     "none":     lambda lst, fn: not any(_call_fn(fn, x) for x in lst),
@@ -319,7 +324,9 @@ def _perlin_1d(x: float, seed: int = 0) -> float:
     return 1.0 * (u * grad(p[a], x) + (1-u) * grad(p[b], x-1))
 
 register_module("random", {
-    "float":       lambda: random.random(),
+    # float()         → random float in [0.0, 1.0]
+    # float(lo, hi)   → random float in [lo, hi]
+    "float":       lambda lo=None, hi=None: (random.random() if lo is None else random.uniform(float(lo), float(hi))),
     "range":       lambda lo, hi: random.uniform(lo, hi),
     "int":         lambda lo, hi: random.randint(int(lo), int(hi)),
     "bool":        lambda p=0.5: random.random() < p,
@@ -396,7 +403,10 @@ def _grayscale(c: Color) -> Color:
     return Color(g, g, g, c.a)
 
 register_module("color", {
-    "rgb":       lambda r, g, b, a=1.0: Color(r, g, b, a),
+    # rgb() uses 0.0–1.0 scale (same as from_hex, mix, darken, lighten)
+    "rgb":       lambda r, g, b, a=1.0: Color(float(r), float(g), float(b), float(a)),
+    # rgb255() for users who prefer 0-255 integer scale
+    "rgb255":    lambda r, g, b, a=255: Color(r/255.0, g/255.0, b/255.0, a/255.0),
     "hsv":       _hsv,
     "hsl":       _hsl,
     "from_hex":  _from_hex,
@@ -556,9 +566,20 @@ register_module("grid", {
 # events  — observer / event bus
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _call_inscript_fn(fn, args):
+    """Call either a plain Python callable or an InScriptFunction through the interpreter."""
+    from stdlib_values import InScriptFunction
+    if isinstance(fn, InScriptFunction):
+        raise RuntimeError("No active interpreter to call InScript event callback")
+    return fn(*args)
+
 class EventBus:
     def __init__(self):
         self._listeners = {}
+        self._interp_ref = None   # set by interpreter on import
+
+    def _set_interp(self, interp):
+        self._interp_ref = interp
 
     def on(self, event: str, fn):
         if event not in self._listeners:
@@ -572,13 +593,21 @@ class EventBus:
             self._listeners[event] = [f for f in self._listeners[event] if f is not fn]
 
     def emit(self, event: str, *args):
-        for fn in self._listeners.get(event, []):
-            fn(*args)
+        from stdlib_values import InScriptFunction
+        for fn in list(self._listeners.get(event, [])):
+            if isinstance(fn, InScriptFunction) and self._interp_ref is not None:
+                self._interp_ref._call_function(fn, list(args), [None]*len(args), 0)
+            else:
+                fn(*args)
 
     def once(self, event: str, fn):
         def wrapper(*args):
-            fn(*args)
             self.off(event, wrapper)
+            from stdlib_values import InScriptFunction
+            if isinstance(fn, InScriptFunction) and self._interp_ref is not None:
+                self._interp_ref._call_function(fn, list(args), [None]*len(args), 0)
+            else:
+                fn(*args)
         self.on(event, wrapper)
 
     def clear(self):
@@ -667,27 +696,30 @@ register_module("path", {
 # ─────────────────────────────────────────────────────────────────────────────
 import re as _re
 
-def _re_match(pattern, text, flags=0):
-    m = _re.match(str(pattern), str(text), int(flags))
-    return {"matched": m is not None, "groups": list(m.groups()) if m else [], "span": list(m.span()) if m else []} if m else {"matched": False, "groups": [], "span": []}
+# All regex functions take (text, pattern) — text first, pattern second.
+# This matches user expectation: R.match("hello world", "h.*o")
 
-def _re_search(pattern, text):
+def _re_match(text, pattern, flags=0):
+    m = _re.match(str(pattern), str(text), int(flags))
+    return {"matched": m is not None, "groups": list(m.groups()) if m else [], "span": list(m.span()) if m else [], "value": m.group(0) if m else None}
+
+def _re_search(text, pattern):
     m = _re.search(str(pattern), str(text))
     return {"matched": m is not None, "groups": list(m.groups()) if m else [], "span": list(m.span()) if m else [], "value": m.group(0) if m else None}
 
-def _re_find_all(pattern, text):
+def _re_find_all(text, pattern):
     return _re.findall(str(pattern), str(text))
 
-def _re_sub(pattern, replacement, text, count=0):
+def _re_sub(text, pattern, replacement, count=0):
     return _re.sub(str(pattern), str(replacement), str(text), count=int(count))
 
-def _re_split(pattern, text):
+def _re_split(text, pattern):
     return _re.split(str(pattern), str(text))
 
 def _re_escape(text):
     return _re.escape(str(text))
 
-def _re_test(pattern, text):
+def _re_test(text, pattern):
     return bool(_re.search(str(pattern), str(text)))
 
 register_module("regex", {
