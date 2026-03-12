@@ -99,6 +99,27 @@ class Interpreter(Visitor):
             current = getattr(current, '_resolved_parent', None)
         return None
 
+    def _find_operator(self, instance: InScriptInstance, op_symbol: str):
+        """BUG-06 fix: Search OperatorDecl entries on a struct for a matching operator symbol.
+        Returns InScriptFunction or None."""
+        try:
+            decl = self._env.get(instance.struct_name, 0)
+        except Exception:
+            return None
+        if not isinstance(decl, StructDecl):
+            return None
+        current = decl
+        while isinstance(current, StructDecl):
+            for op_d in (current.operators or []):
+                if op_d.op_symbol == op_symbol:
+                    fn = InScriptFunction(
+                        name=f"operator_{op_symbol}", params=op_d.params,
+                        body=op_d.body, closure=self._env,
+                    )
+                    return fn
+            current = getattr(current, '_resolved_parent', None)
+        return None
+
     def _spawn_thread(self, fn, args: list):
         """Lightweight thread stub — runs fn in background thread."""
         import threading
@@ -976,12 +997,12 @@ class Interpreter(Visitor):
                     # ── ADT namespace pattern: case Shape.Circle or case Direction.North
                     # The pattern node is a NamespaceAccessExpr or GetAttrExpr
                     # We match by variant name WITHOUT evaluating (which gives a factory fn)
-                    from ast_nodes import NamespaceAccessExpr, GetAttrExpr as _GAE
+                    # BUG-07 fix: NamespaceAccessExpr/GetAttrExpr already imported at top via *
                     pat = arm.pattern
                     variant_name = None
                     if isinstance(pat, NamespaceAccessExpr):
                         variant_name = pat.member
-                    elif isinstance(pat, _GAE):
+                    elif isinstance(pat, GetAttrExpr):
                         variant_name = pat.attr
 
                     if (variant_name and isinstance(subject, dict)
@@ -1054,7 +1075,17 @@ class Interpreter(Visitor):
 
     def visit_ThrowStmt(self, node) -> Any:
         val = self.visit(node.value)
-        raise InScriptRuntimeError(str(val), node.line)
+        # BUG-11 fix: tag error with the InScript type name of the thrown value
+        # so that `catch e: string` can match when `throw "hello"` is used
+        if isinstance(val, str):     etype = 'string'
+        elif isinstance(val, bool):  etype = 'bool'
+        elif isinstance(val, int):   etype = 'int'
+        elif isinstance(val, float): etype = 'float'
+        else:                         etype = 'Error'
+        err = InScriptRuntimeError(str(val), node.line)
+        err.error_type = etype
+        err.thrown_value = val
+        raise err
 
     def visit_TryCatchStmt(self, node: TryCatchStmt) -> Any:
         try:
@@ -1083,6 +1114,10 @@ class Interpreter(Visitor):
                 break
             if not handled:
                 raise   # re-raise if no clause matched
+        finally:
+            # BUG-12 fix: always run finally block if present
+            if getattr(node, 'finally_body', None):
+                self.visit(node.finally_body)
         return None
 
     def visit_DecoratedDecl(self, node) -> Any:
@@ -1199,6 +1234,22 @@ class Interpreter(Visitor):
     def visit_NullLiteralExpr(self,  n): return None
 
     def visit_IdentExpr(self, node: IdentExpr) -> Any:
+        # BUG-10 fix: 'super' resolves to a proxy that dispatches to the parent struct's methods
+        if node.name == "super":
+            try:
+                self_val = self._env.get("self", node.line)
+            except Exception:
+                self._error("'super' used outside of a method", node.line)
+            if isinstance(self_val, InScriptInstance):
+                try:
+                    decl = self._env.get(self_val.struct_name, 0)
+                except Exception:
+                    decl = None
+                parent_decl = getattr(decl, '_resolved_parent', None)
+                if parent_decl is not None:
+                    # Return a SuperProxy that knows the parent and self
+                    return _SuperProxy(self_val, parent_decl, self)
+            self._error("'super' only valid in a struct that extends another", node.line)
         return self._env.get(node.name, node.line)
 
     def visit_ArrayLiteralExpr(self, node: ArrayLiteralExpr) -> Any:
@@ -1230,7 +1281,13 @@ class Interpreter(Visitor):
 
         right = self.visit(node.right)
 
-        # Operator overloading: if left is an InScriptInstance, check for __add__, etc.
+        # BUG-06 fix: operator overloading for InScriptInstance via OperatorDecl
+        if isinstance(left, InScriptInstance):
+            op_fn = self._find_operator(left, op)
+            if op_fn is not None:
+                return self._call_function(op_fn, [right], [None], node.line,
+                                           self_instance=left)
+        # Legacy dunder-style overloads (__add__ etc.) kept for backwards compat
         _OP_MAP = {
             "+": "__add__", "-": "__sub__", "*": "__mul__", "/": "__div__",
             "%": "__mod__", "**": "__pow__", "==": "__eq__", "!=": "__ne__",
@@ -1437,17 +1494,23 @@ class Interpreter(Visitor):
         target = node.target
 
         if op != "=":
-            # Compound assignment: read current, apply op, write back
+            # Compound assignment: strip '=' to get operator ("+=" → "+", "**=" → "**")
             cur = self.visit(target)
-            sym_op = op[0]  # '+', '-', '*', '/'
+            sym_op = op.rstrip("=")
             if sym_op == "+":
                 val = (cur + _inscript_str(val)) if isinstance(cur, str) else cur + val
-            elif sym_op == "-": val = cur - val
-            elif sym_op == "*": val = cur * val
+            elif sym_op == "-":  val = cur - val
+            elif sym_op == "**": val = cur ** val
+            elif sym_op == "*":  val = cur * val
             elif sym_op == "/":
                 if val == 0: self._error("Division by zero in compound assignment", node.line)
                 val = cur / val
-            elif sym_op == "%": val = cur % val
+            elif sym_op == "%":  val = cur % val
+            elif sym_op == "&":  val = int(cur) & int(val)
+            elif sym_op == "|": val = int(cur) | int(val)
+            elif sym_op == "^": val = int(cur) ^ int(val)
+            elif sym_op == "<<": val = int(cur) << int(val)
+            elif sym_op == ">>": val = int(cur) >> int(val)
 
         # Write back to the target
         if isinstance(target, IdentExpr):
@@ -1864,11 +1927,21 @@ class Interpreter(Visitor):
         return self.visit(node.expr)
 
     def visit_OptChainExpr(self, node: OptChainExpr) -> Any:
-        """obj?.member — returns None if obj is null instead of erroring."""
+        """obj?.member — returns None if obj is null OR if dict key is absent."""
         obj = self.visit(node.obj)
         if obj is None:
             return None
-        return _get_attr(obj, node.member, node.line, self)
+        # BUG-08 fix: short-circuit when key is absent from a dict
+        if isinstance(obj, dict) and node.member not in obj:
+            # Check it's also not a built-in method name before short-circuiting
+            _dict_methods = {"get","set","has","remove","keys","values","items",
+                             "clear","length","len"}
+            if node.member not in _dict_methods:
+                return None
+        try:
+            return _get_attr(obj, node.member, node.line, self)
+        except Exception:
+            return None
 
     def visit_NullishExpr(self, node: NullishExpr) -> Any:
         """left ?? right — evaluates right only if left is null."""
@@ -2038,6 +2111,23 @@ def _get_attr(obj: Any, name: str, line: int, interp: Interpreter) -> Any:
         if name == "done":   return obj._done
         if name == "value":  return obj._current
 
+    # BUG-10 fix: super proxy dispatches method lookups to parent struct
+    if isinstance(obj, _SuperProxy):
+        parent = obj._parent
+        interp = obj._interp
+        current = parent
+        while isinstance(current, StructDecl):
+            for m in current.methods:
+                if m.name == name:
+                    fn = InScriptFunction(
+                        name=m.name, params=m.params, body=m.body,
+                        closure=interp._env, return_type=m.return_type,
+                    )
+                    fn._bound_self = obj._instance
+                    return fn
+            current = getattr(current, '_resolved_parent', None)
+        interp._error(f"super: parent has no method '{name}'", line)
+
     # Stub namespace fallthrough
     if isinstance(obj, _StubNamespace):
         return _StubMethod(obj.name, name)
@@ -2205,6 +2295,14 @@ class _StubMethod:
     def __init__(self, ns, method): self.ns = ns; self.method = method
     def __call__(self, *args, **kwargs): return None  # no-op in headless mode
     def __repr__(self): return f"<{self.ns}.{self.method}>"
+
+class _SuperProxy:
+    """BUG-10 fix: super proxy — dispatches .method() to the parent struct's implementation."""
+    def __init__(self, instance, parent_decl, interp):
+        self._instance   = instance
+        self._parent     = parent_decl
+        self._interp     = interp
+    def __repr__(self): return f"<super of {self._instance.struct_name}>"
 
 
 # ─────────────────────────────────────────────────────────────────────────────

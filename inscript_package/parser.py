@@ -1191,23 +1191,33 @@ class Parser:
         return self.parse_assignment()
 
     def parse_assignment(self) -> Node:
-        """Assignment: x = v | x += v | obj.field = v | arr[i] = v"""
+        """Assignment: x = v | x += v | x **= v | obj.field = v | arr[i] = v"""
         line, col = self._pos()
         expr = self.parse_ternary()
 
         ASSIGN_OPS = {
-            TT.ASSIGN:   "=",
-            TT.PLUS_EQ:  "+=",
-            TT.MINUS_EQ: "-=",
-            TT.STAR_EQ:  "*=",
-            TT.SLASH_EQ: "/=",
+            TT.ASSIGN:     "=",
+            TT.PLUS_EQ:    "+=",
+            TT.MINUS_EQ:   "-=",
+            TT.STAR_EQ:    "*=",
+            TT.SLASH_EQ:   "/=",
             TT.PERCENT_EQ: "%=",
+            TT.POWER_EQ:   "**=",
+            TT.AMP_EQ:     "&=",
+            TT.PIPE_EQ:    "|=",
+            TT.CARET_EQ:   "^=",
+            TT.LSHIFT_EQ:  "<<=",
+            TT.RSHIFT_EQ:  ">>=",
         }
 
         if self.current.type in ASSIGN_OPS:
             op  = ASSIGN_OPS[self.current.type]
             self.advance()
             val = self.parse_assignment()  # right-associative
+
+            # Extract the binary operator from compound ops (strip trailing =)
+            # e.g. "+=" → "+", "**=" → "**"
+            binop = op.rstrip("=") if op != "=" else None
 
             # Determine which assignment node to create
             if isinstance(expr, IdentExpr):
@@ -1218,10 +1228,8 @@ class Parser:
                     return SetAttrExpr(obj=expr.obj, attr=expr.attr,
                                        value=val, line=line, col=col)
                 else:
-                    # x.y += 5  →  SetAttrExpr(x.y, BinaryExpr(x.y, +, 5))
-                    binop = op[0]  # '+', '-', '*', '/'
-                    rhs   = BinaryExpr(left=expr, op=binop, right=val,
-                                       line=line, col=col)
+                    rhs = BinaryExpr(left=expr, op=binop, right=val,
+                                     line=line, col=col)
                     return SetAttrExpr(obj=expr.obj, attr=expr.attr,
                                        value=rhs, line=line, col=col)
             elif isinstance(expr, IndexExpr):
@@ -1229,9 +1237,8 @@ class Parser:
                     return SetIndexExpr(obj=expr.obj, index=expr.index,
                                         value=val, line=line, col=col)
                 else:
-                    binop = op[0]
-                    rhs   = BinaryExpr(left=expr, op=binop, right=val,
-                                       line=line, col=col)
+                    rhs = BinaryExpr(left=expr, op=binop, right=val,
+                                     line=line, col=col)
                     return SetIndexExpr(obj=expr.obj, index=expr.index,
                                         value=rhs, line=line, col=col)
             else:
@@ -1382,23 +1389,23 @@ class Parser:
 
     def parse_multiplication(self) -> Node:
         line, col = self._pos()
-        left = self.parse_power()
+        left = self.parse_unary()   # BUG-09 fix: call parse_unary (was parse_power)
         while self.check(TT.STAR, TT.SLASH, TT.SLASH_SLASH, TT.PERCENT) or self.check(TT.DIV):
             op_tok = self.advance()
-            # 'div' keyword maps to floor division operator
             op    = "//" if op_tok.type == TT.DIV else op_tok.value
-            right = self.parse_power()
+            right = self.parse_unary()
             left  = BinaryExpr(left=left, op=op, right=right,
                                 line=line, col=col)
         return left
 
     def parse_power(self) -> Node:
-        """Power is right-associative: 2 ** 3 ** 2 = 2 ** (3 ** 2)"""
+        """Power is right-associative. BUG-09 fix: base is parse_postfix so that
+        -2**2 is parsed as -(2**2)=-4, not (-2)**2=4."""
         line, col = self._pos()
-        base = self.parse_unary()
+        base = self.parse_postfix()      # BUG-09 fix: was parse_unary
         if self.check(TT.POWER):
             self.advance()
-            exp = self.parse_power()  # right-recursive
+            exp = self.parse_unary()     # right side allows unary (e.g. 2**-3)
             return BinaryExpr(left=base, op="**", right=exp,
                               line=line, col=col)
         return base
@@ -1411,13 +1418,13 @@ class Parser:
             return UnaryExpr(op=op, operand=operand, line=line, col=col)
         if self.check(TT.MINUS):
             self.advance()
-            operand = self.parse_unary()
+            operand = self.parse_power()   # BUG-09 fix: call parse_power so -2**2=-(2**2)
             return UnaryExpr(op="-", operand=operand, line=line, col=col)
         if self.check(TT.BIT_NOT):
             self.advance()
             operand = self.parse_unary()
             return UnaryExpr(op="~", operand=operand, line=line, col=col)
-        return self.parse_postfix()
+        return self.parse_power()
 
     def parse_postfix(self) -> Node:
         """Handle dot access, index access, function calls."""
@@ -1689,6 +1696,11 @@ class Parser:
             name = tok.value
             self.advance()
             return IdentExpr(name=name, line=line, col=col)
+
+        # BUG-10 fix: super.method() — resolve to parent struct method call
+        if tok.type == TT.SUPER:
+            self.advance()
+            return IdentExpr(name="super", line=line, col=col)
 
         self._error(
             f"Unexpected token '{tok.value}' ({tok.type.name}) — expected an expression"
@@ -2010,7 +2022,7 @@ class Parser:
         return DecoratedDecl(decorators=decorators, target=target, line=line, col=col)
 
     def parse_try_catch(self) -> "TryCatchStmt":
-        """try { ... } catch(e) { ... } [catch(e: T) { ... }] — multi-catch supported"""
+        """try { ... } catch(e) { ... } [catch e: T { ... }] [finally { ... }]"""
         line, col = self._pos()
         self.advance()  # consume 'try'
         body = self.parse_block()
@@ -2025,8 +2037,16 @@ class Parser:
                 self.expect(TT.RPAREN, "Expected ')' after catch variable")
             elif self.check(TT.IDENT):
                 c_var = self.advance().value
+                # BUG-11 fix: support typed catch without parens: catch e: string { }
+                if self.match(TT.COLON):
+                    c_type = self.parse_type_annotation()
             c_handler = self.parse_block()
             catch_clauses.append({"var": c_var, "type": c_type, "handler": c_handler})
+
+        # BUG-12 fix: parse optional finally block
+        finally_body = None
+        if self.match(TT.FINALLY):
+            finally_body = self.parse_block()
 
         # For backwards compat: also expose first clause as top-level fields
         catch_var  = catch_clauses[0]["var"]     if catch_clauses else None
@@ -2037,6 +2057,7 @@ class Parser:
         return TryCatchStmt(body=body, catch_var=catch_var,
                              catch_type=catch_type, handler=handler,
                              catch_clauses=catch_clauses,
+                             finally_body=finally_body,
                              line=line, col=col)
 
     def parse_throw(self) -> "ThrowStmt":

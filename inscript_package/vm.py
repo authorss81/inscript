@@ -205,6 +205,33 @@ def _is_type(v, tn):
     if isinstance(v,VMEnumVariant): return v.enum_name == tn
     return False
 
+def _run_gen_via_interp(node, arg_vals, globals_dict):
+    """BUG-24 fix: run a GeneratorFnDecl via a sub-interpreter (same path as the
+    tree-walking interpreter uses). The VM stores generator functions as
+    ('__gen_decl__', node) tuples; calling them goes through here."""
+    from interpreter import Interpreter
+    from environment import Environment
+
+    interp = Interpreter.__new__(Interpreter)
+    interp._src = '<vm_gen>'; interp._call_depth = 0; interp._MAX_CALL_DEPTH = 200
+    from errors import InScriptCallStack
+    interp._call_stack = InScriptCallStack('<vm_gen>')
+    # Share globals so user-defined names are visible
+    global_env = Environment(name='gen_global')
+    for k, v in globals_dict.items():
+        global_env.define(k, v)
+    interp._globals = global_env
+    interp._env = global_env
+
+    # Delegate to the interpreter's own visit_GeneratorFnDecl logic, which handles
+    # threading + queue protocol correctly, then call the resulting factory.
+    interp.visit_GeneratorFnDecl(node)
+    factory = global_env._store.get(node.name)
+    if callable(factory):
+        return factory(*arg_vals)
+    raise InScriptRuntimeError(f"generator factory for '{node.name}' not callable", 0, 0, "")
+
+
 def _eval_default(node, vm):
     from ast_nodes import (IntLiteralExpr,FloatLiteralExpr,StringLiteralExpr,
                             BoolLiteralExpr,NullLiteralExpr,ArrayLiteralExpr,DictLiteralExpr)
@@ -392,7 +419,11 @@ class VM:
                 elif op==Op.LOAD_FALSE: W(a,False)
                 elif op==Op.LOAD_INT:   W(a, b if b<=32767 else b-65536)
                 elif op==Op.LOAD_CONST: W(a, consts[b])
-                elif op==Op.LOAD_GLOBAL:W(a, self._globals.get(names[b]))
+                elif op==Op.LOAD_GLOBAL:
+                    _gn = names[b]
+                    if _gn not in self._globals:
+                        raise InScriptRuntimeError(f"Undefined variable '{_gn}'", 0, 0, "")
+                    W(a, self._globals[_gn])
                 elif op==Op.STORE_GLOBAL: self._globals[names[a]] = R(b)
                 elif op==Op.LOAD_UPVAL: W(a, frame.closure.upvals[b].value)
                 elif op==Op.STORE_UPVAL:frame.closure.upvals[a].value = R(b)
@@ -436,6 +467,14 @@ class VM:
                         if r is _NOTFOUND: r = self._op_overload(av, '-', None)
                         W(a, r if r is not _NOTFOUND else -av)
                     else: W(a, -av)
+
+                # ── bitwise ───────────────────────────────────────────────────
+                elif op==Op.BAND:   W(a, int(R(b)) & int(R(c)))
+                elif op==Op.BOR:    W(a, int(R(b)) | int(R(c)))
+                elif op==Op.BXOR:   W(a, int(R(b)) ^ int(R(c)))
+                elif op==Op.BLSHIFT:W(a, int(R(b)) << int(R(c)))
+                elif op==Op.BRSHIFT:W(a, int(R(b)) >> int(R(c)))
+                elif op==Op.BNOT:   W(a, ~int(R(b)))
 
                 # ── comparison ────────────────────────────────────────────────
                 elif op==Op.EQ:
@@ -621,7 +660,10 @@ class VM:
             # All exceptions (including InScriptRuntimeError) go through _handle_exc
             except Exception as e:
                 r = self._handle_exc(e, frame)
-                if r is _RETHROW: raise InScriptRuntimeError(str(e),0,0,"")
+                if r is _RETHROW:
+                    # Re-raise as-is if already an InScriptRuntimeError to avoid double-wrapping
+                    if isinstance(e, InScriptRuntimeError): raise
+                    raise InScriptRuntimeError(str(e),0,0,"")
                 ip, er, ev = r; W(er, ev); continue
 
         return None
@@ -702,6 +744,14 @@ class VM:
     def _do_call(self, fn, args, self_val):
         if fn is None: raise InScriptRuntimeError("called nil",0,0,"")
 
+        # BUG-24 fix: generator function descriptor → run via sub-interpreter
+        if isinstance(fn, tuple) and len(fn) == 2 and fn[0] == '__gen_decl__':
+            node = fn[1]
+            main_globals = self._globals
+            def _make_gen(*a):
+                return _run_gen_via_interp(node, a, main_globals)
+            return _make_gen(*args)
+
         if isinstance(fn, VMClosure):
             proto = fn.proto
             # struct/enum descriptor used as constructor
@@ -715,6 +765,13 @@ class VM:
                 idx = r0+i
                 while idx >= len(frame.regs): frame.regs.append(None)
                 frame.regs[idx] = v
+            # BUG-23 fix: fill in default values for missing parameters
+            if proto.param_defaults:
+                for pi, pname in enumerate(proto.params):
+                    reg = r0 + pi
+                    while reg >= len(frame.regs): frame.regs.append(None)
+                    if frame.regs[reg] is None and pname in proto.param_defaults:
+                        frame.regs[reg] = _eval_default(proto.param_defaults[pname], self)
             return self._exec(frame)
 
         if isinstance(fn, dict):
@@ -725,6 +782,18 @@ class VM:
                 arg = args[0]
                 for nm, v in fn.variants.items():
                     if nm==arg or v==arg: return VMEnumVariant(fn.name,nm,v)
+            return fn
+
+        # ADT enum variant with data fields: Shape.Circle(5.0) → tagged dict
+        if isinstance(fn, VMEnumVariant):
+            v = fn.value
+            if isinstance(v, dict) and '__adt_fields__' in v:
+                fields = v['__adt_fields__']
+                d = {'_variant': fn.name, '_enum': fn.enum_name}
+                for i, fname in enumerate(fields):
+                    d[fname] = args[i] if i < len(args) else None
+                return d
+            # Simple variant called as function — just return itself
             return fn
 
         if isinstance(fn, type) and fn in (Vec2,Vec3,Color,Rect): return fn(*args)

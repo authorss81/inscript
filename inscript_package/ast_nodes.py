@@ -443,6 +443,7 @@ class TryCatchStmt(Node):
     catch_type:   Optional[TypeAnnotation]
     handler:      "BlockStmt"
     catch_clauses: Optional[List[dict]] = None # [{"var":..,"type":..,"handler":..}]
+    finally_body:  Optional["BlockStmt"] = None  # BUG-12 fix
 
 @dataclass
 class SpawnExpr(Node):

@@ -49,7 +49,9 @@ class TT(Enum):
     EXPORT      = auto()   # export fn / export struct / export const
     TRY         = auto()
     CATCH       = auto()
+    FINALLY     = auto()
     THROW       = auto()
+    SUPER       = auto()
     ENUM        = auto()
     INTERFACE   = auto()
     IMPL        = auto()
@@ -94,6 +96,7 @@ class TT(Enum):
     SLASH_EQ    = auto()
     SLASH_SLASH = auto()
     PERCENT_EQ  = auto()
+    POWER_EQ    = auto()   # BUG-13 fix: **=
 
     # ── Delimiters ────────────────────────────────
     LPAREN      = auto()
@@ -128,6 +131,11 @@ class TT(Enum):
     BIT_NOT     = auto()        # ~
     LSHIFT      = auto()        # <<
     RSHIFT      = auto()        # >>
+    AMP_EQ      = auto()        # &=
+    PIPE_EQ     = auto()        # |=
+    CARET_EQ    = auto()        # ^=
+    LSHIFT_EQ   = auto()        # <<=
+    RSHIFT_EQ   = auto()        # >>=
 
     # ── Special ───────────────────────────────────
     EOF         = auto()
@@ -171,7 +179,9 @@ KEYWORDS: dict = {
     "export":    TT.EXPORT,
     "try":       TT.TRY,
     "catch":     TT.CATCH,
+    "finally":   TT.FINALLY,
     "throw":     TT.THROW,
+    "super":     TT.SUPER,
     "enum":      TT.ENUM,
     "interface": TT.INTERFACE,
     "impl":      TT.IMPL,
@@ -488,7 +498,9 @@ class Lexer:
             elif self.match("="): emit(TT.MINUS_EQ, "-=")
             else:               emit(TT.MINUS,       "-")
         elif ch == "*":
-            if self.match("*"): emit(TT.POWER,      "**")
+            if self.match("*"):
+                if self.match("="): emit(TT.POWER_EQ, "**=")  # BUG-13 fix
+                else:               emit(TT.POWER,     "**")
             elif self.match("="): emit(TT.STAR_EQ,  "*=")
             else:               emit(TT.STAR,         "*")
         elif ch == "/":
@@ -505,21 +517,29 @@ class Lexer:
             if self.match("="): emit(TT.NEQ,        "!=")
             else:               emit(TT.NOT,          "!")
         elif ch == "<":
-            if self.match("<"):   emit(TT.LSHIFT,      "<<")
+            if self.match("<"):
+                if self.match("="): emit(TT.LSHIFT_EQ,   "<<=" )
+                else:               emit(TT.LSHIFT,        "<<")
             elif self.match("="): emit(TT.LTE,         "<=")
             else:                 emit(TT.LT,            "<")
         elif ch == ">":
-            if self.match(">"):   emit(TT.RSHIFT,      ">>")
+            if self.match(">"):
+                if self.match("="): emit(TT.RSHIFT_EQ,   ">>=")
+                else:               emit(TT.RSHIFT,        ">>")
             elif self.match("="): emit(TT.GTE,         ">=")
             else:                 emit(TT.GT,            ">")
         elif ch == "&":
             if self.match("&"): emit(TT.AND,           "&&")
+            elif self.match("="): emit(TT.AMP_EQ,     "&=")
             else:               emit(TT.BIT_AND,         "&")
         elif ch == "|":
             if self.match("|"):  emit(TT.OR,            "||")
             elif self.match(">"): emit(TT.PIPE_GT,      "|>")
+            elif self.match("="): emit(TT.PIPE_EQ,     "|=")
             else:                emit(TT.BIT_OR,          "|")
-        elif ch == "^":         emit(TT.BIT_XOR,         "^")
+        elif ch == "^":
+            if self.match("="): emit(TT.CARET_EQ,     "^=")
+            else:               emit(TT.BIT_XOR,         "^")
         elif ch == "~":         emit(TT.BIT_NOT,         "~")
         elif ch == ".":
             if self.current == "." and self.peek == ".":

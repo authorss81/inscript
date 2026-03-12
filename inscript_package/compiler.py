@@ -22,6 +22,7 @@ class Op(IntEnum):
     MOVE=auto()
     ADD=auto(); SUB=auto(); MUL=auto(); DIV=auto()
     MOD=auto(); POW=auto(); IDIV=auto(); NEG=auto()
+    BAND=auto(); BOR=auto(); BXOR=auto(); BNOT=auto(); BLSHIFT=auto(); BRSHIFT=auto()
     EQ=auto(); NEQ=auto(); LT=auto(); LTE=auto(); GT=auto(); GTE=auto()
     NOT=auto()
     CONCAT=auto(); INTERP=auto()
@@ -66,6 +67,7 @@ class FnProto:
     n_upvals: int                 = 0
     source_name: str              = "<script>"
     is_method: bool               = False
+    param_defaults: dict          = field(default_factory=dict)  # BUG-23: name→AST default node
 
     def const_idx(self, v) -> int:
         for i, c in enumerate(self.consts):
@@ -225,8 +227,14 @@ class Compiler:
         elif isinstance(node, VarDecl):
             r = self._expr(node.initializer) if node.initializer else (
                 lambda d=self._alloc(): (self._e(Op.LOAD_NIL, d), d)[1])()
-            lr = self._scope.add_local(node.name)
-            if r != lr: self._e(Op.MOVE, lr, r); self._free(r)
+            if self._scope.parent is None and self._scope.depth == 0:
+                # Top-level let/const (not inside any block) → persist in VM
+                # globals via STORE_GLOBAL so state survives across run() calls.
+                self._e(Op.STORE_GLOBAL, self._name(node.name), r)
+                self._free(r)
+            else:
+                lr = self._scope.add_local(node.name)
+                if r != lr: self._e(Op.MOVE, lr, r); self._free(r)
 
         elif isinstance(node, BlockStmt):
             self._scope.begin_block()
@@ -258,6 +266,7 @@ class Compiler:
             self._e(Op.PRINT, s, n); self._free_to(t)
 
         elif isinstance(node, FunctionDecl):   self._fn_decl(node)
+        elif isinstance(node, GeneratorFnDecl): self._gen_fn_decl(node)
         elif isinstance(node, StructDecl):     self._struct_decl(node)
         elif isinstance(node, EnumDecl):       self._enum_decl(node)
         elif isinstance(node, InterfaceDecl):  pass
@@ -361,8 +370,21 @@ class Compiler:
         # Also store in globals so recursive calls (LOAD_GLOBAL) work
         self._e(Op.STORE_GLOBAL, self._name(node.name), lr)
 
+    def _gen_fn_decl(self, node):
+        """BUG-24 fix: store GeneratorFnDecl as a special descriptor.
+        The VM calls it via a sub-interpreter (same as interpreter path)."""
+        desc = ('__gen_decl__', node)
+        dst  = self._alloc()
+        self._e(Op.LOAD_CONST, dst, self._const(desc))
+        self._e(Op.STORE_GLOBAL, self._name(node.name), dst)
+        self._free(dst)
+
     def _compile_fn(self, name, params, body, is_method=False):
         proto  = FnProto(name, [p.name for p in params], source_name=self._src, is_method=is_method)
+        # BUG-23 fix: store default AST nodes so VM can fill missing args
+        for p in params:
+            if p.default is not None:
+                proto.param_defaults[p.name] = p.default
         parent = self._scope; self._scope = _Scope(proto, parent=parent)
         if is_method: self._scope.add_local('self')
         for p in params: self._scope.add_local(p.name)
@@ -403,11 +425,16 @@ class Compiler:
     def _enum_decl(self, node):
         variants = {}
         for i, v in enumerate(node.variants):
-            val = v.value
-            if val is None: val = i
-            elif isinstance(val, IntLiteralExpr): val = val.value
-            elif isinstance(val, StringLiteralExpr): val = val.value
-            variants[v.name] = val
+            if v.fields:
+                # ADT variant: store field names so VM can build tagged dict on call
+                variants[v.name] = {'__adt_fields__': [f[0] for f in v.fields],
+                                    '__enum__': node.name, '__variant__': v.name}
+            else:
+                val = v.value
+                if val is None: val = i
+                elif isinstance(val, IntLiteralExpr): val = val.value
+                elif isinstance(val, StringLiteralExpr): val = val.value
+                variants[v.name] = val
         desc = {'__type__':'enum_decl','__name__':node.name,'__variants__':variants,'__node__':node}
         dst = self._alloc()
         self._e(Op.LOAD_CONST, dst, self._const(desc))
@@ -466,7 +493,8 @@ class Compiler:
 
     # ── expressions ───────────────────────────────────────────────────────────
     _ARITH = {'+':Op.ADD,'-':Op.SUB,'*':Op.MUL,'/':Op.DIV,
-              '%':Op.MOD,'**':Op.POW,'div':Op.IDIV,'//':Op.IDIV,'++':Op.CONCAT}
+              '%':Op.MOD,'**':Op.POW,'div':Op.IDIV,'//':Op.IDIV,'++':Op.CONCAT,
+              '&':Op.BAND,'|':Op.BOR,'^':Op.BXOR,'<<':Op.BLSHIFT,'>>':Op.BRSHIFT}
     _CMP   = {'==':Op.EQ,'!=':Op.NEQ,'<':Op.LT,'<=':Op.LTE,'>':Op.GT,'>=':Op.GTE}
 
     def _expr(self, node):
@@ -488,6 +516,7 @@ class Compiler:
             src = self._expr(node.operand)
             if node.op == '-': self._e(Op.NEG, dst, src)
             elif node.op in ('!','not'): self._e(Op.NOT, dst, src)
+            elif node.op == '~': self._e(Op.BNOT, dst, src)
             else: self._e(Op.MOVE, dst, src)
             self._free(src)
 
@@ -561,7 +590,8 @@ class Compiler:
             self._patch_b(je); self._free(left)
 
         elif isinstance(node, PipeExpr):
-            arg = self._expr(node.left); fn = self._expr(node.right)
+            # BUG-22 fix: PipeExpr uses .value and .fn, not .left/.right
+            fn = self._expr(node.fn); arg = self._expr(node.value)
             self._e(Op.MOVE, fn+1, arg); self._e(Op.CALL, fn, 1, dst)
             self._free(fn); self._free(arg)
 
@@ -607,7 +637,7 @@ class Compiler:
             r  = self._expr(node.right); self._e(Op.MOVE, dst, r); self._free(r)
             self._patch_b(jt); return dst
         # compound assign
-        if op in ('+=','-=','*=','/=','%=','**=','div=','++='):
+        if op in ('+=','-=','*=','/=','%=','**=','div=','++=','&=','|=','^=','<<=','>>='): 
             base = op[:-1]
             lv = self._expr(node.left); rv = self._expr(node.right)
             vm = self._ARITH.get(base, Op.ADD); self._e(vm, dst, lv, rv)
@@ -786,33 +816,50 @@ class Compiler:
     def _list_comp(self, node):
         t = self._top(); res = self._alloc()
         self._e(Op.MAKE_ARRAY, res, t, 0)
-        isrc = self._expr(node.iterable); ir = self._alloc()
-        self._e(Op.ITER_START, ir, isrc); self._free(isrc)
-        ls   = len(self._scope.proto.code)
-        self._break_patches.append([]); self._cont_patches.append([])
-        vr   = self._alloc(); jx = self._e(Op.ITER_NEXT, vr, ir, 0)
-        self._scope.begin_block()
-        lr = self._scope.add_local(node.var); self._e(Op.MOVE, lr, vr)
+
+        # Build list of all clauses: first clause + extra_clauses
+        clauses = [{'var': node.var, 'iterable': node.iterable, 'condition': node.condition}]
+        for ec in (node.extra_clauses or []):
+            clauses.append(ec)
+
+        # Nested loop state: (iter_reg, loop_start_ip, jump_exit_instr_idx)
+        loop_stack = []
+
+        for clause in clauses:
+            isrc = self._expr(clause['iterable']); ir = self._alloc()
+            self._e(Op.ITER_START, ir, isrc); self._free(isrc)
+            ls   = len(self._scope.proto.code)
+            self._break_patches.append([]); self._cont_patches.append([])
+            vr   = self._alloc(); jx = self._e(Op.ITER_NEXT, vr, ir, 0)
+            self._scope.begin_block()
+            lr = self._scope.add_local(clause['var']); self._e(Op.MOVE, lr, vr)
+            loop_stack.append((ir, ls, jx, vr))
+
+        # Optional condition (only on last clause for simplicity)
         js = None
-        if node.condition:
-            cr = self._expr(node.condition); js = self._e(Op.JUMP_IF_FALSE, cr, 0); self._free(cr)
+        last_condition = clauses[-1].get('condition') or node.condition
+        if last_condition:
+            cr = self._expr(last_condition); js = self._e(Op.JUMP_IF_FALSE, cr, 0); self._free(cr)
+
         er = self._expr(node.expr)
-        # Use GET_FIELD + CALL instead of CALL_METHOD:
-        # CALL_METHOD reads args from a+1 which conflicts with iter state at low registers.
         fn_r  = self._alloc()
         self._e(Op.GET_FIELD, fn_r, res, self._name('append'))
         arg_r = self._alloc()
         if er != arg_r: self._e(Op.MOVE, arg_r, er)
         self._e(Op.CALL, fn_r, 1, fn_r)
-        self._scope.n_regs = fn_r   # release fn_r and arg_r
+        self._scope.n_regs = fn_r
+
         if js: self._patch_b(js)
-        self._scope.end_block()
-        self._e(Op.JUMP, 0, ls - len(self._scope.proto.code) - 1)
-        ep = len(self._scope.proto.code); self._patch_c(jx, ep-jx-1)
-        self._free(vr); self._free_to(t)
-        self._break_patches.pop(); self._cont_patches.pop()
-        # res holds the completed list; just return it directly
-        # (do NOT free res — the result must stay alive for callers to use)
+
+        # Close loops in reverse order
+        for (ir, ls, jx, vr) in reversed(loop_stack):
+            self._scope.end_block()
+            self._e(Op.JUMP, 0, ls - len(self._scope.proto.code) - 1)
+            ep = len(self._scope.proto.code); self._patch_c(jx, ep-jx-1)
+            self._free(vr)
+            self._break_patches.pop(); self._cont_patches.pop()
+
+        self._free_to(t)
         self._scope.n_regs = res + 1
         return res
 

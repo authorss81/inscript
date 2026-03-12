@@ -1,545 +1,729 @@
-# inscript/repl.py  —  Phase 28: Enhanced REPL + Playground
+# inscript/repl.py  —  Enhanced REPL v2
 #
-# Features beyond the basic REPL in inscript.py:
-#   • Tab-completion for keywords, built-ins, user-defined symbols
-#   • Persistent history across sessions (~/.inscript/history)
-#   • Multi-line smart detection (auto-continues on open braces)
-#   • Syntax highlighting in terminal (ANSI colours)
-#   • .help  .vars  .fns  .clear  .save  .load  .time  .bytecode  .asm commands
-#   • Session recording: .save session.ins writes current session to file
-#   • :time expression  — measure execution time
-#   • Web playground server: python -m inscript.repl --web [--port 8080]
+# Terminal features:
+#   * Tab-completion: keywords, builtins, user symbols, member access after "."
+#   * Persistent history  (~/.inscript/history)
+#   * Multi-line smart detection (balanced braces; backslash continuation)
+#   * Line-numbered continuation prompts  (... 2   ... 3 )
+#   * Syntax highlighting (ANSI)
+#   * Auto-print: bare expressions show their value like Python REPL
+#   * Source context in error messages (offending line + caret)
+#   * !! repeats last command
 #
-# Usage:
-#   python -m inscript.repl              # enhanced terminal REPL
-#   python -m inscript.repl --web        # open browser playground
-#   python -m inscript.repl --web --port 8080
+# Commands:
+#   .help / .vars / .fns / .types / .env / .inspect <e> / .type <e>
+#   .doc <module> / .clear / .reset / .save <f> / .load <f> / .run <f>
+#   .export [f] / .time <e> / .bench <e> / .bytecode [src] / .asm [src]
+#   .vm  (toggle VM vs interpreter)  / .history [n] / .modules / .packages
+#
+# Web playground:
+#   python -m inscript.repl --web [--port 8080]
 
 from __future__ import annotations
-import os, sys, json, time, readline, atexit, textwrap
+import os, sys, json, time, math, readline, atexit, re as _re
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Any, Tuple
 
 sys.path.insert(0, str(Path(__file__).parent))
 
 HISTORY_FILE = Path.home() / ".inscript" / "history"
 HISTORY_FILE.parent.mkdir(parents=True, exist_ok=True)
+VERSION = "1.0.2"
 
-# ── ANSI colours ─────────────────────────────────────────────────────────────
-def _c(code: str, text: str) -> str:
+# ── ANSI colours ──────────────────────────────────────────────────────────────
+def _c(code, text):
     if not sys.stdout.isatty(): return text
     return f"\033[{code}m{text}\033[0m"
 
-CYAN    = lambda t: _c("36",   t)
-GREEN   = lambda t: _c("32",   t)
-YELLOW  = lambda t: _c("33",   t)
-MAGENTA = lambda t: _c("35",   t)
-RED     = lambda t: _c("31",   t)
-BOLD    = lambda t: _c("1",    t)
-DIM     = lambda t: _c("2",    t)
-BLUE    = lambda t: _c("34",   t)
+CYAN    = lambda t: _c("36",       t)
+GREEN   = lambda t: _c("32",       t)
+YELLOW  = lambda t: _c("33",       t)
+MAGENTA = lambda t: _c("35",       t)
+RED     = lambda t: _c("31",       t)
+BOLD    = lambda t: _c("1",        t)
+DIM     = lambda t: _c("2",        t)
+BLUE    = lambda t: _c("34",       t)
+ORANGE  = lambda t: _c("38;5;214", t)
 
-BANNER = f"""
-{BOLD(CYAN('  ___       ____            _       _   '))}
-{BOLD(CYAN(' |_ _|_ __ / ___|  ___ _ __(_)_ __ | |_ '))}
-{BOLD(CYAN('  | || `_ \\\\___ \\ / __| `__| | `_ \\| __|'))}
-{BOLD(CYAN('  | || | | |___) | (__| |  | | |_) | |_ '))}
-{BOLD(CYAN(' |___|_| |_|____/ \\___|_|  |_| .__/ \\__|'))}
-{BOLD(CYAN('                             |_|        '))}
-  {GREEN('InScript v1.0.1')} — Interactive Shell
-  Type {YELLOW('.help')} for commands, {YELLOW('exit')} to quit
+BANNER = """\n  {C}InScript v{V}{R} — Interactive Shell\n  Type {Y}.help{R} for commands, {Y}exit{R} to quit\n""".format(
+    C="\033[1;36m", V=VERSION, R="\033[0m", Y="\033[33m")
+
+HELP_TEXT = """
+REPL Commands:
+  .help                Show this help
+  .vars                List all defined variables
+  .fns                 List all defined functions
+  .types               List all defined struct/enum types
+  .env                 Show full environment tree
+  .inspect <expr>      Deep field/method inspection
+  .type <expr>         Show the type of an expression
+  .doc <module>        Show stdlib module exports
+  .clear               Reset session variables
+  .reset               Full reset (interpreter + history)
+  .save <file>         Save session to .ins file
+  .load / .run <file>  Load and run a .ins file
+  .export [file]       Export session as Markdown
+  .time <expr>         Measure execution time (10 runs)
+  .bench <expr>        Statistical benchmark (100 runs)
+  .bytecode [expr]     Compact bytecode listing
+  .asm [expr]          Full annotated assembly
+  .vm                  Toggle VM / interpreter execution mode
+  .history [n]         Show last n commands (default 20)
+  .modules             List importable stdlib modules
+  .packages            List installed packages
+  exit / quit          Leave REPL
+
+Shortcuts:
+  Up/Down   Navigate history        Tab   Auto-complete
+  !!        Repeat last command      Ctrl+C  Cancel input
+
+Multi-line:
+  Open a brace { and press Enter — REPL continues until balanced
+  Continuation shows line numbers:  ... 2   ... 3
+  End a line with \\ to force continuation
+
+Auto-print:
+  Bare expressions show their value automatically:
+    >>> 2 + 2
+      → 4
 """
-
-HELP_TEXT = f"""
-{BOLD('REPL Commands:')}
-  {YELLOW('.help')}              Show this help
-  {YELLOW('.vars')}              List all defined variables
-  {YELLOW('.fns')}               List all defined functions
-  {YELLOW('.types')}             List all defined structs
-  {YELLOW('.clear')}             Clear session (reset all variables)
-  {YELLOW('.save')} <file>       Save session to .ins file
-  {YELLOW('.load')} <file>       Load and run a .ins file
-  {YELLOW('.time')} <expr>       Measure execution time of expression
-  {YELLOW('.bytecode')} [expr]      Show compact bytecode for last (or given) expression
-  {YELLOW('.asm')} [expr]          Show full annotated assembly with constants/names tables
-  {YELLOW('.history')}           Show command history
-  {YELLOW('.reset')}             Full reset (interpreter + history)
-  {YELLOW('.type')} <expr>       Show the type of an expression
-  {YELLOW('.modules')}           List all importable stdlib modules
-  {YELLOW('.packages')}          List installed packages
-  {YELLOW('exit')} / {YELLOW('quit')}       Exit the REPL
-
-{BOLD('Keyboard shortcuts:')}
-  {YELLOW('↑ / ↓')}             Navigate history
-  {YELLOW('Tab')}               Auto-complete
-  {YELLOW('Ctrl+C')}            Cancel current input
-  {YELLOW('Ctrl+D')}            Exit
-
-{BOLD('Multi-line input:')}
-  Open a brace {{'}} and press Enter — REPL continues until balanced
-  Or end a line with \\ to continue on next line
-
-{BOLD('Examples:')}
-  >>> let x = 42
-  >>> fn square(n) {{ return n * n }}
-  >>> square(x)
-    → 1764
-  >>> for i in range(5) {{
-  ...     print(i * i)
-  ... }}
-"""
-
-KEYWORDS = [
-    # Control flow
-    "let","const","fn","struct","enum","interface","mixin","impl","extends",
-    "implements","if","else","while","for","in","return","break","continue",
-    "match","case","import","from","export","async","await","yield",
-    "try","catch","throw","abstract","select","true","false","nil","self",
-    # Built-in functions
-    "print","len","string","int","float","bool","typeof","range",
-    "push","pop","contains","sort","reverse","map","filter","reduce",
-    "zip","enumerate","flatten","unique","chunk","take","skip",
-    "sum","min","max","abs","sqrt","floor","ceil","round","pow",
-    "split","join","trim","upper","lower","replace","starts_with","ends_with",
-    "substring","char_code","from_code","parse_int","parse_float",
-    "has_key","keys","values","entries","delete","merge",
-    "is_nil","is_int","is_float","is_str","is_bool","is_array","is_dict",
-    "Ok","Err","thread","chan_send","chan_recv","sleep","implements","fields_of",
-]
 
 STDLIB_MODULES = [
-    "math","string","array","io","json","random","time","color","tween",
-    "grid","events","debug","http","path","regex","csv","uuid","crypto",
+    "math","string","array","io","json","random","time","color",
+    "tween","grid","events","debug","http","path","regex","csv","uuid","crypto",
 ]
 
+STDLIB_DOCS = {
+    "math":   ["sin(x)","cos(x)","tan(x)","sqrt(x)","pow(x,y)","abs(x)","floor(x)",
+               "ceil(x)","round(x)","log(x)","log2(x)","exp(x)","PI","E","TAU","INF","NAN"],
+    "string": ["len(s)","upper(s)","lower(s)","trim(s)","split(s,sep)","join(a,sep)",
+               "replace(s,old,new)","contains(s,sub)","starts_with(s,p)","ends_with(s,p)",
+               "substring(s,a,b)","repeat(s,n)","pad_start(s,n,c)","index_of(s,sub)"],
+    "array":  ["len(a)","push(a,v)","pop(a)","insert(a,i,v)","remove(a,i)","contains(a,v)",
+               "sort(a)","reverse(a)","map(a,fn)","filter(a,fn)","reduce(a,fn,i)",
+               "zip(a,b)","enumerate(a)","unique(a)","chunk(a,n)","take(a,n)","skip(a,n)",
+               "sum(a)","min(a)","max(a)","any(a,fn)","all(a,fn)"],
+    "random": ["int(min,max)","float(min,max)","bool()","choice(arr)","shuffle(arr)","seed(n)"],
+    "json":   ["parse(s)","stringify(v)","stringify_pretty(v)"],
+    "io":     ["read_file(p)","write_file(p,s)","append_file(p,s)","read_lines(p)",
+               "file_exists(p)","delete_file(p)","list_dir(p)","input(prompt)"],
+    "time":   ["now()","sleep(ms)","format(t,fmt)"],
+    "regex":  ["match(pat,s)","find(pat,s)","find_all(pat,s)","replace(pat,s,r)","test(pat,s)"],
+    "path":   ["join(...)","exists(p)","dir(p)","base(p)","ext(p)","absolute(p)"],
+    "color":  ["rgb(r,g,b)","rgba(r,g,b,a)","hsv(h,s,v)","lerp(a,b,t)",
+               "from_hex(s)","to_hex(c)","BLACK","WHITE","RED","GREEN","BLUE"],
+}
 
-# ─────────────────────────────────────────────────────────────────────────────
-# SYNTAX HIGHLIGHTER (terminal)
-# ─────────────────────────────────────────────────────────────────────────────
+KEYWORDS = [
+    "let","const","fn","struct","enum","interface","mixin","impl","extends","implements",
+    "if","else","while","for","in","return","break","continue","match","case",
+    "import","from","export","async","await","yield","try","catch","finally","throw",
+    "abstract","select","true","false","nil","self","super","operator","static",
+    "print","len","string","int","float","bool","typeof","range",
+    "push","pop","contains","sort","reverse","map","filter","reduce","zip","enumerate",
+    "flatten","unique","chunk","take","skip","sum","min","max","abs","sqrt",
+    "floor","ceil","round","pow","split","join","trim","upper","lower","replace",
+    "starts_with","ends_with","substring","has_key","keys","values","entries",
+    "is_nil","is_int","is_float","is_str","is_bool","is_array","is_dict","Ok","Err",
+]
 
-import re as _re
-
-_KW_RE  = _re.compile(r'\b(let|const|fn|struct|scene|ai|state|if|else|while|for|in|return|break|continue|match|true|false|null|self)\b')
+# ── SYNTAX HIGHLIGHTER ────────────────────────────────────────────────────────
+_KW_RE  = _re.compile(r'\b(let|const|fn|struct|enum|interface|if|else|while|for|in|return|'
+                      r'break|continue|match|case|import|from|export|async|await|yield|try|'
+                      r'catch|finally|throw|true|false|nil|self|super|operator|static)\b')
 _NUM_RE = _re.compile(r'\b\d+\.?\d*\b')
-_STR_RE = _re.compile(r'"[^"]*"')
+_STR_RE = _re.compile(r'"[^"\\]*(?:\\.[^"\\]*)*"')
 _CMT_RE = _re.compile(r'//.*$')
 _FN_RE  = _re.compile(r'\b([a-z_]\w*)\s*(?=\()')
 _TY_RE  = _re.compile(r'\b([A-Z]\w*)\b')
 
-def highlight(line: str) -> str:
+def highlight(line):
     if not sys.stdout.isatty(): return line
-    result = line
-    # Order matters: strings first, then comments
-    result = _STR_RE.sub(lambda m: GREEN(m.group()), result)
-    result = _CMT_RE.sub(lambda m: DIM(m.group()), result)
-    result = _KW_RE.sub(lambda m: CYAN(m.group()), result)
-    result = _NUM_RE.sub(lambda m: MAGENTA(m.group()), result)
-    result = _TY_RE.sub(lambda m: YELLOW(m.group()), result)
-    result = _FN_RE.sub(lambda m: BLUE(m.group(1)), result)
-    return result
+    r = line
+    r = _STR_RE.sub(lambda m: GREEN(m.group()), r)
+    r = _CMT_RE.sub(lambda m: DIM(m.group()), r)
+    r = _KW_RE.sub(lambda m: CYAN(m.group()), r)
+    r = _NUM_RE.sub(lambda m: MAGENTA(m.group()), r)
+    r = _TY_RE.sub(lambda m: YELLOW(m.group()), r)
+    r = _FN_RE.sub(lambda m: BLUE(m.group(1)), r)
+    return r
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# TAB COMPLETER
-# ─────────────────────────────────────────────────────────────────────────────
-
+# ── TAB COMPLETER ─────────────────────────────────────────────────────────────
 class InScriptCompleter:
-    def __init__(self, interpreter):
-        self._interp = interpreter
-        self._matches: List[str] = []
+    def __init__(self, repl):
+        self._repl = repl
+        self._matches = []
 
-    def _candidates(self) -> List[str]:
-        candidates = list(KEYWORDS)
-        # Add user symbols from interpreter environment
+    def _user_names(self):
         try:
-            env_vars = list(self._interp._env._store.keys())
-            candidates += [k for k in env_vars if not k.startswith("_")]
-        except: pass
-        return sorted(set(candidates))
+            return [k for k in self._repl._interp._env._store if not k.startswith("_")]
+        except: return []
 
-    def complete(self, text: str, state: int) -> Optional[str]:
+    def _member_names(self, obj_name):
+        try:
+            obj = self._repl._interp._env._store.get(obj_name)
+            if obj is None: return []
+            if isinstance(obj, dict):
+                return [str(k) for k in obj if not str(k).startswith("_")]
+            return [a for a in dir(obj) if not a.startswith("_")]
+        except: return []
+
+    def complete(self, text, state):
         if state == 0:
-            self._matches = [c for c in self._candidates() if c.startswith(text)]
-        try:
-            return self._matches[state]
-        except IndexError:
-            return None
+            buf = readline.get_line_buffer()
+            dot_match = _re.match(r'.*?(\w+)\.([\w]*)$', buf)
+            if dot_match:
+                obj_name = dot_match.group(1)
+                prefix   = dot_match.group(2)
+                members  = self._member_names(obj_name)
+                self._matches = [m for m in members if m.startswith(prefix)]
+            else:
+                candidates = list(KEYWORDS) + self._user_names() + STDLIB_MODULES
+                self._matches = [c for c in sorted(set(candidates)) if c.startswith(text)]
+        try:    return self._matches[state]
+        except: return None
 
+# ── EXPRESSION DETECTOR ───────────────────────────────────────────────────────
+_STMT_STARTS = (
+    "let ","const ","fn ","struct ","enum ","interface ","mixin ","impl ",
+    "import ","from ","export ","if ","while ","for ","return ","break",
+    "continue","throw ","try","match ","print(","//",
+)
+_ASSIGN_RE = _re.compile(r'^[A-Za-z_]\w*\s*(\*\*=|<<=|>>=|&&=|\|\|=|[+\-*/%&|^]=|=)(?!=)\s*')
+_BLOCK_RE  = _re.compile(r'^(fn|struct|enum|interface)\s+\w+')
 
-# ─────────────────────────────────────────────────────────────────────────────
-# ENHANCED REPL
-# ─────────────────────────────────────────────────────────────────────────────
+def _is_expression(source):
+    s = source.strip()
+    if not s: return False
+    if any(s.startswith(k) for k in _STMT_STARTS): return False
+    if _ASSIGN_RE.match(s): return False
+    if _BLOCK_RE.match(s): return False
+    return True
 
+# ── ERROR FORMATTER ───────────────────────────────────────────────────────────
+def _format_error(err_str, source):
+    lines = source.splitlines()
+    m = _re.search(r'Line (\d+).*?Col (\d+)', err_str)
+    if m and lines:
+        ln  = int(m.group(1)) - 1
+        col = int(m.group(2)) - 1
+        if 0 <= ln < len(lines):
+            src_line = lines[ln]
+            caret    = " " * max(0, col) + "^"
+            return f"{err_str}\n  {DIM(src_line)}\n  {RED(caret)}"
+    return err_str
+
+# ── TYPE HELPERS ──────────────────────────────────────────────────────────────
+def _type_name(val):
+    if val is None:           return "nil"
+    if isinstance(val, bool): return "bool"
+    if isinstance(val, int):  return "int"
+    if isinstance(val, float):return "float"
+    if isinstance(val, str):  return "string"
+    if isinstance(val, list): return "array"
+    if isinstance(val, dict):
+        if "_enum" in val or "_variant" in val: return val.get("_enum","enum")
+        if "_name" in val: return val["_name"]
+        return "dict"
+    return type(val).__name__
+
+def _type_ann_str(node):
+    if node is None: return "any"
+    if isinstance(node, str): return node
+    return getattr(node, 'name', None) or str(node)
+
+def _val_preview(val, max_len=60):
+    try:
+        from interpreter import _inscript_str
+        s = _inscript_str(val)
+    except:
+        s = repr(val)
+    return s[:max_len] + ("…" if len(s) > max_len else "")
+
+def _print_inspect(val, indent=0):
+    pad = "  " * indent
+    if isinstance(val, dict) and "_name" in val:
+        sname = val["_name"]
+        print(f"{pad}{BOLD(YELLOW(sname))} {{")
+        for k, v in val.items():
+            if str(k).startswith("_"): continue
+            print(f"{pad}  {CYAN(k)}: {DIM(_type_name(v))} = {GREEN(_val_preview(v))}")
+        print(f"{pad}}}")
+    elif isinstance(val, dict):
+        print(f"{pad}{BOLD('dict')} [{len(val)} entries] {{")
+        for k, v in list(val.items())[:20]:
+            if str(k).startswith("_"): continue
+            print(f"{pad}  {GREEN(repr(k))}: {DIM(_type_name(v))} = {_val_preview(v)}")
+        if len(val) > 20: print(f"{pad}  {DIM(f'... {len(val)-20} more')}")
+        print(f"{pad}}}")
+    elif isinstance(val, list):
+        print(f"{pad}{BOLD('array')} [{len(val)} items]")
+        for i, item in enumerate(val[:10]):
+            print(f"{pad}  [{i}] {DIM(_type_name(item))} {GREEN(_val_preview(item))}")
+        if len(val) > 10: print(f"{pad}  {DIM(f'... {len(val)-10} more')}")
+    else:
+        print(f"{pad}{YELLOW(_type_name(val))}: {GREEN(_val_preview(val))}")
+        attrs = [a for a in dir(val) if not a.startswith("_") and callable(getattr(val, a, None))]
+        if attrs:
+            print(f"{pad}  {DIM('methods:')} {', '.join(BLUE(a) for a in attrs[:10])}")
+
+# ── ENHANCED REPL ─────────────────────────────────────────────────────────────
 class EnhancedREPL:
 
     def __init__(self):
         from interpreter import Interpreter
+        from vm import VM
         self._interp   = Interpreter()
+        self._vm       = VM()          # persistent VM — keeps globals between calls
+        self._use_vm   = False
         self._history: List[str] = []
-        self._session:  List[str] = []   # all executed lines for .save
+        self._session: List[str] = []
         self._last_src: str = ""
         self._setup_readline()
 
     def _setup_readline(self):
-        completer = InScriptCompleter(self._interp)
+        completer = InScriptCompleter(self)
         readline.set_completer(completer.complete)
         readline.parse_and_bind("tab: complete")
         readline.set_completer_delims(" \t\n`~!@#$%^&*()-=+[{]}\\|;:'\",<>?/")
-
-        # Load history
         if HISTORY_FILE.exists():
             try: readline.read_history_file(str(HISTORY_FILE))
             except: pass
         atexit.register(lambda: readline.write_history_file(str(HISTORY_FILE)))
 
-    def _eval(self, source: str):
-        """Evaluate InScript source, return (result, error, elapsed_ms)."""
+    # ── execution ─────────────────────────────────────────────────────────────
+    def _eval(self, source) -> Tuple[Any, Optional[str], float]:
+        # NOTE: We intentionally skip the static Analyzer in REPL mode.
+        # The analyzer has no memory of previous REPL statements, so it would
+        # report every reference to a previously-defined name as "undefined".
+        # The interpreter catches all real runtime errors on its own.
         from lexer import Lexer
         from parser import Parser
-        from analyzer import Analyzer
         from errors import InScriptError
-
         t0 = time.perf_counter()
         try:
             tokens  = Lexer(source).tokenize()
             program = Parser(tokens).parse()
-            Analyzer(program).analyze()
-            result  = self._interp.execute(program)
-            elapsed = (time.perf_counter() - t0) * 1000
-            return result, None, elapsed
+            if self._use_vm:
+                from compiler import Compiler
+                result = self._vm.run(Compiler().compile(program))
+            else:
+                result = self._interp.run(program)
+            return result, None, (time.perf_counter() - t0) * 1000
         except InScriptError as e:
-            elapsed = (time.perf_counter() - t0) * 1000
-            return None, str(e), elapsed
+            return None, _format_error(str(e), source), (time.perf_counter() - t0) * 1000
         except Exception as e:
-            elapsed = (time.perf_counter() - t0) * 1000
-            return None, f"Internal error: {e}", elapsed
+            import traceback as _tb
+            return None, f"Internal error: {e}\n{_tb.format_exc()}", (time.perf_counter() - t0) * 1000
 
-    def _format_result(self, val) -> str:
-        """Pretty-print a result value."""
+    def _eval_expr(self, source):
+        """Evaluate source; if it looks like a bare expression, capture and
+        return its value so the REPL can auto-print it.
+
+        Strategy:
+        - Always attempt value-capture via the interpreter (persistent env).
+        - If interpreter returns an error AND we are in VM mode, the expression
+          likely references a name defined in the VM's environment.  In that
+          case silently fall back to _eval() (VM path) — no auto-print, but
+          no error shown either.  This is a known limitation: auto-print for
+          VM-mode user-defined calls is not supported.
+        """
+        if _is_expression(source):
+            wrapped = f"let __repl_rv__ = ({source})"
+            from lexer import Lexer
+            from parser import Parser
+            from errors import InScriptError
+            import time as _t
+            t0 = _t.perf_counter()
+            try:
+                tokens  = Lexer(wrapped).tokenize()
+                program = Parser(tokens).parse()
+                self._interp.run(program)
+                result  = self._interp._env._store.get("__repl_rv__")
+                self._interp._env._store.pop("__repl_rv__", None)
+                return result, None, (_t.perf_counter() - t0) * 1000
+            except (InScriptError, Exception):
+                # Value capture failed — fall through to normal _eval().
+                # In interpreter mode _eval returns a clean (None, err, ms).
+                # In VM mode _eval runs the expression through the VM (no
+                # auto-print, but correct side-effects and error reporting).
+                pass
+        return self._eval(source)
+
+    def _fmt_result(self, val):
         if val is None: return ""
         try:
             from interpreter import _inscript_str
             s = _inscript_str(val)
         except:
             s = repr(val)
+        if s in ("nil", "None", ""): return ""
         return f"  {DIM('→')} {GREEN(s)}"
 
-    def _is_complete(self, source: str) -> bool:
-        """Check if braces/brackets are balanced (for multiline detection)."""
-        depth = 0
-        in_str = False
+    def _is_complete(self, source):
+        depth = 0; in_str = False; esc = False
         for ch in source:
-            if ch == '"' and not in_str: in_str = True
-            elif ch == '"' and in_str:   in_str = False
-            elif not in_str:
-                if ch in "{[(": depth += 1
-                elif ch in "}])": depth -= 1
+            if esc: esc = False; continue
+            if ch == '\\' and in_str: esc = True; continue
+            if ch == '"': in_str = not in_str; continue
+            if in_str: continue
+            if ch in "{[(": depth += 1
+            elif ch in "}])": depth -= 1
         return depth <= 0
 
-    def _handle_command(self, cmd: str) -> bool:
-        """Handle dot-commands. Returns True if handled."""
-        parts = cmd.strip().split(None, 1)
+    # ── dot-commands ──────────────────────────────────────────────────────────
+    def _handle_command(self, cmd):
+        parts   = cmd.strip().split(None, 1)
         if not parts: return False
-        command = parts[0].lower()
-        arg     = parts[1] if len(parts) > 1 else ""
+        c   = parts[0].lower()
+        arg = parts[1].strip() if len(parts) > 1 else ""
 
-        if command in (".help", "help"):
+        if c in (".help","help"):
             print(HELP_TEXT)
 
-        elif command == ".vars":
-            try:
-                vars_ = {k: v for k, v in self._interp._env._store.items()
-                         if not k.startswith("_")}
-                if not vars_:
-                    print(DIM("  (no variables defined)"))
-                else:
-                    for name, val in sorted(vars_.items()):
-                        try:
-                            from interpreter import _inscript_str
-                            vs = _inscript_str(val)
-                        except: vs = repr(val)
-                        print(f"  {CYAN(name)} = {GREEN(vs)}")
-            except Exception as e:
-                print(DIM(f"  (error reading vars: {e})"))
-
-        elif command == ".fns":
-            try:
-                from stdlib_values import InScriptFunction
-                fns = {k: v for k, v in self._interp._env._store.items()
-                       if isinstance(v, InScriptFunction)}
-                if not fns:
-                    print(DIM("  (no functions defined)"))
-                else:
-                    for name, fn in sorted(fns.items()):
-                        params = ", ".join(getattr(fn, 'params', []))
-                        print(f"  {BLUE('fn')} {CYAN(name)}({params})")
-            except: print(DIM("  (error reading functions)"))
-
-        elif command == ".clear":
-            from interpreter import Interpreter
-            self._interp = Interpreter()
-            self._session.clear()
-            print(DIM("  (session cleared — all variables reset)"))
-
-        elif command == ".save":
-            if not arg:
-                print(RED("  Usage: .save <filename.ins>"))
+        elif c == ".vars":
+            from interpreter import _inscript_str
+            from stdlib_values import InScriptFunction
+            skip = {"__repl_rv__"}
+            rows = {k: v for k, v in self._interp._env._store.items()
+                    if not k.startswith("_") and k not in skip
+                    and not isinstance(v, InScriptFunction)}
+            if not rows:
+                print(DIM("  (no variables defined)"))
             else:
-                path = Path(arg)
-                path.write_text("\n".join(self._session))
-                print(GREEN(f"  Saved {len(self._session)} lines → {path}"))
+                w = max(len(k) for k in rows) + 1
+                for name, val in sorted(rows.items()):
+                    try:   vs = _inscript_str(val)
+                    except: vs = repr(val)
+                    print(f"  {CYAN(name.ljust(w))} {DIM(f':{_type_name(val):<10}')} {GREEN(vs)}")
 
-        elif command == ".load":
-            if not arg:
-                print(RED("  Usage: .load <filename.ins>"))
+        elif c == ".fns":
+            from stdlib_values import InScriptFunction
+            fns = {k: v for k, v in self._interp._env._store.items()
+                   if isinstance(v, InScriptFunction) and not k.startswith("_")}
+            if not fns:
+                print(DIM("  (no user functions defined)"))
             else:
-                path = Path(arg)
-                if not path.exists():
-                    print(RED(f"  File not found: {path}"))
-                else:
-                    source = path.read_text()
-                    print(DIM(f"  Loading {path}…"))
-                    result, err, ms = self._eval(source)
-                    if err: print(RED(f"  Error: {err}"))
-                    else:   print(GREEN(f"  Loaded in {ms:.1f}ms"))
+                for name, fn in sorted(fns.items()):
+                    params = []
+                    for p in getattr(fn, 'params', []):
+                        pname = getattr(p, 'name', str(p))
+                        ptype = getattr(p, 'type_annotation', None)
+                        pdef  = getattr(p, 'default', None)
+                        s = pname
+                        if ptype: s += f": {YELLOW(_type_ann_str(ptype))}"
+                        if pdef is not None: s += DIM(" = ...")
+                        params.append(s)
+                    ret = ""
+                    rtype = getattr(fn, 'return_type', None)
+                    if rtype: ret = f" {DIM('->')} {YELLOW(_type_ann_str(rtype))}"
+                    print(f"  {BLUE('fn')} {CYAN(name)}({', '.join(params)}){ret}")
 
-        elif command == ".time":
+        elif c == ".types":
+            found = False
+            for name, val in sorted(self._interp._env._store.items()):
+                if name.startswith("_"): continue
+                if isinstance(val, dict) and val.get("_kind") == "struct_decl":
+                    found = True
+                    decl = val.get("_decl")
+                    fields  = [f"{CYAN(f.name)}: {YELLOW(_type_ann_str(f.type_annotation))}"
+                                for f in getattr(decl, 'fields', []) if hasattr(f, 'name')]
+                    methods = [f.name for f in getattr(decl, 'methods', [])]
+                    print(f"  {BOLD('struct')} {YELLOW(name)}")
+                    if fields:   print(f"    fields:  {', '.join(fields)}")
+                    if methods:  print(f"    methods: {', '.join(BLUE(m) for m in methods)}")
+                elif isinstance(val, dict) and val.get("_kind") == "enum_decl":
+                    found = True
+                    decl = val.get("_decl")
+                    variants = list(getattr(decl, 'variants', {}).keys()) if decl else []
+                    vstr = " { " + ", ".join(CYAN(v) for v in variants) + " }" if variants else ""
+                    print(f"  {BOLD('enum')} {YELLOW(name)}{vstr}")
+            if not found:
+                print(DIM("  (no struct/enum types defined)"))
+
+        elif c == ".env":
+            from interpreter import _inscript_str
+            from stdlib_values import InScriptFunction
+            env = self._interp._env
+            depth = 0; seen = set()
+            while env is not None:
+                label = getattr(env, 'name', f"scope {depth}")
+                pad   = "  " * depth
+                print(f"{pad}{BOLD(label)}:")
+                store = getattr(env, '_store', {})
+                shown = 0
+                for k, v in sorted(store.items()):
+                    if k.startswith("_") or k in seen: continue
+                    seen.add(k)
+                    try:   vs = _inscript_str(v)[:60]
+                    except: vs = repr(v)[:60]
+                    print(f"{pad}  {CYAN(k)}: {DIM(_type_name(v))} = {GREEN(vs)}")
+                    shown += 1
+                if not shown: print(f"{pad}  {DIM('(empty)')}")
+                env = getattr(env, '_parent', None)
+                depth += 1
+
+        elif c == ".inspect":
+            if not arg: print(RED("  Usage: .inspect <expression>")); return True
+            val, err, _ = self._eval(arg)
+            if err:
+                val = self._interp._env._store.get(arg)
+            if val is None and err:
+                print(RED(f"  Error: {err}")); return True
+            _print_inspect(val)
+
+        elif c == ".type":
+            if not arg: print(RED("  Usage: .type <expression>")); return True
+            val, err, _ = self._eval_expr(arg)
+            if err: print(RED(f"  Error: {err}")); return True
+            print(f"  {YELLOW(_type_name(val))}  {DIM('→')}  {GREEN(_val_preview(val))}")
+
+        elif c == ".doc":
             if not arg:
-                print(RED("  Usage: .time <expression>"))
-            else:
-                # Run multiple times for accuracy
-                times = []
-                for _ in range(10):
-                    _, _, ms = self._eval(arg)
-                    times.append(ms)
-                avg = sum(times) / len(times)
-                mn  = min(times); mx = max(times)
-                print(f"  avg {CYAN(f'{avg:.2f}ms')}  "
-                      f"min {GREEN(f'{mn:.2f}ms')}  "
-                      f"max {YELLOW(f'{mx:.2f}ms')}  (10 runs)")
-
-        elif command == ".bytecode":
-            src = arg.strip() if arg.strip() else self._last_src
-            if not src:
-                print(DIM("  (no expression yet — run something first, or: .bytecode <expr>)"))
+                print(f"  Usage: {YELLOW('.doc <module>')}  —  modules: {', '.join(STDLIB_MODULES)}")
+                return True
+            mod = arg.strip().strip("\"'")
+            if mod in STDLIB_DOCS:
+                fns = STDLIB_DOCS[mod]
+                print(f"  {BOLD(CYAN(mod))} stdlib module ({len(fns)} exports):")
+                for i in range(0, len(fns), 3):
+                    row = fns[i:i+3]
+                    print("    " + "  ".join(BLUE(f.ljust(24)) for f in row))
             else:
                 try:
-                    from compiler import compile_source
-                    proto = compile_source(src)
-                    asm   = proto.disassemble()
-                    # Colour the disassembly output
-                    for line in asm.splitlines():
-                        if line.startswith("==="):
-                            print(BOLD(CYAN(line)))
-                        elif line.strip() == "":
-                            print()
-                        else:
-                            # Highlight opcode name
-                            parts = line.split(None, 1)
-                            addr_op = parts[0]
-                            rest    = parts[1] if len(parts) > 1 else ""
-                            # find opcode (second token)
-                            toks_  = line.split()
-                            if len(toks_) >= 2 and toks_[0].isdigit():
-                                op_   = toks_[1]
-                                anno  = "  " + "  ".join(toks_[5:]) if len(toks_) > 5 else ""
-                                operands = "  ".join(f"{int(t):5}" for t in toks_[2:5] if t.lstrip("-").isdigit())
-                                print(f"  {DIM(toks_[0]:>4)}  {YELLOW(op_):<22} {CYAN(operands)}{DIM(anno)}")
-                            else:
-                                print(DIM(line))
+                    from interpreter import Interpreter
+                    tmp = Interpreter()
+                    tmp.execute(f'import "{mod}"')
+                    env_mod = tmp._env._store.get(mod)
+                    if isinstance(env_mod, dict):
+                        keys = [k for k in sorted(env_mod) if not k.startswith("_")]
+                        print(f"  {BOLD(CYAN(mod))} — {len(keys)} exports:")
+                        for i in range(0, len(keys), 4):
+                            row = keys[i:i+4]
+                            print("    " + "  ".join(CYAN(k.ljust(16)) for k in row))
+                    else:
+                        print(DIM(f"  Module '{mod}' not found."))
                 except Exception as e:
-                    print(RED(f"  Bytecode error: {e}"))
+                    print(RED(f"  Cannot load '{mod}': {e}"))
 
-        elif command == ".asm":
-            # .asm <expr>  — compile and show full annotated assembly
-            src = arg.strip() if arg.strip() else self._last_src
-            if not src:
-                print(DIM("  Usage: .asm <expression or statement>"))
-            else:
-                try:
-                    from compiler import compile_source, FnProto
-                    proto = compile_source(src)
-
-                    def _print_proto(p: FnProto, indent: int = 0):
-                        pad = "  " * indent
-                        print(f"{pad}{BOLD(CYAN(f'=== fn {p.name} ===')):}")
-                        # Constants table
-                        if p.consts:
-                            print(f"{pad}  {DIM('Constants:')}")
-                            for ci, cv in enumerate(p.consts):
-                                if isinstance(cv, FnProto):
-                                    print(f"{pad}    [{ci}] <fn {cv.name}>")
-                                else:
-                                    print(f"{pad}    [{ci}] {GREEN(repr(cv))}")
-                        # Names table
-                        if p.names:
-                            print(f"{pad}  {DIM('Names:')}")
-                            for ni, nv in enumerate(p.names):
-                                print(f"{pad}    [{ni}] {YELLOW(nv)}")
-                        # Upvals
-                        if p.upval_descs:
-                            print(f"{pad}  {DIM('Upvalues:')}")
-                            for ui, ud in enumerate(p.upval_descs):
-                                print(f"{pad}    [{ui}] {ud}")
-                        # Instructions
-                        print(f"{pad}  {DIM('Code  ({} instrs, {} locals):'.format(len(p.code), p.n_locals))}")
-                        for idx, ins in enumerate(p.code):
-                            ann = ""
-                            from compiler import Op
-                            if ins.op == Op.LOAD_CONST and ins.b < len(p.consts):
-                                v = p.consts[ins.b]
-                                ann = f"; {v!r}" if not isinstance(v, FnProto) else f"; <fn {v.name}>"
-                            elif ins.op in (Op.LOAD_GLOBAL, Op.STORE_GLOBAL):
-                                ni = ins.b if ins.op == Op.LOAD_GLOBAL else ins.a
-                                if ni < len(p.names): ann = f"; '{p.names[ni]}'"
-                            elif ins.op in (Op.GET_FIELD, Op.SET_FIELD, Op.CALL_METHOD, Op.OP_CALL):
-                                ni = ins.c if ins.op == Op.GET_FIELD else ins.b
-                                if ni < len(p.names): ann = f"; '{p.names[ni]}'"
-                            elif ins.op == Op.LOAD_INT:
-                                ann = f"; {ins.b}"
-                            row = (f"{pad}    {DIM(str(idx)):>4}  "
-                                   f"{YELLOW(ins.op.name):<22}"
-                                   f"  {CYAN(str(ins.a)):>5}  {CYAN(str(ins.b)):>5}  {CYAN(str(ins.c)):>5}"
-                                   f"  {DIM(ann)}")
-                            print(row)
-                        # Recurse into nested protos
-                        for sp in p.protos:
-                            print()
-                            _print_proto(sp, indent + 1)
-
-                    _print_proto(proto)
-                    print(DIM(f"  ({len(proto.code)} top-level instructions)"))
-                except Exception as e:
-                    import traceback
-                    print(RED(f"  ASM error: {e}"))
-                    traceback.print_exc()
-
-        elif command == ".history":
-            for i, h in enumerate(self._history[-20:], 1):
-                print(f"  {DIM(str(i)):>4}  {h}")
-
-        elif command == ".reset":
+        elif c == ".clear":
             from interpreter import Interpreter
+            from vm import VM
             self._interp = Interpreter()
+            self._vm     = VM()
             self._session.clear()
-            self._history.clear()
+            print(DIM("  (session cleared)"))
+
+        elif c == ".reset":
+            from interpreter import Interpreter
+            from vm import VM
+            self._interp = Interpreter()
+            self._vm     = VM()
+            self._session.clear(); self._history.clear()
             readline.clear_history()
-            print(DIM("  (full reset)"))
+            print(DIM("  (full reset — interpreter, session and history cleared)"))
 
-        elif command.startswith(".type"):
-            parts = command.split(None, 1)
-            if len(parts) < 2:
-                print(RED("  Usage: .type <expression>"))
+        elif c == ".save":
+            if not arg: print(RED("  Usage: .save <file.ins>")); return True
+            p = Path(arg)
+            p.write_text("\n".join(self._session))
+            print(GREEN(f"  Saved {len(self._session)} lines → {p}"))
+
+        elif c in (".load", ".run"):
+            if not arg: print(RED(f"  Usage: {c} <file.ins>")); return True
+            p = Path(arg)
+            if not p.exists(): print(RED(f"  File not found: {p}")); return True
+            source = p.read_text()
+            print(DIM(f"  Loading {p}…"))
+            result, err, ms = self._eval(source)
+            if err: print(RED(f"  ✗ {err}"))
             else:
-                expr = parts[1]
-                import io as _io, contextlib as _ctx
-                buf = _io.StringIO()
-                with _ctx.redirect_stdout(buf):
-                    try:
-                        val = self._interp.execute(f"let __type_tmp__ = {expr}")
-                        env_val = self._interp._env.get("__type_tmp__", 0)
-                        # Use built-in typeof logic
-                        if env_val is None:       tname = "nil"
-                        elif isinstance(env_val, bool): tname = "bool"
-                        elif isinstance(env_val, int):  tname = "int"
-                        elif isinstance(env_val, float):tname = "float"
-                        elif isinstance(env_val, str):  tname = "str"
-                        elif isinstance(env_val, list): tname = "array"
-                        elif isinstance(env_val, dict): tname = env_val.get("_enum","dict") if "_enum" in env_val or "_variant" in env_val else env_val.get("_name", "dict")
-                        else: tname = type(env_val).__name__
-                        print(YELLOW(f"  type: {tname}"))
-                        print(CYAN(f"  value: {env_val}"))
-                    except Exception as e:
-                        print(RED(f"  Error: {e}"))
+                fmt = self._fmt_result(result)
+                if fmt: print(fmt)
+                print(GREEN(f"  Done in {ms:.1f}ms"))
+                self._session.append(f"// --- {p} ---\n" + source)
 
-        elif command == ".modules":
-            mods = [
-                "math","string","array","io","json","random","time","color",
-                "tween","grid","events","debug","http","path","regex","csv","uuid","crypto"
-            ]
+        elif c == ".export":
+            lines = [f"# InScript Session\n\n*InScript v{VERSION}*\n"]
+            for entry in self._session:
+                lines.append("```inscript\n" + entry + "\n```\n")
+            content = "\n".join(lines)
+            if arg:
+                Path(arg).write_text(content)
+                print(GREEN(f"  Exported {len(self._session)} entries → {arg}"))
+            else:
+                print(content)
+
+        elif c == ".time":
+            if not arg: print(RED("  Usage: .time <expr>")); return True
+            times = [self._eval(arg)[2] for _ in range(10)]
+            avg = sum(times)/10
+            print(f"  avg {CYAN(f'{avg:.2f}ms')}  min {GREEN(f'{min(times):.2f}ms')}  "
+                  f"max {YELLOW(f'{max(times):.2f}ms')}  (10 runs)")
+
+        elif c == ".bench":
+            if not arg: print(RED("  Usage: .bench <expr>")); return True
+            N = 100
+            print(DIM(f"  Warming up (5 runs)…"))
+            for _ in range(5): self._eval(arg)
+            print(DIM(f"  Benchmarking ({N} runs)…"))
+            times = [self._eval(arg)[2] for _ in range(N)]
+            avg = sum(times)/N
+            mn, mx = min(times), max(times)
+            stddev = math.sqrt(sum((t-avg)**2 for t in times)/N)
+            p50 = sorted(times)[N//2]
+            p95 = sorted(times)[int(N*0.95)]
+            print(f"  {BOLD('Benchmark')} ({N} runs):")
+            print(f"    mean   {CYAN(f'{avg:.3f}ms')}   stddev {DIM(f'{stddev:.3f}ms')}")
+            print(f"    min    {GREEN(f'{mn:.3f}ms')}   max    {YELLOW(f'{mx:.3f}ms')}")
+            print(f"    p50    {DIM(f'{p50:.3f}ms')}   p95    {DIM(f'{p95:.3f}ms')}")
+
+        elif c == ".bytecode":
+            src = arg or self._last_src
+            if not src: print(DIM("  (no expression yet)")); return True
+            try:
+                from compiler import compile_source
+                for line in compile_source(src).disassemble().splitlines():
+                    toks = line.split()
+                    if line.startswith("==="): print(BOLD(CYAN(line)))
+                    elif len(toks) >= 2 and toks[0].isdigit():
+                        ops = "  ".join(f"{int(t):5}" for t in toks[2:5] if t.lstrip("-").isdigit())
+                        print(f"  {DIM(toks[0]):>4}  {YELLOW(toks[1]):<22} {CYAN(ops)}")
+                    else: print(DIM(line))
+            except Exception as e: print(RED(f"  Bytecode error: {e}"))
+
+        elif c == ".asm":
+            src = arg or self._last_src
+            if not src: print(DIM("  Usage: .asm <expression>")); return True
+            try:
+                from compiler import compile_source, FnProto, Op
+                def _pp(p, ind=0):
+                    pad = "  " * ind
+                    print(f"{pad}{BOLD(CYAN(f'=== fn {p.name} ==='))}")
+                    if p.consts:
+                        print(f"{pad}  {DIM('Constants:')}")
+                        for ci, cv in enumerate(p.consts):
+                            lbl = f"<fn {cv.name}>" if isinstance(cv, FnProto) else repr(cv)
+                            print(f"{pad}    [{ci}] {GREEN(lbl)}")
+                    if p.names:
+                        print(f"{pad}  {DIM('Names:')}")
+                        for ni, nv in enumerate(p.names):
+                            print(f"{pad}    [{ni}] {YELLOW(nv)}")
+                    print(f"{pad}  {DIM(f'Code ({len(p.code)} instrs, {p.n_locals} locals):')}")
+                    for idx, ins in enumerate(p.code):
+                        ann = ""
+                        if ins.op == Op.LOAD_CONST and ins.b < len(p.consts):
+                            v = p.consts[ins.b]
+                            ann = f"; <fn {v.name}>" if isinstance(v, FnProto) else f"; {v!r}"
+                        elif ins.op in (Op.LOAD_GLOBAL, Op.STORE_GLOBAL):
+                            ni = ins.b if ins.op == Op.LOAD_GLOBAL else ins.a
+                            if ni < len(p.names): ann = f"; '{p.names[ni]}'"
+                        elif ins.op in (Op.GET_FIELD, Op.SET_FIELD, Op.CALL_METHOD, Op.OP_CALL):
+                            ni = ins.c if ins.op == Op.GET_FIELD else ins.b
+                            if ni < len(p.names): ann = f"; '{p.names[ni]}'"
+                        elif ins.op == Op.LOAD_INT: ann = f"; {ins.b}"
+                        print(f"{pad}    {DIM(str(idx)):>4}  {YELLOW(ins.op.name):<22}"
+                              f"  {CYAN(str(ins.a)):>5}  {CYAN(str(ins.b)):>5}  {CYAN(str(ins.c)):>5}"
+                              f"  {DIM(ann)}")
+                    for sp in getattr(p, 'protos', []):
+                        print(); _pp(sp, ind+1)
+                _pp(compile_source(src))
+            except Exception as e:
+                import traceback as _tb
+                print(RED(f"  ASM error: {e}")); _tb.print_exc()
+
+        elif c == ".vm":
+            self._use_vm = not self._use_vm
+            mode = ORANGE("VM (bytecode)") if self._use_vm else CYAN("Interpreter (tree-walk)")
+            print(f"  Execution mode: {mode}")
+
+        elif c == ".history":
+            n = int(arg) if arg.isdigit() else 20
+            shown = self._history[-n:]
+            base  = len(self._history) - len(shown) + 1
+            for i, h in enumerate(shown, base):
+                print(f"  {DIM(str(i)):>5}  {h}")
+
+        elif c == ".modules":
             print(BOLD("  Importable stdlib modules:"))
-            for i in range(0, len(mods), 4):
-                row = mods[i:i+4]
-                print("    " + "  ".join(CYAN(m.ljust(10)) for m in row))
-            print(f"  Usage: {YELLOW('import "math"')} or {YELLOW('from "math" import sin, cos')}")
+            for i in range(0, len(STDLIB_MODULES), 4):
+                row = STDLIB_MODULES[i:i+4]
+                print("    " + "  ".join(CYAN(m.ljust(12)) for m in row))
+            print(f"  Usage: {YELLOW('import \"math\"')}  or  {YELLOW('from \"math\" import sin, cos')}")
 
-        elif command == ".packages":
-            import os as _os
-            pkg_dir = _os.path.join(_os.path.expanduser("~"), ".inscript", "packages")
-            if not _os.path.exists(pkg_dir):
+        elif c == ".packages":
+            pkg_dir = Path.home() / ".inscript" / "packages"
+            if not pkg_dir.exists():
                 print(DIM("  No packages installed."))
-                print(f"  Install with: {YELLOW('inscript --install <name>')}")
             else:
-                pkgs = [d for d in _os.listdir(pkg_dir) if _os.path.isdir(_os.path.join(pkg_dir,d))]
-                if not pkgs:
-                    print(DIM("  No packages installed."))
+                pkgs = [d.name for d in pkg_dir.iterdir() if d.is_dir()]
+                if not pkgs: print(DIM("  No packages installed."))
                 else:
                     print(BOLD(f"  Installed packages ({len(pkgs)}):"))
-                    for p in sorted(pkgs):
-                        print(f"    • {CYAN(p)}")
+                    for p in sorted(pkgs): print(f"    • {CYAN(p)}")
 
         else:
             return False
         return True
 
+    # ── main loop ─────────────────────────────────────────────────────────────
     def run(self):
         print(BANNER)
-        buf = []
+        buf: List[str] = []
 
         while True:
-            prompt = f"{CYAN('>>>')} " if not buf else f"{DIM('...')} "
+            if not buf:
+                mode_tag = ORANGE(" [VM]") if self._use_vm else ""
+                prompt = f"{CYAN('>>>')}{mode_tag} "
+            else:
+                prompt = f"{DIM(f'...{len(buf)+1}')} "
+
             try:
                 line = input(prompt)
             except KeyboardInterrupt:
-                buf.clear()
-                print()
-                continue
+                buf.clear(); print(); continue
             except EOFError:
-                print(f"\n{DIM('[InScript] Goodbye!')}")
-                break
+                print(f"\n{DIM('[InScript] Goodbye!')}"); break
 
-            # Exit commands
-            if line.strip() in ("exit", "quit", ".exit", ".quit"):
-                print(DIM("[InScript] Goodbye!"))
-                break
+            stripped = line.strip()
 
-            # Dot-commands (only at top level)
-            if not buf and line.strip().startswith("."):
-                if self._handle_command(line.strip()):
+            if stripped in ("exit","quit",".exit",".quit"):
+                print(DIM("[InScript] Goodbye!")); break
+
+            # !! — repeat last command
+            if stripped == "!!" and self._history:
+                line = self._history[-1]
+                print(f"  {DIM('↑')} {line}")
+                stripped = line.strip()
+
+            # Dot-commands only at top level
+            if not buf and stripped.startswith("."):
+                if self._handle_command(stripped):
                     continue
 
             # Backslash continuation
             if line.endswith("\\"):
-                buf.append(line[:-1])
-                continue
+                buf.append(line[:-1]); continue
 
             buf.append(line)
             source = "\n".join(buf)
 
-            # Check if we need more input (unbalanced braces)
-            if not self._is_complete(source):
-                continue
+            if not self._is_complete(source): continue
 
             buf.clear()
+            if not source.strip(): continue
 
-            if not source.strip():
-                continue
-
-            # Record history
             self._history.append(source.replace("\n", " "))
             self._last_src = source
 
-            # Evaluate
-            result, err, ms = self._eval(source)
+            result, err, ms = self._eval_expr(source)
 
             if err:
                 print(RED(f"  ✗ {err}"))
             else:
-                formatted = self._format_result(result)
-                if formatted:
-                    print(formatted)
-                if ms > 100:
-                    print(DIM(f"  ({ms:.0f}ms)"))
+                fmt = self._fmt_result(result)
+                if fmt: print(fmt)
+                if ms > 100: print(DIM(f"  ({ms:.0f}ms)"))
                 self._session.append(source)
 
 
@@ -547,307 +731,317 @@ class EnhancedREPL:
 # WEB PLAYGROUND
 # ─────────────────────────────────────────────────────────────────────────────
 
-PLAYGROUND_HTML = '''<!DOCTYPE html>
+PLAYGROUND_HTML = r"""<!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>InScript Playground</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-:root{--bg:#0d1117;--surface:#161b22;--border:#30363d;--text:#e6edf3;
-      --text2:#8b949e;--primary:#58a6ff;--green:#3fb950;--red:#f85149;--yellow:#d29922}
-body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
-     background:var(--bg);color:var(--text);height:100vh;display:flex;flex-direction:column}
-header{padding:10px 20px;background:var(--surface);border-bottom:1px solid var(--border);
-       display:flex;align-items:center;gap:16px}
-.logo{font-weight:700;color:var(--primary);font-size:18px}
-.subtitle{color:var(--text2);font-size:13px}
-header .spacer{flex:1}
-.run-btn{background:var(--green);color:#000;border:none;padding:8px 20px;
-         border-radius:6px;font-weight:700;font-size:14px;cursor:pointer}
-.run-btn:hover{opacity:.85}
-.share-btn{background:var(--surface);border:1px solid var(--border);color:var(--text);
-           padding:8px 16px;border-radius:6px;font-size:13px;cursor:pointer}
-main{flex:1;display:grid;grid-template-columns:1fr 1fr;gap:0;overflow:hidden}
-.pane{display:flex;flex-direction:column}
-.pane-header{padding:8px 14px;background:var(--surface);border-bottom:1px solid var(--border);
-             font-size:12px;font-weight:600;color:var(--text2);text-transform:uppercase;
-             display:flex;align-items:center;gap:8px}
-.pane-header .dot{width:8px;height:8px;border-radius:50%}
+:root{--bg:#0d1117;--sf:#161b22;--sf2:#21262d;--bd:#30363d;--tx:#e6edf3;
+      --tx2:#8b949e;--tx3:#6e7681;--pr:#58a6ff;--gn:#3fb950;--rd:#f85149;
+      --yl:#d29922;--or:#e3b341;--pu:#bc8cff}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+     background:var(--bg);color:var(--tx);height:100vh;display:flex;flex-direction:column;overflow:hidden}
+header{padding:7px 16px;background:var(--sf);border-bottom:1px solid var(--bd);
+       display:flex;align-items:center;gap:10px;flex-shrink:0}
+.logo{font-weight:800;color:var(--pr);font-size:16px}
+.logo span{color:var(--tx2);font-weight:400}
+.vbadge{background:var(--sf2);border:1px solid var(--bd);color:var(--tx2);
+        font-size:10px;padding:1px 7px;border-radius:10px}
+.hactions{margin-left:auto;display:flex;gap:7px;align-items:center}
+.btn{border:none;padding:5px 13px;border-radius:5px;font-size:12px;
+     font-weight:600;cursor:pointer;transition:.15s opacity}
+.btn:hover{opacity:.82}
+.btn-run{background:var(--gn);color:#0d1117}
+.btn-sec{background:var(--sf2);border:1px solid var(--bd);color:var(--tx)}
+kbd{background:var(--sf2);border:1px solid var(--bd);border-radius:3px;
+    padding:1px 4px;font-size:9px;color:var(--tx2)}
+.toolbar{background:var(--sf);border-bottom:1px solid var(--bd);
+         padding:4px 16px;display:flex;align-items:center;gap:7px;flex-shrink:0;flex-wrap:wrap}
+.tl{font-size:10px;color:var(--tx3);font-weight:600;text-transform:uppercase;
+    letter-spacing:.5px;margin-right:2px}
+.pill{padding:2px 9px;background:var(--bg);border:1px solid var(--bd);border-radius:11px;
+      font-size:11px;cursor:pointer;color:var(--tx2);transition:.15s all;white-space:nowrap}
+.pill:hover,.pill.on{border-color:var(--pr);color:var(--pr);background:rgba(88,166,255,.08)}
+.tsep{width:1px;height:16px;background:var(--bd);margin:0 3px}
+.mtog{display:flex;background:var(--bg);border:1px solid var(--bd);border-radius:5px;overflow:hidden}
+.mbtn{padding:2px 9px;font-size:10px;cursor:pointer;color:var(--tx2);border:none;background:none;font-weight:600}
+.mbtn.on{background:var(--pr);color:#0d1117;font-weight:700}
+main{flex:1;display:grid;grid-template-columns:1fr 1fr;overflow:hidden}
+.pane{display:flex;flex-direction:column;overflow:hidden}
+.ph{padding:5px 13px;background:var(--sf);border-bottom:1px solid var(--bd);
+    font-size:10px;font-weight:600;color:var(--tx2);text-transform:uppercase;
+    letter-spacing:.5px;display:flex;align-items:center;gap:7px;flex-shrink:0}
+.dots{display:flex;gap:4px}
+.dot{width:9px;height:9px;border-radius:50%}
 #editor{flex:1;border:none;resize:none;background:#0d1117;color:#e6edf3;
-        padding:16px;font-family:"Cascadia Code","Fira Code","SF Mono",monospace;
-        font-size:14px;line-height:1.7;outline:none;border-right:1px solid var(--border)}
-#output{flex:1;padding:16px;font-family:monospace;font-size:13px;line-height:1.7;
-        overflow-y:auto;background:#0a0e14}
-#output::-webkit-scrollbar{width:6px}
-#output::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
-.out-line{color:var(--text)}
-.out-err{color:var(--red)}
-.out-ok{color:var(--green)}
-.out-time{color:var(--text2);font-size:11px}
-.examples{display:flex;gap:8px;padding:8px 14px;background:var(--surface);
-          border-top:1px solid var(--border);flex-wrap:wrap}
-.ex-btn{padding:4px 12px;background:var(--bg);border:1px solid var(--border);
-        border-radius:14px;font-size:12px;cursor:pointer;color:var(--text2)}
-.ex-btn:hover{border-color:var(--primary);color:var(--primary)}
-.status{padding:4px 14px;font-size:11px;color:var(--text2);background:var(--surface);
-        border-top:1px solid var(--border)}
+        padding:14px;font-family:"Cascadia Code","Fira Code","JetBrains Mono","SF Mono",monospace;
+        font-size:13px;line-height:1.75;outline:none;border-right:1px solid var(--bd);
+        tab-size:4;-moz-tab-size:4}
+#editor::selection{background:rgba(88,166,255,.25)}
+#outwrap{flex:1;overflow-y:auto;background:#0a0e14;padding:13px 15px}
+#outwrap::-webkit-scrollbar{width:4px}
+#outwrap::-webkit-scrollbar-thumb{background:var(--bd);border-radius:2px}
+.ol{color:var(--tx);font-family:monospace;font-size:12.5px;line-height:1.75;white-space:pre-wrap;word-break:break-all}
+.oe{color:var(--rd);font-family:monospace;font-size:12.5px;line-height:1.75;white-space:pre-wrap}
+.ok{color:var(--gn);font-family:monospace;font-size:12.5px;line-height:1.75}
+.om{color:var(--tx3);font-size:10px;margin-top:3px;font-family:monospace}
+.sep{border:none;border-top:1px solid var(--bd);margin:6px 0}
+.spin{display:inline-block;width:10px;height:10px;border:2px solid var(--bd);
+      border-top-color:var(--pr);border-radius:50%;animation:sp .7s linear infinite;
+      margin-right:5px;vertical-align:middle}
+@keyframes sp{to{transform:rotate(360deg)}}
+.sb{background:var(--sf);border-top:1px solid var(--bd);padding:2px 16px;
+    display:flex;gap:14px;font-size:10px;color:var(--tx3);flex-shrink:0}
+.si{display:flex;align-items:center;gap:3px}
+.s-ok{color:var(--gn)}.s-er{color:var(--rd)}.s-ac{color:var(--pr)}
 </style>
 </head>
 <body>
 <header>
-  <span class="logo">🎮 InScript</span>
-  <span class="subtitle">Interactive Playground</span>
-  <div class="spacer"></div>
-  <button class="share-btn" onclick="shareCode()">🔗 Share</button>
-  <button class="run-btn" onclick="runCode()">▶ Run  <kbd style="opacity:.6;font-size:11px">Ctrl+Enter</kbd></button>
+  <div class="logo">&#127918; InScript <span>Playground</span></div>
+  <span class="vbadge">v1.0.2</span>
+  <div class="hactions">
+    <button class="btn btn-sec" onclick="shareCode()">&#128279; Share</button>
+    <button class="btn btn-sec" onclick="clearOutput()">Clear</button>
+    <button class="btn btn-run" onclick="runCode()">&#9654; Run&nbsp;&nbsp;<kbd>Ctrl+&#8629;</kbd></button>
+  </div>
 </header>
+<div class="toolbar">
+  <span class="tl">Examples</span>
+  <button class="pill on" id="ex-fibonacci" onclick="loadEx('fibonacci')">Fibonacci</button>
+  <button class="pill" id="ex-hello"     onclick="loadEx('hello')">Hello</button>
+  <button class="pill" id="ex-fizzbuzz"  onclick="loadEx('fizzbuzz')">FizzBuzz</button>
+  <button class="pill" id="ex-struct"    onclick="loadEx('struct')">Structs</button>
+  <button class="pill" id="ex-closure"   onclick="loadEx('closure')">Closures</button>
+  <button class="pill" id="ex-match"     onclick="loadEx('match')">Match</button>
+  <button class="pill" id="ex-error"     onclick="loadEx('error')">Try/Catch</button>
+  <button class="pill" id="ex-game"      onclick="loadEx('game')">Game Loop</button>
+  <div class="tsep"></div>
+  <span class="tl">Mode</span>
+  <div class="mtog">
+    <button class="mbtn on" id="m-interp" onclick="setMode('interp')">Interpreter</button>
+    <button class="mbtn"    id="m-vm"     onclick="setMode('vm')">VM</button>
+  </div>
+</div>
 <main>
   <div class="pane">
-    <div class="pane-header">
-      <span class="dot" style="background:#f85149"></span>
-      <span class="dot" style="background:#d29922"></span>
-      <span class="dot" style="background:#3fb950"></span>
-      &nbsp; Editor — InScript
+    <div class="ph">
+      <div class="dots">
+        <div class="dot" style="background:#f85149"></div>
+        <div class="dot" style="background:#d29922"></div>
+        <div class="dot" style="background:#3fb950"></div>
+      </div>
+      Editor &mdash; InScript
     </div>
-    <textarea id="editor" spellcheck="false" placeholder="// Write InScript here…"></textarea>
-    <div class="examples">
-      <span style="font-size:11px;color:var(--text2);line-height:28px">Examples:</span>
-      <button class="ex-btn" onclick="loadExample(\'hello\')">Hello World</button>
-      <button class="ex-btn" onclick="loadExample(\'fibonacci\')">Fibonacci</button>
-      <button class="ex-btn" onclick="loadExample(\'fizzbuzz\')">FizzBuzz</button>
-      <button class="ex-btn" onclick="loadExample(\'struct\')">Structs</button>
-      <button class="ex-btn" onclick="loadExample(\'closure\')">Closures</button>
-      <button class="ex-btn" onclick="loadExample(\'game\')">Game Loop</button>
-    </div>
+    <textarea id="editor" spellcheck="false" placeholder="// Write InScript here&hellip;"></textarea>
   </div>
   <div class="pane">
-    <div class="pane-header">
-      <span class="dot" style="background:var(--primary)"></span>
-      &nbsp; Output
-      <button onclick="clearOutput()" style="margin-left:auto;font-size:11px;
-        color:var(--text2);background:none;border:none;cursor:pointer">Clear</button>
-    </div>
-    <div id="output"><div class="out-ok">Ready. Press ▶ Run or Ctrl+Enter.</div></div>
-    <div class="status" id="status">InScript v1.0.1 · Python 3.10+</div>
+    <div class="ph"><div class="dot" style="background:var(--pr)"></div>Output</div>
+    <div id="outwrap"><div class="ok">Ready. Press &#9654; Run or Ctrl+Enter.</div></div>
   </div>
 </main>
-
+<div class="sb">
+  <span class="si" id="st-mode">Mode: <span class="s-ac">Interpreter</span></span>
+  <span class="si" id="st-res"></span>
+  <span style="flex:1"></span>
+  <span class="si">InScript v1.0.2</span>
+</div>
 <script>
-const EXAMPLES = {
-  hello: `// Hello, InScript!
+const EX = {
+  fibonacci:`// Fibonacci — recursion vs iteration
+fn fib_rec(n: int) -> int {
+    if n <= 1 { return n }
+    return fib_rec(n - 1) + fib_rec(n - 2)
+}
+fn fib_iter(n: int) -> int {
+    let a = 0; let b = 1
+    for _ in range(n) { let t = a + b; a = b; b = t }
+    return a
+}
+for i in range(10) {
+    print("fib(" + i + ") = " + fib_rec(i) + "  (iter: " + fib_iter(i) + ")")
+}`,
+  hello:`// Hello, InScript!
 let name = "World"
 print("Hello, " + name + "!")
-
-// Variables and types
-let x: int   = 42
+let x: int = 42
 let pi: float = 3.14159
-let flag: bool = true
-
-print("x =", x, "pi =", pi)`,
-
-  fibonacci: `// Fibonacci with recursion
-fn fib(n: int) -> int {
-    if n <= 1 { return n }
-    return fib(n - 1) + fib(n - 2)
-}
-
-// Print first 12 Fibonacci numbers
-for i in range(12) {
-    print("fib(" + i + ") = " + fib(i))
-}`,
-
-  fizzbuzz: `// Classic FizzBuzz
+let arr: int[] = [1, 2, 3, 4, 5]
+print("x =", x, "  pi =", pi)
+print("arr =", arr, "  sum =", sum(arr))`,
+  fizzbuzz:`// Classic FizzBuzz
 for i in range(1, 31) {
-    if i % 15 == 0      { print("FizzBuzz") }
-    else if i % 3 == 0  { print("Fizz") }
-    else if i % 5 == 0  { print("Buzz") }
+    if      i % 15 == 0 { print("FizzBuzz") }
+    else if i % 3  == 0 { print("Fizz") }
+    else if i % 5  == 0 { print("Buzz") }
     else                 { print(i) }
 }`,
-
-  struct: `// Structs with methods
+  struct:`// Structs with operator overloading
 struct Vector2 {
     x: float
     y: float
-
-    fn length() -> float {
-        return sqrt(self.x * self.x + self.y * self.y)
-    }
-
-    fn add(other: Vector2) -> Vector2 {
-        return Vector2 { x: self.x + other.x, y: self.y + other.y }
-    }
-
-    fn to_string() -> string {
-        return "(" + self.x + ", " + self.y + ")"
-    }
+    fn length() -> float { return sqrt(self.x*self.x + self.y*self.y) }
+    fn to_string() -> string { return "(" + self.x + ", " + self.y + ")" }
+    operator + (rhs) { return Vector2 { x: self.x+rhs.x, y: self.y+rhs.y } }
+    operator == (rhs) { return self.x == rhs.x && self.y == rhs.y }
 }
-
 let a = Vector2 { x: 3.0, y: 4.0 }
 let b = Vector2 { x: 1.0, y: 2.0 }
-let c = a.add(b)
-
-print("a =", a.to_string())
-print("b =", b.to_string())
-print("a + b =", c.to_string())
-print("Length of a:", a.length())`,
-
-  closure: `// Closures and higher-order functions
+let c = a + b
+print("a =", a.to_string(), "  |a| =", a.length())
+print("c = a+b =", c.to_string())
+print("a == b:", a == b)`,
+  closure:`// Closures, pipes and higher-order functions
 fn make_counter(start: int) {
     let count = start
-    return fn() {
-        count += 1
-        return count
+    return fn() { count += 1; return count }
+}
+let c1 = make_counter(0); let c2 = make_counter(10)
+print(c1(), c1(), c1())
+print(c2(), c2())
+fn double(x) { return x * 2 }
+fn add_ten(x) { return x + 10 }
+let result = 5 |> double |> add_ten
+print("5 |> double |> add_ten =", result)
+let evens   = filter([1,2,3,4,5,6,7,8,9,10], fn(x) { return x % 2 == 0 })
+let squares = map(evens, fn(x) { return x * x })
+print("even squares:", squares)`,
+  match:`// Match + enums
+enum Shape { Circle Rectangle Triangle }
+fn describe(s) -> string {
+    match s {
+        case Shape.Circle    { return "a circle" }
+        case Shape.Rectangle { return "a rectangle" }
+        case Shape.Triangle  { return "a triangle" }
+    }
+    return "unknown"
+}
+let shapes = [Shape.Circle, Shape.Rectangle, Shape.Triangle]
+for s in shapes { print("Shape is", describe(s)) }`,
+  error:`// Try / catch / finally
+fn divide(a: float, b: float) -> float {
+    if b == 0.0 { throw "Division by zero!" }
+    return a / b
+}
+fn safe_div(a: float, b: float) -> float {
+    try {
+        return divide(a, b)
+    } catch err: string {
+        print("Caught:", err)
+        return 0.0
+    } finally {
+        print("(finally runs)")
     }
 }
-
-let counter = make_counter(0)
-print(counter())   // 1
-print(counter())   // 2
-print(counter())   // 3
-
-// Map equivalent
-fn apply(arr: int[], f) -> int[] {
-    let result: int[] = []
-    for item in arr {
-        result.push(f(item))
-    }
-    return result
-}
-
-let nums = [1, 2, 3, 4, 5]
-let doubled = apply(nums, fn(x) { return x * 2 })
-print(doubled)`,
-
-  game: `// Mini game loop simulation
+print(safe_div(10.0, 2.0))
+print(safe_div(10.0, 0.0))`,
+  game:`// Mini game loop
 struct Player {
-    x:      float = 400.0
-    y:      float = 300.0
-    speed:  float = 180.0
-    health: int   = 100
-    score:  int   = 0
-
+    x: float=400.0; y: float=300.0; speed: float=180.0
+    health: int=100; score: int=0
     fn move(dx: float, dy: float, dt: float) {
-        self.x += dx * self.speed * dt
-        self.y += dy * self.speed * dt
+        self.x += dx*self.speed*dt; self.y += dy*self.speed*dt
     }
-
-    fn take_damage(dmg: int) {
-        self.health -= dmg
-        if self.health < 0 { self.health = 0 }
-    }
-
+    fn take_damage(d: int) { self.health -= d; if self.health<0{self.health=0} }
+    fn is_alive() -> bool { return self.health > 0 }
     fn status() -> string {
-        return "Player @ (" + int(self.x) + "," + int(self.y) +
+        return "Player@(" + int(self.x) + "," + int(self.y) +
                ") HP:" + self.health + " Score:" + self.score
     }
 }
-
-let player = Player {}
-let dt = 0.016   // ~60 FPS
-
-// Simulate 5 frames
-for frame in range(5) {
-    player.move(1.0, 0.5, dt)
-    if frame == 2 { player.take_damage(15) }
-    player.score += 10
-    print("Frame", frame + 1, "—", player.status())
-}
-print("Game over! Final score:", player.score)`
+let p = Player{}; let dt = 0.016
+for frame in range(8) {
+    p.move(1.0, 0.5, dt)
+    if frame % 3 == 2 { p.take_damage(12) }
+    p.score += 10
+    print("Frame", frame+1, "--", p.status())
+    if !p.is_alive() { print("GAME OVER"); break }
+}`
 };
 
-function loadExample(name) {
-  document.getElementById("editor").value = EXAMPLES[name] || "";
-  setStatus("Example loaded: " + name);
+let mode = 'interp';
+function setMode(m){
+  mode=m;
+  document.getElementById('m-interp').classList.toggle('on',m==='interp');
+  document.getElementById('m-vm').classList.toggle('on',m==='vm');
+  document.getElementById('st-mode').innerHTML=
+    'Mode: <span class="s-ac">'+(m==='vm'?'VM (bytecode)':'Interpreter')+'</span>';
 }
-
-function clearOutput() {
-  document.getElementById("output").innerHTML = "";
+function loadEx(name){
+  document.getElementById('editor').value=EX[name]||'';
+  document.querySelectorAll('.pill').forEach(b=>b.classList.remove('on'));
+  const b=document.getElementById('ex-'+name);if(b)b.classList.add('on');
+  document.getElementById('outwrap').innerHTML='<div class="ok">Example loaded: '+name+'</div>';
+  document.getElementById('st-res').textContent='';
 }
-
-function setStatus(msg) {
-  document.getElementById("status").textContent = msg;
+function clearOutput(){
+  document.getElementById('outwrap').innerHTML='';
+  document.getElementById('st-res').textContent='';
 }
-
-async function runCode() {
-  const code = document.getElementById("editor").value;
-  const out  = document.getElementById("output");
-  out.innerHTML = \'<div class="out-time">Running…</div>\';
-  const t0 = performance.now();
-  try {
-    const resp = await fetch("/run", {
-      method: "POST",
-      headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({source: code})
-    });
-    const data = await resp.json();
-    const ms   = (performance.now() - t0).toFixed(1);
-    out.innerHTML = "";
-    if (data.output && data.output.length) {
-      data.output.forEach(line => {
-        const d = document.createElement("div");
-        d.className = "out-line"; d.textContent = line;
-        out.appendChild(d);
-      });
+document.addEventListener('DOMContentLoaded',()=>{
+  const ed=document.getElementById('editor');
+  ed.addEventListener('keydown',e=>{
+    if(e.key==='Tab'){e.preventDefault();
+      const s=ed.selectionStart,end=ed.selectionEnd;
+      ed.value=ed.value.substring(0,s)+'    '+ed.value.substring(end);
+      ed.selectionStart=ed.selectionEnd=s+4;}
+  });
+});
+async function runCode(){
+  const code=document.getElementById('editor').value.trim();
+  if(!code)return;
+  const out=document.getElementById('outwrap');
+  out.innerHTML='<div class="om"><span class="spin"></span>Running&hellip;</div>';
+  const t0=performance.now();
+  try{
+    const r=await fetch('/run',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({source:code,mode:mode})});
+    const data=await r.json();
+    const ms=(performance.now()-t0).toFixed(1);
+    out.innerHTML='';
+    (data.output||[]).forEach(ln=>{
+      const d=document.createElement('div');d.className='ol';d.textContent=ln;out.appendChild(d);});
+    if((data.errors||[]).length){
+      if((data.output||[]).length){const s=document.createElement('hr');s.className='sep';out.appendChild(s);}
+      data.errors.forEach(e=>{
+        const d=document.createElement('div');d.className='oe';d.textContent='✗ '+e;out.appendChild(d);});
+      document.getElementById('st-res').innerHTML='<span class="s-er">Error</span>';
+    }else if(!(data.output||[]).length){
+      const d=document.createElement('div');d.className='ok';d.textContent='(no output)';out.appendChild(d);
+      document.getElementById('st-res').innerHTML='<span class="s-ok">OK</span>';
+    }else{
+      document.getElementById('st-res').innerHTML='<span class="s-ok">OK</span>';
     }
-    if (data.errors && data.errors.length) {
-      data.errors.forEach(err => {
-        const d = document.createElement("div");
-        d.className = "out-err"; d.textContent = "✗ " + err;
-        out.appendChild(d);
-      });
-    }
-    if (!data.output?.length && !data.errors?.length) {
-      const d = document.createElement("div");
-      d.className = "out-ok"; d.textContent = "(no output)";
-      out.appendChild(d);
-    }
-    const td = document.createElement("div");
-    td.className = "out-time";
-    td.textContent = `Executed in ${ms}ms`;
-    out.appendChild(td);
-    setStatus(`Done in ${ms}ms · InScript v1.0.1`);
-  } catch(e) {
-    out.innerHTML = `<div class="out-err">Server error: ${e.message}</div>`;
-  }
+    const td=document.createElement('div');td.className='om';td.textContent='Ran in '+ms+'ms';out.appendChild(td);
+    out.scrollTop=out.scrollHeight;
+  }catch(e){out.innerHTML='<div class="oe">Server error: '+e.message+'</div>';}
 }
-
-function shareCode() {
-  const code = document.getElementById("editor").value;
-  const encoded = btoa(encodeURIComponent(code));
-  const url = location.origin + "/?code=" + encoded;
-  navigator.clipboard.writeText(url).then(() => {
-    setStatus("Share URL copied to clipboard!");
+function shareCode(){
+  const code=document.getElementById('editor').value;
+  const url=location.origin+'/?code='+btoa(encodeURIComponent(code));
+  navigator.clipboard.writeText(url).then(()=>{
+    document.getElementById('st-res').innerHTML='<span class="s-ac">Share URL copied!</span>';
+    setTimeout(()=>document.getElementById('st-res').textContent='',3000);
   });
 }
-
-// Load from URL ?code=
-const params = new URLSearchParams(location.search);
-if (params.has("code")) {
-  try {
-    document.getElementById("editor").value = decodeURIComponent(atob(params.get("code")));
-  } catch {}
-}
-
-// Load default example
-if (!document.getElementById("editor").value) {
-  loadExample("fibonacci");
-}
-
-// Ctrl+Enter to run
-document.addEventListener("keydown", e => {
-  if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
-    e.preventDefault(); runCode();
-  }
+const params=new URLSearchParams(location.search);
+if(params.has('code')){
+  try{document.getElementById('editor').value=decodeURIComponent(atob(params.get('code')));
+      document.querySelectorAll('.pill').forEach(b=>b.classList.remove('on'));}catch{}
+}else{loadEx('fibonacci');}
+document.addEventListener('keydown',e=>{
+  if((e.ctrlKey||e.metaKey)&&e.key==='Enter'){e.preventDefault();runCode();}
 });
 </script>
 </body>
-</html>'''
+</html>"""
 
 
 def run_playground(port: int = 8080):
     """Launch the web playground in the browser."""
-    import webbrowser, json
+    import webbrowser, json, io as _io
     from http.server import HTTPServer, BaseHTTPRequestHandler
 
     class Handler(BaseHTTPRequestHandler):
@@ -865,37 +1059,32 @@ def run_playground(port: int = 8080):
             length = int(self.headers.get("Content-Length", 0))
             body   = json.loads(self.rfile.read(length))
             source = body.get("source", "")
+            mode   = body.get("mode", "interp")
 
             output = []; errors = []
+            buf = _io.StringIO()
+            orig = sys.stdout
+            sys.stdout = buf
             try:
                 from lexer import Lexer
                 from parser import Parser
                 from interpreter import Interpreter
                 from errors import InScriptError
 
-                interp = Interpreter()
-                captured = []
-                original_print = interp._env._store.get("print")
-
-                # Capture print output
-                def capture_print(*args):
-                    captured.append(" ".join(str(a) for a in args))
-
                 tokens  = Lexer(source).tokenize()
                 program = Parser(tokens).parse()
-                interp.execute(program)
-
-                # Re-run capturing output (simpler approach)
-                import io, contextlib
-                buf = io.StringIO()
-                with contextlib.redirect_stdout(buf):
-                    interp2 = Interpreter()
-                    interp2.execute(Parser(Lexer(source).tokenize()).parse())
-                output = [l for l in buf.getvalue().splitlines() if l is not None]
-
+                if mode == "vm":
+                    from compiler import Compiler
+                    from vm import VM
+                    VM().run(Compiler().compile(program))
+                else:
+                    Interpreter().execute(program)
             except Exception as e:
                 errors = [str(e)]
+            finally:
+                sys.stdout = orig
 
+            output = [ln for ln in buf.getvalue().splitlines()]
             resp = json.dumps({"output": output, "errors": errors}).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
@@ -904,8 +1093,8 @@ def run_playground(port: int = 8080):
             self.wfile.write(resp)
 
     url = f"http://localhost:{port}"
-    print(f"✅ InScript Playground running at {url}")
-    print(f"   Press Ctrl+C to stop")
+    print(f"InScript Playground → {url}")
+    print(f"Press Ctrl+C to stop")
     webbrowser.open(url)
     try:
         HTTPServer(("", port), Handler).serve_forever()
@@ -919,15 +1108,17 @@ def run_playground(port: int = 8080):
 
 def main():
     import argparse
-    p = argparse.ArgumentParser(description="InScript REPL + Playground")
+    p = argparse.ArgumentParser(description=f"InScript v{VERSION} REPL + Playground")
     p.add_argument("--web",  action="store_true", help="Launch web playground")
     p.add_argument("--port", type=int, default=8080, help="Playground port (default: 8080)")
+    p.add_argument("--vm",   action="store_true", help="Start in VM execution mode")
     args = p.parse_args()
-
     if args.web:
         run_playground(args.port)
     else:
-        EnhancedREPL().run()
+        repl = EnhancedREPL()
+        if args.vm: repl._use_vm = True
+        repl.run()
 
 if __name__ == "__main__":
     main()

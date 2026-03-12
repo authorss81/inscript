@@ -95,63 +95,71 @@ Every finding verified by running actual InScript code.
 
 ---
 
-### BUG-01 ⚠️ CRITICAL — VM silently swallows undefined variable references
+### ~~BUG-01~~ ✅ FIXED — VM silently swallows undefined variable references
+
+**Fixed 2026-03-10** in `vm.py`: `LOAD_GLOBAL` handler now checks `if _gname not in self._globals` and raises `InScriptRuntimeError(f"Undefined variable '{_gname}'")` instead of silently returning nil via `dict.get()`.
 
 ```inscript
 print(totally_undefined_variable)
-// Interpreter: NameError E0042: Undefined variable 'totally...'  ✅
-// VM:          nil                                                 ❌
+// VM now: [InScript InScriptRuntimeError] ... Undefined variable 'totally_undefined_variable'  ✅
 ```
-
-The VM's `LOAD_GLOBAL` handler returns nil for missing keys instead of raising. Any typo in a variable name in production code running through the VM produces nil silently. State corruption becomes invisible. This is the single most dangerous bug in the project.
 
 ---
 
-### BUG-02 ⚠️ CRITICAL — VM: bitwise operators not compiled
+### ~~BUG-02~~ ✅ FIXED — VM: bitwise operators not compiled
+
+**Fixed 2026-03-10** in `compiler.py` and `vm.py`: Added 6 new opcodes (`BAND`, `BOR`, `BXOR`, `BNOT`, `BLSHIFT`, `BRSHIFT`) to the `Op` enum. Added `&`, `|`, `^`, `<<`, `>>` to the `_ARITH` dict. Added `~` handling in the `UnaryExpr` compiler path. Added all 6 VM dispatch handlers.
 
 ```inscript
-let c = a & b   // VM: InScriptRuntimeError: called nil
+let a = 0b1010; let b = 0b1100
+print(a & b)   // → 8  ✅
+print(a | b)   // → 14 ✅
+print(a ^ b)   // → 6  ✅
+print(~a)      // → -11 ✅
+print(a << 1)  // → 20 ✅
+print(a >> 1)  // → 5  ✅
 ```
-
-The compiler (`compiler.py`) has **zero opcodes** for `&`, `|`, `^`, `~`, `<<`, `>>`. When the compiler encounters a bitwise expression it falls through to a nil-call path and crashes at runtime. Lexer, parser, and interpreter all handle bitwise correctly.
 
 ---
 
-### BUG-03 ⚠️ CRITICAL — VM: ADT enums with data fields crash
+### ~~BUG-03~~ ✅ FIXED — VM: ADT enums with data fields crash
+
+**Fixed 2026-03-10** in `compiler.py` and `vm.py`: The compiler's `_enum_decl` now stores `{'__adt_fields__': [...], '__enum__': ..., '__variant__': ...}` for data-carrying variants instead of just an integer index. `VM._do_call` now handles `VMEnumVariant` whose `.value` is an ADT field descriptor — it builds the tagged dict `{'_variant': name, '_enum': name, field: value, ...}` matching the interpreter's format.
 
 ```inscript
-enum Shape { Circle(r: float) }
-let c = Shape.Circle(5.0)
-// VM: InScriptRuntimeError: 'Shape.Circle' is not callable
+enum Shape { Circle(r: float) Rect(w: float, h: float) }
+let c = Shape.Circle(5.5)
+print(c._variant)  // → Circle ✅
+print(c.r)         // → 5.5   ✅
+let rect = Shape.Rect(3.0, 4.0)
+print(rect.w)      // → 3.0   ✅
+// Ok(value) / Err(msg) Result pattern now works in VM ✅
 ```
-
-Simple enums (`Color.Red`) work in both paths. Data-carrying variants crash in the VM. This means the entire `Ok(value)` / `Err(msg)` Result pattern is broken in the production execution path.
 
 ---
 
-### BUG-04 ⚠️ CRITICAL — VM: nested comprehensions produce nil for inner variable
+### ~~BUG-04~~ ✅ FIXED — VM: nested comprehensions produce nil for inner variable
+
+**Fixed 2026-03-10** in `compiler.py`: Rewrote `_list_comp` to process `extra_clauses`. It now builds a list of all clauses, emits nested `ITER_START`/`ITER_NEXT` loops for each, and closes them in reverse order — the same way nested `for-in` statements compile.
 
 ```inscript
 let pairs = [[x,y] for x in [1,2,3] for y in [10,20,30]]
-// Interpreter:  [[1,10],[1,20],[1,30],[2,10],...]  ✅
-// VM:           [[1,nil],[2,nil],[3,nil]]            ❌
+// VM: [[1,10],[1,20],[1,30],[2,10],[2,20],[2,30],[3,10],[3,20],[3,30]] ✅
 ```
-
-The inner iteration variable is never populated in the VM's nested comprehension codepath. Silently wrong with no error.
 
 ---
 
-### BUG-05 ⚠️ CRITICAL — VM: error messages doubly-wrapped and always show Line 0
+### ~~BUG-05~~ ✅ FIXED — VM: error messages doubly-wrapped and always show Line 0
+
+**Fixed 2026-03-10** in `vm.py`: The outer `except` handler now checks `if isinstance(e, InScriptRuntimeError): raise` before re-wrapping. An already-formatted error is re-raised as-is; only raw Python exceptions get wrapped in a new `InScriptRuntimeError`. This eliminates the stacked `[InScript InScriptRuntimeError]` repetition.
 
 ```inscript
 throw "test error"
-// VM output for a 3-deep call chain:
-// [InScript InScriptRuntimeError] E0040  Line 0:
-// [InScript InScriptRuntimeError] E0040  Line 0:
-// [InScript InScriptRuntimeError] E0040  Line 0: test error
+// VM now: [InScript InScriptRuntimeError] E0040  Line 0: test error  ✅
+// (single wrapper, not tripled)
 ```
 
-Every re-throw in the VM wraps the previous error, multiplying the `E0040` block. All show `Line 0` because the VM discards source line information in its exception handling path. The interpreter produces a single clean error with the correct line.
+> **Note:** Line numbers still show `Line 0` because the VM doesn't thread source positions through the exception path yet. That is tracked as a separate improvement item.
 
 ---
 
