@@ -41,6 +41,12 @@ class Interpreter(Visitor):
 
         self._register_builtins()
 
+    def _make_fn(self, name, params, body, closure, **kwargs) -> InScriptFunction:
+        """Factory: create InScriptFunction and wire _interp so stdlib can call it."""
+        fn = InScriptFunction(name=name, params=params, body=body, closure=closure, **kwargs)
+        fn._interp = self
+        return fn
+
     # ── utilities ─────────────────────────────────────────────────────────────
 
     def _src_line(self, line: int) -> str:
@@ -72,10 +78,10 @@ class Interpreter(Visitor):
 
     def _call_fn(self, fn, args: list):
         """Call an InScript function or Python callable with a list of args."""
-        if callable(fn):
-            return fn(*args)
         if isinstance(fn, InScriptFunction):
             return self._call_function(fn, args, [None]*len(args), 0, None)
+        if callable(fn):
+            return fn(*args)
         self._error(f"Cannot call {type(fn).__name__}")
 
     def _find_method(self, instance: InScriptInstance, method_name: str):
@@ -588,6 +594,23 @@ class Interpreter(Visitor):
         # Track interface implementations
         if not hasattr(node, '_implements'):
             node._implements = list(node.interfaces or [])
+
+        # BUG-15 fix: inject interface DEFAULT methods into struct if not overridden
+        existing_method_names = {m.name for m in node.methods}
+        for iface_name in (node.interfaces or []):
+            try:
+                iface = self._env.get(iface_name, node.line)
+            except Exception:
+                continue
+            if not isinstance(iface, dict) or iface.get('_type') != 'interface':
+                continue
+            for mname, mnode in iface.get('_methods', {}).items():
+                # Only inject if the method has a non-empty body AND struct doesn't override it
+                body = getattr(mnode, 'body', None)
+                has_default = body is not None and bool(getattr(body, 'body', None))
+                if mname not in existing_method_names and has_default:
+                    node.methods.append(mnode)
+                    existing_method_names.add(mname)
 
         # Phase 1.1: enforce interface conformance at definition time
         self._check_interface_conformance(node)
@@ -1346,7 +1369,23 @@ class Interpreter(Visitor):
         if op == "%":
             if right == 0: self._error("Modulo by zero", node.line)
             return left % right
-        if op == "**": return left ** right
+        if op == "**":
+            # Guard: check BEFORE computing — a huge exponent causes an infinite hang
+            if (isinstance(left, int) and not isinstance(left, bool)
+                    and isinstance(right, int) and not isinstance(right, bool)
+                    and right > 0 and abs(left) > 1):
+                import math as _math
+                try:
+                    estimated_bits = right * _math.log2(abs(left))
+                except (OverflowError, ValueError):
+                    estimated_bits = float('inf')
+                if estimated_bits > 100_000:
+                    digits = int(estimated_bits * 0.30103)
+                    self._error(
+                        f"OverflowError: {left} ** {right} would produce ~{digits:,} digits "
+                        f"— too large to compute. Use float({left}) ** {right} for an approximate result.",
+                        node.line)
+            return left ** right
         if op == "==": return left == right
         if op == "!=": return left != right
         if op == "<":  return left <  right
@@ -1762,7 +1801,7 @@ class Interpreter(Visitor):
         # Register struct methods as bound functions
         inst = InScriptInstance(decl.name, fields)
         for method in decl.methods:
-            bound = InScriptFunction(
+            bound = self._make_fn(
                 name    = method.name,
                 params  = method.params,
                 body    = method.body,
@@ -1899,12 +1938,12 @@ class Interpreter(Visitor):
 
         inst = InScriptInstance(decl.name, fields)
         for method in decl.methods:
-            bound = InScriptFunction(method.name, method.params, method.body, self._env)
+            bound = self._make_fn(method.name, method.params, method.body, self._env)
             inst.fields[method.name] = bound
         return inst
 
     def visit_LambdaExpr(self, node: LambdaExpr) -> Any:
-        return InScriptFunction(
+        return self._make_fn(
             name    = "<lambda>",
             params  = node.params,
             body    = node.body if isinstance(node.body, BlockStmt)

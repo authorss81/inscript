@@ -7,7 +7,7 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-501%20passing-brightgreen.svg)](#testing)
-[![Version](https://img.shields.io/badge/version-1.0.2-blue.svg)](#)
+[![Version](https://img.shields.io/badge/version-1.0.3-blue.svg)](#)
 
 </div>
 
@@ -397,27 +397,40 @@ python test_audit.py     #  54 tests  — regression suite
 
 ---
 
-## What's New in v1.0.2
+## What's New in v1.0.3
+
+### New in v1.0.3
+
+| Fix | Description |
+|-----|-------------|
+| **`**` hang** | `4**4**4**4` now gives a clean error instantly instead of freezing forever |
+| **BUG-15** | Interface default methods (with a body) are now inherited by implementing structs |
+| **Dict bare keys** | `{x: 10, y: 20}` now works — identifier keys are treated as strings |
+| **tween 3-arg** | All tween functions now work as `T.linear(t)` or `T.linear(t, from, to)` |
+| **iter module** | `I.map/filter/reduce` now accept InScript lambdas and functions |
+| **collections** | `C.set([1,2,3])` (lowercase) + `set_size/set_add/set_has/set_remove` helpers |
+| **Decorator fix** | Decorators and higher-order functions work correctly again |
+| **REPL banner** | Gemini-style pixel-art ASCII logo with cyan→magenta gradient |
+| **REPL `.help`** | Full coloured help text with sections and syntax highlighting |
+| **REPL `.modules`** | Categorised display of all 56 stdlib modules |
+
+### Also in v1.0.2 (carried forward)
 
 | Fix | Description |
 |-----|-------------|
 | **Windows REPL** | No longer crashes when `readline` is missing |
-| **Large integers** | `2 ** 10000` now prints without crashing |
-| **BUG-14** | Static fields on structs: `static PI: float = 3.14` now works |
+| **BUG-14** | Static fields on structs: `static PI: float = 3.14` works |
 | **BUG-16** | Missing required struct fields now print a clear warning |
 | **BUG-17** | Float passed to `int` parameter now warns about truncation |
 | **BUG-18** | `push(arr, val)` and `pop(arr)` work as free functions |
 | **BUG-19** | Generator objects callable: `gen()` advances one step |
 | **BUG-21** | Non-exhaustive match error shows which arms were checked |
 | **BUG-25** | Regex API is now `(text, pattern)`: `R.test("hello", "\\w+")` |
-| **BUG-26** | `color.rgb()` uses 0.0–1.0 scale; `rgb255()` added for 0–255 |
+| **BUG-26** | `color.rgb()` uses 0.0–1.0 scale; `rgb255()` added |
 | **BUG-27** | `math.INF` / `math.NAN` now print as `Infinity` / `NaN` |
-| **BUG-28** | `events.on()` callbacks now fire correctly from InScript |
+| **BUG-28** | `events.on()` InScript callbacks now fire correctly |
 | **BUG-29** | `fill(arr, val)` fills in-place; `fill(n, val)` makes new array |
-| **BUG-30** | `random.float(lo, hi)` range form now works |
-
----
-
+| **BUG-30** | `random.float(lo, hi)` range form works |
 ## License
 
 MIT — see [LICENSE](LICENSE)
@@ -426,7 +439,7 @@ MIT — see [LICENSE](LICENSE)
 
 <div align="center">
 
-**InScript v1.0.2** · Built with Python 3.10+
+**InScript v1.0.3** · Built with Python 3.10+
 
 [REPL Tutorial](REPL_Tutorial.md) · [Language Audit](InScript_Language_Audit.md)
 

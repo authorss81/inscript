@@ -473,27 +473,43 @@ def _tween(start, end, t, easing_fn):
         return start.lerp(end, et)
     return start + (end - start) * et
 
+def _make_easing(raw_fn):
+    """Wrap a raw 0-1 easing fn so it works as fn(t) OR fn(t, from_val, to_val)."""
+    def wrapped(*args):
+        if len(args) == 1:
+            return raw_fn(max(0.0, min(1.0, float(args[0]))))
+        elif len(args) == 3:
+            t, a, b = float(args[0]), args[1], args[2]
+            et = raw_fn(max(0.0, min(1.0, t)))
+            if isinstance(a, Vec2) and isinstance(b, Vec2): return a.lerp(b, et)
+            if isinstance(a, Color) and isinstance(b, Color): return a.lerp(b, et)
+            return a + (b - a) * et
+        else:
+            raise TypeError(f"tween fn expects 1 or 3 args (t) or (t, from, to), got {len(args)}")
+    return wrapped
+
+_linear_raw = lambda t: t
 register_module("tween", {
-    "linear":        lambda t: t,
-    "ease_in":       _ease_in_quad,
-    "ease_out":      _ease_out_quad,
-    "ease_in_out":   _ease_io_quad,
-    "ease_in_quad":  _ease_in_quad,
-    "ease_out_quad": _ease_out_quad,
-    "ease_in_cubic": _ease_in_cubic,
+    "linear":        _make_easing(_linear_raw),
+    "ease_in": _make_easing(_ease_in_quad),
+    "ease_out": _make_easing(_ease_out_quad),
+    "ease_in_out": _make_easing(_ease_io_quad),
+    "ease_in_quad": _make_easing(_ease_in_quad),
+    "ease_out_quad": _make_easing(_ease_out_quad),
+    "ease_in_cubic": _make_easing(_ease_in_cubic),
     "ease_out_cubic":_ease_out_cubic,
-    "ease_io_cubic": _ease_io_cubic,
-    "ease_in_sine":  _ease_in_sine,
-    "ease_out_sine": _ease_out_sine,
-    "ease_io_sine":  _ease_io_sine,
-    "ease_in_expo":  _ease_in_expo,
-    "ease_out_expo": _ease_out_expo,
+    "ease_io_cubic": _make_easing(_ease_io_cubic),
+    "ease_in_sine": _make_easing(_ease_in_sine),
+    "ease_out_sine": _make_easing(_ease_out_sine),
+    "ease_io_sine": _make_easing(_ease_io_sine),
+    "ease_in_expo": _make_easing(_ease_in_expo),
+    "ease_out_expo": _make_easing(_ease_out_expo),
     "ease_in_bounce":_ease_in_bounce,
     "ease_out_bounce":_ease_out_bounce,
     "ease_in_elastic":_ease_in_elastic,
     "ease_out_elastic":_ease_out_elastic,
-    "ease_in_back":  _ease_in_back,
-    "ease_out_back": _ease_out_back,
+    "ease_in_back": _make_easing(_ease_in_back),
+    "ease_out_back": _make_easing(_ease_out_back),
     "tween":         _tween,
 })
 

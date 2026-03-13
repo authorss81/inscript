@@ -200,8 +200,11 @@ def _group_by(lst, key_fn):
 
 register_module("collections", _wrapmod({
     "Set":           lambda items=None: _Set(items),
+    "set":           lambda items=None: _Set(items),   # lowercase alias
     "Queue":         lambda: _Queue(),
+    "queue":         lambda: _Queue(),
     "Deque":         lambda: _Deque(),
+    "deque":         lambda: _Deque(),
     "PriorityQueue": lambda: _PriorityQueue(),
     "RingBuffer":    lambda cap: _RingBuffer(cap),
     "counter":       _counter,
@@ -209,6 +212,15 @@ register_module("collections", _wrapmod({
     "zip_dicts":     lambda keys, vals: dict(zip(keys, vals)),
     "flatten":       lambda lst: [x for sub in lst for x in (sub if isinstance(sub, list) else [sub])],
     "sliding_window":lambda lst, n: [lst[i:i+n] for i in range(len(lst)-int(n)+1)],
+    # Convenience helpers that work on Set objects
+    "set_add":       lambda s, v: s.add(v),
+    "set_remove":    lambda s, v: s.remove(v),
+    "set_has":       lambda s, v: s.has(v),
+    "set_size":      lambda s: s.size(),
+    "set_to_array":  lambda s: s.to_array(),
+    "set_union":     lambda a, b: a.union(b),
+    "set_intersect": lambda a, b: a.intersect(b),
+    "set_diff":      lambda a, b: a.difference(b),
 }, "collections"))
 
 

@@ -227,8 +227,15 @@ class InScriptFunction:
         self.is_native   = is_native
         self.native_fn   = native_fn    # Python callable for native fns
         self.return_type = return_type  # Optional type annotation
+        self._interp     = None         # Set by interpreter so stdlib can call us
 
     def __repr__(self): return f"<fn {self.name}>"
+
+    def __call__(self, *args):
+        """Allow InScriptFunction to be called from Python (e.g. stdlib iter/map/filter)."""
+        if self._interp is not None:
+            return self._interp._call_function(self, list(args), [None]*len(args), 0)
+        raise TypeError(f"InScriptFunction '{self.name}' cannot be called without an interpreter context")
 
 
 class InScriptInstance:

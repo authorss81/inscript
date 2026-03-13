@@ -39,7 +39,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 HISTORY_FILE = Path.home() / ".inscript" / "history"
 HISTORY_FILE.parent.mkdir(parents=True, exist_ok=True)
-VERSION = "1.0.2"
+VERSION = "1.0.3"
 
 # ── ANSI colours ──────────────────────────────────────────────────────────────
 def _c(code, text):
@@ -56,53 +56,174 @@ DIM     = lambda t: _c("2",        t)
 BLUE    = lambda t: _c("34",       t)
 ORANGE  = lambda t: _c("38;5;214", t)
 
-BANNER = """\n  {C}InScript v{V}{R} — Interactive Shell\n  Type {Y}.help{R} for commands, {Y}exit{R} to quit\n""".format(
-    C="\033[1;36m", V=VERSION, R="\033[0m", Y="\033[33m")
+def _make_banner():
+    """Build the Gemini-style InScript REPL banner with pixel-art logo."""
+    RST  = "\033[0m"
+    BOLD = "\033[1m"
+    DIM_  = "\033[2m"
 
-HELP_TEXT = """
-REPL Commands:
-  .help                Show this help
-  .vars                List all defined variables
-  .fns                 List all defined functions
-  .types               List all defined struct/enum types
-  .env                 Show full environment tree
-  .inspect <expr>      Deep field/method inspection
-  .type <expr>         Show the type of an expression
-  .doc <module>        Show stdlib module exports
-  .clear               Reset session variables
-  .reset               Full reset (interpreter + history)
-  .save <file>         Save session to .ins file
-  .load / .run <file>  Load and run a .ins file
-  .export [file]       Export session as Markdown
-  .time <expr>         Measure execution time (10 runs)
-  .bench <expr>        Statistical benchmark (100 runs)
-  .bytecode [expr]     Compact bytecode listing
-  .asm [expr]          Full annotated assembly
-  .vm                  Toggle VM / interpreter execution mode
-  .history [n]         Show last n commands (default 20)
-  .modules             List importable stdlib modules
-  .packages            List installed packages
-  exit / quit          Leave REPL
+    # Gradient: cyan → magenta across 57-char logo width
+    # ANSI 256-colour horizontal gradient: 51(cyan) → 45 → 39 → 33 → 57 → 93 → 129(magenta)
+    GRAD = [51, 51, 45, 45, 45, 39, 39, 39, 33, 33, 33, 27, 27, 57, 57, 57,
+            93, 93, 93, 99, 99, 129, 129, 129, 135, 135, 171, 171, 171,
+            171, 207, 207, 207, 213, 213, 213, 219, 219, 219, 225, 225,
+            225, 231, 231, 231, 231, 231, 231, 231, 231, 231, 231, 231,
+            231, 231, 231, 231]
 
-Shortcuts:
-  Up/Down   Navigate history        Tab   Auto-complete
-  !!        Repeat last command      Ctrl+C  Cancel input
+    def grad_line(text):
+        """Colour each character of text with the gradient."""
+        out = []
+        ci = 0
+        for ch in text:
+            if ch in ' \t':
+                out.append(ch)
+            else:
+                c = GRAD[ci % len(GRAD)]
+                out.append(f"\033[38;5;{c}m{ch}{RST}")
+            ci += 1
+        return "".join(out)
 
-Multi-line:
-  Open a brace { and press Enter — REPL continues until balanced
-  Continuation shows line numbers:  ... 2   ... 3
-  End a line with \\ to force continuation
+    LOGO_LINES = [
+        r" ██╗███╗   ██╗███████╗ ██████╗██████╗ ██╗██████╗ ████████╗",
+        r" ██║████╗  ██║██╔════╝██╔════╝██╔══██╗██║██╔══██╗╚══██╔══╝",
+        r" ██║██╔██╗ ██║███████╗██║     ██████╔╝██║██████╔╝   ██║   ",
+        r" ██║██║╚██╗██║╚════██║██║     ██╔══██╗██║██╔═══╝    ██║   ",
+        r" ██║██║ ╚████║███████║╚██████╗██║  ██║██║██║        ██║   ",
+        r" ╚═╝╚═╝  ╚═══╝╚══════╝ ╚═════╝╚═╝  ╚═╝╚═╝╚═╝        ╚═╝  ",
+    ]
 
-Auto-print:
-  Bare expressions show their value automatically:
-    >>> 2 + 2
-      → 4
-"""
+    W = 62
+    sep = f"\033[38;5;57m{'━' * W}{RST}"
+    dim_sep = f"{DIM_}{'─' * W}{RST}"
 
+    lines = [""]
+    lines.append(sep)
+    lines.append("")
+    for row in LOGO_LINES:
+        lines.append(grad_line(row))
+    lines.append("")
+    lines.append(sep)
+    lines.append(f" \033[38;5;51m▶\033[0m  \033[1mA scripting language for game development\033[0m  \033[2mv{VERSION}\033[0m")
+    lines.append(dim_sep)
+    lines.append(f" \033[2m56 stdlib modules  ·  501 tests  ·  Python 3.10+\033[0m")
+    lines.append(dim_sep)
+    lines.append(f" Type \033[33m.help\033[0m for commands  ·  \033[33m.modules\033[0m for stdlib  ·  \033[33mexit\033[0m to quit")
+    lines.append(sep)
+    lines.append("")
+
+    return "\n".join(lines)
+
+BANNER = _make_banner()
+
+def _make_help():
+    RST  = "\033[0m"
+    CY   = "\033[36m"
+    YEL  = "\033[33m"
+    GRN  = "\033[32m"
+    MAG  = "\033[35m"
+    DM   = "\033[2m"
+    BLD  = "\033[1m"
+    sep  = f"\033[38;5;57m{'━' * 58}{RST}"
+    dim  = f"{DM}{'─' * 58}{RST}"
+
+    def cmd(name, desc):
+        return f"  {YEL}{name:<24}{RST}{desc}"
+
+    def section(title):
+        return f"\n  {BLD}{CY}{title}{RST}"
+
+    lines = [
+        "",
+        sep,
+        f"  {BLD}{'InScript REPL  —  Commands':^58}{RST}",
+        sep,
+        section("── Inspection ───────────────────────────────────────"),
+        cmd(".help",               "Show this help"),
+        cmd(".vars",               "List all defined variables"),
+        cmd(".fns",                "List all defined functions"),
+        cmd(".types",              "List struct / enum types"),
+        cmd(".env",                "Show full environment tree"),
+        cmd(".inspect <expr>",     "Deep field / method inspection"),
+        cmd(".type <expr>",        "Show type of an expression"),
+        cmd(".doc <module>",       "Show module exports"),
+        cmd(".modules",            "Browse all 56 stdlib modules"),
+        section("── Session ──────────────────────────────────────────"),
+        cmd(".clear",              "Reset session variables"),
+        cmd(".reset",              "Full reset (interpreter + history)"),
+        cmd(".save <file>",        "Save session to .ins file"),
+        cmd(".load / .run <file>", "Load and run a .ins file"),
+        cmd(".export [file]",      "Export session as Markdown"),
+        cmd(".history [n]",        "Show last n commands (default 20)"),
+        section("── Analysis ─────────────────────────────────────────"),
+        cmd(".time <expr>",        "Measure execution time (10 runs)"),
+        cmd(".bench <expr>",       "Statistical benchmark (100 runs)"),
+        cmd(".bytecode [expr]",    "Compact bytecode listing"),
+        cmd(".asm [expr]",         "Full annotated assembly"),
+        cmd(".vm",                 "Toggle VM / interpreter mode"),
+        section("── General ──────────────────────────────────────────"),
+        cmd(".packages",           "List installed packages"),
+        cmd("exit / quit",         "Leave the REPL"),
+        "",
+        sep,
+        f"  {BLD}Shortcuts{RST}",
+        f"  {DM}Up/Down{RST}  Navigate history      {DM}Tab{RST}  Auto-complete",
+        f"  {DM}!!{RST}       Repeat last command   {DM}Ctrl+C{RST}  Cancel / interrupt",
+        "",
+        f"  {BLD}Multi-line input{RST}",
+        f"  Open a {CY}{{{RST} and press Enter — REPL continues until balanced",
+        f"  End a line with {YEL}\\{RST} to force continuation",
+        "",
+        f"  {BLD}Auto-print{RST}",
+        f"  {DM}Bare expressions print their value:{RST}",
+        f"    {CY}>>>{RST} 2 ** 10",
+        f"      {GRN}→{RST}  1024",
+        sep,
+        "",
+    ]
+    return "\n".join(lines)
+
+HELP_TEXT = _make_help()
+
+
+# All 56 stdlib modules, grouped by category
 STDLIB_MODULES = [
-    "math","string","array","io","json","random","time","color",
-    "tween","grid","events","debug","http","path","regex","csv","uuid","crypto",
+    # Core
+    "math","string","array","json","io","random","time","debug",
+    # Data
+    "csv","regex","xml","toml","yaml","url","base64","uuid",
+    # Format / Iteration
+    "format","iter","template","argparse",
+    # Networking & Crypto
+    "http","ssl","crypto","hash","net",
+    # File System & Process
+    "path","fs","process","compress","log",
+    # Date & Collections
+    "datetime","collections","database",
+    # Threading & Bench
+    "thread","bench",
+    # Game: Visual
+    "color","tween","image","atlas","animation","shader",
+    # Game: Input / Audio
+    "input","audio",
+    # Game: World
+    "physics2d","tilemap","camera2d","particle","pathfind",
+    # Game: Systems
+    "grid","events","ecs","fsm","save","localize","net_game",
 ]
+
+STDLIB_CATEGORIES = {
+    "Core":             ["math","string","array","json","io","random","time","debug"],
+    "Data":             ["csv","regex","xml","toml","yaml","url","base64","uuid"],
+    "Format/Iter":      ["format","iter","template","argparse"],
+    "Net/Crypto":       ["http","ssl","crypto","hash","net"],
+    "FS/Process":       ["path","fs","process","compress","log"],
+    "Date/Collections": ["datetime","collections","database"],
+    "Async/Bench":      ["thread","bench"],
+    "Game: Visual":     ["color","tween","image","atlas","animation","shader"],
+    "Game: I/O":        ["input","audio"],
+    "Game: World":      ["physics2d","tilemap","camera2d","particle","pathfind"],
+    "Game: Systems":    ["grid","events","ecs","fsm","save","localize","net_game"],
+}
 
 STDLIB_DOCS = {
     "math":   ["sin(x)","cos(x)","tan(x)","sqrt(x)","pow(x,y)","abs(x)","floor(x)",
@@ -658,11 +779,21 @@ class EnhancedREPL:
                 print(f"  {DIM(str(i)):>5}  {h}")
 
         elif c == ".modules":
-            print(BOLD("  Importable stdlib modules:"))
-            for i in range(0, len(STDLIB_MODULES), 4):
-                row = STDLIB_MODULES[i:i+4]
-                print("    " + "  ".join(CYAN(m.ljust(12)) for m in row))
-            print(f"  Usage: {YELLOW('import \"math\"')}  or  {YELLOW('from \"math\" import sin, cos')}")
+            RST = "\033[0m"; CY = "\033[36m"; YEL = "\033[33m"
+            BLD = "\033[1m"; DM  = "\033[2m"; MAG = "\033[35m"
+            sep = f"\033[38;5;57m{'━' * 58}{RST}"
+            print(sep)
+            print(f"  {BLD}{'InScript  —  56 Stdlib Modules':^58}{RST}")
+            print(sep)
+            for cat, mods in STDLIB_CATEGORIES.items():
+                print(f"\n  {YEL}{cat}{RST}")
+                for i in range(0, len(mods), 6):
+                    row = mods[i:i+6]
+                    print("    " + "  ".join(f"{CY}{m:<12}{RST}" for m in row))
+            print(f"\n{sep}")
+            total = sum(len(v) for v in STDLIB_CATEGORIES.values())
+            print(f"  {DM}{total} modules total{RST}  ·  {YEL}import \"math\"{RST}  ·  {YEL}.doc <module>{RST} for details")
+            print(sep)
 
         elif c == ".packages":
             pkg_dir = Path.home() / ".inscript" / "packages"
@@ -814,7 +945,7 @@ main{flex:1;display:grid;grid-template-columns:1fr 1fr;overflow:hidden}
 <body>
 <header>
   <div class="logo">&#127918; InScript <span>Playground</span></div>
-  <span class="vbadge">v1.0.2</span>
+  <span class="vbadge">v1.0.3</span>
   <div class="hactions">
     <button class="btn btn-sec" onclick="shareCode()">&#128279; Share</button>
     <button class="btn btn-sec" onclick="clearOutput()">Clear</button>
@@ -859,7 +990,7 @@ main{flex:1;display:grid;grid-template-columns:1fr 1fr;overflow:hidden}
   <span class="si" id="st-mode">Mode: <span class="s-ac">Interpreter</span></span>
   <span class="si" id="st-res"></span>
   <span style="flex:1"></span>
-  <span class="si">InScript v1.0.2</span>
+  <span class="si">InScript v1.0.3</span>
 </div>
 <script>
 const EX = {

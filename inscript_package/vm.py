@@ -454,7 +454,20 @@ class VM:
                     W(a, self._op_overload(av,'%',bv) if isinstance(av,VMInstance) else av%bv)
                 elif op==Op.POW:
                     av,bv=R(b),R(c)
-                    W(a, self._op_overload(av,'**',bv) if isinstance(av,VMInstance) else av**bv)
+                    if isinstance(av,VMInstance):
+                        W(a, self._op_overload(av,'**',bv))
+                    else:
+                        if (isinstance(av,int) and not isinstance(av,bool)
+                                and isinstance(bv,int) and not isinstance(bv,bool)
+                                and bv>0 and abs(av)>1):
+                            import math as _m
+                            try: _eb = bv*_m.log2(abs(av))
+                            except: _eb = float('inf')
+                            if _eb>100_000:
+                                raise InScriptRuntimeError(
+                                    f"OverflowError: {av}**{bv} would produce ~{int(_eb*0.30103):,} digits — too large. Use float({av})**{bv} for an approximation.",
+                                    ip,0,"")
+                        W(a, av**bv)
                 elif op==Op.IDIV:
                     av,bv=R(b),R(c)
                     if bv==0: raise InScriptRuntimeError("floor division by zero",0,0,"")

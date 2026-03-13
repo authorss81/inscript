@@ -1913,8 +1913,18 @@ class Parser:
         self.advance()  # consume '{'
         pairs = []
 
+        def parse_key():
+            """Bare identifiers before ':' are treated as string keys, not variable lookups."""
+            if self.check(TT.IDENT) and self.peek.type == TT.COLON:
+                # bare identifier key: {name: val} → key is the string "name"
+                name = self.current.value
+                self.advance()
+                from ast_nodes import StringLiteralExpr
+                return StringLiteralExpr(value=name, line=self.current.line, col=self.current.col)
+            return self.parse_expr()
+
         if not self.check(TT.RBRACE):
-            key   = self.parse_expr()
+            key   = parse_key()
             self.expect(TT.COLON, "Expected ':' in dict literal")
             value = self.parse_expr()
             pairs.append((key, value))
@@ -1922,7 +1932,7 @@ class Parser:
             while self.match(TT.COMMA):
                 if self.check(TT.RBRACE):
                     break
-                key   = self.parse_expr()
+                key   = parse_key()
                 self.expect(TT.COLON, "Expected ':' in dict literal")
                 value = self.parse_expr()
                 pairs.append((key, value))
