@@ -93,22 +93,37 @@ def _make_banner():
     ]
 
     W = 62
-    sep = f"\033[38;5;57m{'━' * W}{RST}"
-    dim_sep = f"{DIM_}{'─' * W}{RST}"
+    logo_sep = f"\033[38;5;57m{'━' * W}{RST}"   # coloured bar above/below logo
+
+    # ╔═══╗ box around the info block (matches old v1.0.1 style)
+    TC = "\033[36m"                               # cyan for box lines
+    box_top = f"{TC}╔{'═' * W}╗{RST}"
+    box_bot = f"{TC}╚{'═' * W}╝{RST}"
+    box_mid = f"{TC}╠{'═' * W}╣{RST}"
+
+    def box_row(content):
+        import re
+        plain = re.sub(r'\033\[[0-9;]*m', '', content)
+        pad = max(0, W - len(plain) - 1)   # -1 for leading space in content
+        return f"{TC}║{RST}{content}{' ' * pad}{TC}║{RST}"
+
+    tagline = f" \033[38;5;51m▶\033[0m  \033[1mA scripting language for game development\033[0m  \033[2mv{VERSION}\033[0m"
+    stats   = f" \033[2m56 stdlib modules  ·  501 tests  ·  Python 3.10+\033[0m"
+    tips    = f" \033[33m.help\033[0m  commands  ·  \033[33m.modules\033[0m  stdlib  ·  \033[33mexit\033[0m  quit"
 
     lines = [""]
-    lines.append(sep)
+    lines.append(logo_sep)
     lines.append("")
     for row in LOGO_LINES:
         lines.append(grad_line(row))
     lines.append("")
-    lines.append(sep)
-    lines.append(f" \033[38;5;51m▶\033[0m  \033[1mA scripting language for game development\033[0m  \033[2mv{VERSION}\033[0m")
-    lines.append(dim_sep)
-    lines.append(f" \033[2m56 stdlib modules  ·  501 tests  ·  Python 3.10+\033[0m")
-    lines.append(dim_sep)
-    lines.append(f" Type \033[33m.help\033[0m for commands  ·  \033[33m.modules\033[0m for stdlib  ·  \033[33mexit\033[0m to quit")
-    lines.append(sep)
+    lines.append(box_top)
+    lines.append(box_row(tagline))
+    lines.append(box_mid)
+    lines.append(box_row(stats))
+    lines.append(box_mid)
+    lines.append(box_row(tips))
+    lines.append(box_bot)
     lines.append("")
 
     return "\n".join(lines)
