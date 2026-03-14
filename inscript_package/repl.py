@@ -39,7 +39,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 HISTORY_FILE = Path.home() / ".inscript" / "history"
 HISTORY_FILE.parent.mkdir(parents=True, exist_ok=True)
-VERSION = "1.0.4"
+VERSION = "1.0.5"
 
 # ── ANSI colours ──────────────────────────────────────────────────────────────
 def _c(code, text):
@@ -447,10 +447,9 @@ class EnhancedREPL:
 
     # ── execution ─────────────────────────────────────────────────────────────
     def _eval(self, source) -> Tuple[Any, Optional[str], float]:
-        # NOTE: We intentionally skip the static Analyzer in REPL mode.
-        # The analyzer has no memory of previous REPL statements, so it would
-        # report every reference to a previously-defined name as "undefined".
-        # The interpreter catches all real runtime errors on its own.
+        # NOTE: We intentionally skip the full static Analyzer in REPL mode
+        # (it has no memory of previous statements). But we do run a targeted
+        # arg-count analysis pass using the interpreter's live environment.
         from lexer import Lexer
         from parser import Parser
         from errors import InScriptError
@@ -458,6 +457,13 @@ class EnhancedREPL:
         try:
             tokens  = Lexer(source).tokenize()
             program = Parser(tokens).parse()
+
+            # Quick arg-count pass: look for CallExprs with known functions
+            try:
+                self._check_arg_counts(program)
+            except Exception:
+                pass  # never block execution for analysis errors
+
             if self._use_vm:
                 from compiler import Compiler
                 result = self._vm.run(Compiler().compile(program))
@@ -469,6 +475,49 @@ class EnhancedREPL:
         except Exception as e:
             import traceback as _tb
             return None, f"Internal error: {e}\n{_tb.format_exc()}", (time.perf_counter() - t0) * 1000
+
+    def _check_arg_counts(self, program):
+        """Walk the AST looking for calls to known user-defined functions and warn on arity mismatches."""
+        from ast_nodes import CallExpr, IdentExpr, FunctionDecl
+        from stdlib_values import InScriptFunction
+
+        def walk(node):
+            if node is None: return
+            if isinstance(node, CallExpr) and isinstance(node.callee, IdentExpr):
+                fname = node.callee.name
+                # Look up in live interpreter env
+                try:
+                    fn = self._interp._env.get(fname, 0)
+                except Exception:
+                    fn = None
+                if isinstance(fn, InScriptFunction) and not fn.is_native:
+                    params = fn.params or []
+                    n_args = len(node.args)
+                    n_total = len(params)
+                    n_required = sum(1 for p in params
+                                     if not getattr(p, 'default', None)
+                                     and not getattr(p, 'variadic', False))
+                    has_variadic = any(getattr(p, 'variadic', False) for p in params)
+                    if not has_variadic:
+                        if n_args < n_required:
+                            print(f"\033[33m[InScript] Warning: '{fname}' expects at least "
+                                  f"{n_required} arg(s), got {n_args}\033[0m",
+                                  file=__import__('sys').stderr)
+                        elif n_args > n_total:
+                            print(f"\033[33m[InScript] Warning: '{fname}' expects at most "
+                                  f"{n_total} arg(s), got {n_args}\033[0m",
+                                  file=__import__('sys').stderr)
+            # Recurse into child nodes
+            for attr in vars(node).values():
+                if hasattr(attr, '__class__') and hasattr(attr, 'line'):
+                    walk(attr)
+                elif isinstance(attr, list):
+                    for item in attr:
+                        if hasattr(item, '__class__') and hasattr(item, 'line'):
+                            walk(item)
+
+        for stmt in (program.body or []):
+            walk(stmt)
 
     def _eval_expr(self, source):
         """Evaluate source; if it looks like a bare expression, capture and
@@ -987,7 +1036,7 @@ main{flex:1;display:grid;grid-template-columns:1fr 1fr;overflow:hidden}
 <body>
 <header>
   <div class="logo">&#127918; InScript <span>Playground</span></div>
-  <span class="vbadge">v1.0.4</span>
+  <span class="vbadge">v1.0.5</span>
   <div class="hactions">
     <button class="btn btn-sec" onclick="shareCode()">&#128279; Share</button>
     <button class="btn btn-sec" onclick="clearOutput()">Clear</button>
@@ -1032,7 +1081,7 @@ main{flex:1;display:grid;grid-template-columns:1fr 1fr;overflow:hidden}
   <span class="si" id="st-mode">Mode: <span class="s-ac">Interpreter</span></span>
   <span class="si" id="st-res"></span>
   <span style="flex:1"></span>
-  <span class="si">InScript v1.0.4</span>
+  <span class="si">InScript v1.0.5</span>
 </div>
 <script>
 const EX = {

@@ -808,11 +808,38 @@ class Parser:
 
     def parse_struct_field(self) -> StructField:
         line, col = self._pos()
+        # Accept optional access modifiers: pub, priv (stored but not enforced)
+        is_pub = False
+        if self.check(TT.PUB):
+            self.advance(); is_pub = True
+        elif self.check(TT.IDENT) and self.current.value in ("priv", "private", "protected"):
+            self.advance()
         name = self.expect_ident("Expected field name")
         self.expect(TT.COLON, "Expected ':' after field name")
-        type_ann = self.parse_type_annotation()
+
+        # Type annotation is optional when a default value follows immediately
+        # e.g.  items: []   or  count: 0   or  value: nil
+        type_ann = None
+        _type_starts = (TT.IDENT, TT.INT_TYPE, TT.FLOAT_TYPE, TT.BOOL_TYPE,
+                        TT.STRING_TYPE, TT.VOID_TYPE, TT.LBRACE, TT.LPAREN)
+        # Tokens that unambiguously start a literal default (not a type name)
+        _default_starts = (TT.NULL, TT.BOOL, TT.INT, TT.FLOAT, TT.STRING, TT.MINUS)
+
+        if self.check(TT.LBRACKET):
+            if self.peek.type != TT.RBRACKET:  # [int] — type annotation
+                type_ann = self.parse_type_annotation()
+            # [] → skip type, consume as default below
+        elif self.current.type in _default_starts:
+            pass  # bare literal default — no type annotation, consume below
+        elif self.current.type in _type_starts:
+            type_ann = self.parse_type_annotation()
+
         default = None
         if self.match(TT.ASSIGN):
+            default = self.parse_expr()
+        elif self.current.type in _default_starts or self.check(TT.LBRACKET) or self.check(TT.LBRACE):
+            # Bare literal/array/dict as implicit default without '='
+            # e.g.  count: 0   items: []   value: nil   name: "anon"
             default = self.parse_expr()
         self.match(TT.SEMICOLON)
         return StructField(name=name, type_ann=type_ann, default=default,
@@ -1110,7 +1137,11 @@ class Parser:
         self.advance()  # consume 'while'
         condition = self.parse_expr()
         body      = self.parse_block()
-        return WhileStmt(condition=condition, body=body, line=line, col=col)
+        else_branch = None
+        if self.check(TT.ELSE):
+            self.advance()
+            else_branch = self.parse_block()
+        return WhileStmt(condition=condition, body=body, else_branch=else_branch, line=line, col=col)
 
     def parse_do_while(self):
         """do { body } while condition"""
@@ -1127,12 +1158,26 @@ class Parser:
     def parse_for_in(self) -> ForInStmt:
         line, col = self._pos()
         self.advance()  # consume 'for'
+
+        # Support: for k, v in entries(d)  — multi-var destructure
         var_name = self.expect_ident("Expected variable name after 'for'")
+        extra_vars = []
+        while self.match(TT.COMMA):
+            extra_vars.append(self.expect_ident("Expected variable name after ','"))
+
         self.expect(TT.IN, "Expected 'in' after for variable")
         iterable = self.parse_expr()
         body     = self.parse_block()
-        return ForInStmt(var_name=var_name, iterable=iterable,
-                         body=body, line=line, col=col)
+        else_branch = None
+        if self.check(TT.ELSE):
+            self.advance()
+            else_branch = self.parse_block()
+
+        node = ForInStmt(var_name=var_name, iterable=iterable,
+                         body=body, else_branch=else_branch, line=line, col=col)
+        if extra_vars:
+            node._extra_vars = extra_vars  # stored as attribute for interpreter
+        return node
 
     def parse_match(self) -> MatchStmt:
         line, col = self._pos()

@@ -156,6 +156,19 @@ class Interpreter(Visitor):
         def _input_fn(prompt=""):
             return input(prompt)
 
+        # ── Assertions ───────────────────────────────────────────────────────
+        interp = self
+        def _assert(cond, msg="Assertion failed"):
+            if not _is_truthy(cond):
+                raise InScriptRuntimeError(f"AssertionError: {_inscript_str(msg)}", 0, code="E0050")
+            return None
+
+        def _panic(msg="panic"):
+            raise InScriptRuntimeError(f"Panic: {_inscript_str(msg)}", 0, code="E0051")
+
+        def _unreachable(msg="unreachable code reached"):
+            raise InScriptRuntimeError(f"Unreachable: {_inscript_str(msg)}", 0, code="E0052")
+
         # ── Math ─────────────────────────────────────────────────────────────
         def _clamp(v, lo, hi): return max(lo, min(hi, v))
         def _lerp(a, b, t): return a + (b - a) * t
@@ -221,6 +234,9 @@ class Interpreter(Visitor):
         native_fns = {
             "print":      _print,
             "input":      _input_fn,
+            "assert":     _assert,
+            "panic":      _panic,
+            "unreachable": _unreachable,
             # math
             "sin":   math.sin,   "cos":  math.cos,   "tan":    math.tan,
             "asin":  math.asin,  "acos": math.acos,  "atan":   math.atan,
@@ -286,7 +302,7 @@ class Interpreter(Visitor):
             "has_key":    lambda d, k: k in d,
             "keys":       lambda d: [k for k in d.keys() if not str(k).startswith("_")],
             "values":     lambda d: [v for k,v in d.items() if not str(k).startswith("_")],
-            "dict_items": lambda d: [[k,v] for k,v in d.items() if not str(k).startswith("_")],
+            "dict_items": lambda d: (print("\033[33m[InScript] Deprecated: use entries() not dict_items()\033[0m", file=__import__("sys").stderr) or [[k,v] for k,v in d.items() if not str(k).startswith("_")]),
             "delete":     lambda d, k: d.pop(k, None),
             "merge":      lambda *dicts: {k:v for d in dicts for k,v in d.items()},
             # ── Dict helpers ──────────────────────────────────────────────────
@@ -311,7 +327,7 @@ class Interpreter(Visitor):
             "pad_right":  lambda s, n, c=" ": str(s).ljust(n, c),
             "char_code":  lambda s: ord(s[0]) if s else 0,
             "from_code":  lambda n: chr(int(n)),
-            "stringify":  _to_string,
+            "stringify":  lambda *a: (print("\033[33m[InScript] Deprecated: use string() not stringify()\033[0m", file=__import__("sys").stderr) or _to_string(*a)),
             "parse_int":  lambda s: int(s),
             "parse_float":lambda s: float(s),
             "format":     lambda fmt, *a: fmt.format(*a),
@@ -357,7 +373,7 @@ class Interpreter(Visitor):
             "fields_of":   lambda v: (list(v.fields.keys()) if isinstance(v, InScriptInstance) else []),
             "methods_of":  lambda name: ([m.name for m in self._env.get(name, 0).methods]
                                           if isinstance(self._env.get(name, 0), StructDecl) else []),
-            "is_null":     lambda v: v is None,
+            "is_null":     lambda v: (print("\033[33m[InScript] Deprecated: use is_nil() not is_null()\033[0m", file=__import__("sys").stderr) or v is None),
             "is_int":      lambda v: isinstance(v, int) and not isinstance(v, bool),
             "is_float":    lambda v: isinstance(v, float),
             "is_string":   lambda v: isinstance(v, str),
@@ -393,7 +409,7 @@ class Interpreter(Visitor):
             "is_nil":      lambda v: v is None,
             "is_int":      lambda v: isinstance(v, int) and not isinstance(v, bool),
             "is_float":    lambda v: isinstance(v, float),
-            "is_str":      lambda v: isinstance(v, str),
+            "is_str":      lambda v: (print("\033[33m[InScript] Deprecated: use is_string() not is_str()\033[0m", file=__import__("sys").stderr) or isinstance(v, str)),
             "is_bool":     lambda v: isinstance(v, bool),
             "is_array":    lambda v: isinstance(v, list),
             "is_dict":     lambda v: isinstance(v, dict) and "_variant" not in v and "_ok" not in v and "_err" not in v,
@@ -750,6 +766,18 @@ class Interpreter(Visitor):
                     self._error(f"Module '{path}' has no export '{name}'", node.line)
                 self._env.define(name, mod[name])
         else:
+            # DESIGN-07: unqualified import dumps everything into global scope — warn once
+            import sys as _sys
+            warned_key = f"_import_warn_{path}"
+            if not getattr(self, warned_key, False):
+                setattr(self, warned_key, True)
+                print(
+                    f"\033[33m[InScript] Warning: 'import \"{path}\"' without alias dumps all exports "
+                    f"into global scope and may shadow existing names.\n"
+                    f"  Prefer: import \"{path}\" as {path[0].upper()}  "
+                    f"or: from \"{path}\" import name1, name2\033[0m",
+                    file=_sys.stderr
+                )
             for name, val in mod.items():
                 if not name.startswith("_"):
                     self._env.define(name, val)
@@ -924,17 +952,24 @@ class Interpreter(Visitor):
         return None
 
     def visit_WhileStmt(self, node: WhileStmt) -> Any:
+        ran_once = False
+        broke = False
         while _is_truthy(self.visit(node.condition)):
+            ran_once = True
             try:
                 self._exec_block_no_scope(node.body)
             except BreakSignal as sig:
                 if sig.label:
-                    raise  # labeled break — let LabeledStmt handle it
+                    raise
+                broke = True
                 break
             except ContinueSignal as sig:
                 if sig.label:
                     raise
                 continue
+        # else branch runs if loop completed without break (or never ran)
+        if node.else_branch and not broke:
+            self._exec_block_no_scope(node.else_branch)
         return None
 
     def visit_DoWhileStmt(self, node) -> Any:
@@ -957,8 +992,7 @@ class Interpreter(Visitor):
         iterable = self.visit(node.iterable)
         # Enum namespace: for v in MyEnum iterates all variants
         if isinstance(iterable, dict) and iterable.get("_enum_definition"):
-            variants = [v for k, v in iterable.items()
-                        if not k.startswith("_")]
+            variants = [v for k, v in iterable.items() if not k.startswith("_")]
             iterable = variants
         # Support list, range, InScriptRange, string, dict, generator
         if isinstance(iterable, InScriptRange):
@@ -970,15 +1004,34 @@ class Interpreter(Visitor):
         else:
             self._error(f"Cannot iterate over {type(iterable).__name__}", node.line)
 
+        extra_vars = getattr(node, '_extra_vars', [])  # for k, v in ...
+        broke = False
         for item in it:
             self._push("for")
-            self._env.define(node.var_name, item)
+            if extra_vars:
+                # Destructure: item should be a list/tuple with len == 1 + len(extra_vars)
+                if isinstance(item, (list, tuple)) and len(item) == 1 + len(extra_vars):
+                    self._env.define(node.var_name, item[0])
+                    for i, ev in enumerate(extra_vars):
+                        self._env.define(ev, item[i + 1])
+                elif isinstance(item, (list, tuple)):
+                    # Pad/truncate gracefully
+                    all_vars = [node.var_name] + extra_vars
+                    for i, vname in enumerate(all_vars):
+                        self._env.define(vname, item[i] if i < len(item) else None)
+                else:
+                    self._env.define(node.var_name, item)
+                    for ev in extra_vars:
+                        self._env.define(ev, None)
+            else:
+                self._env.define(node.var_name, item)
             try:
                 self._exec_block_no_scope(node.body)
             except BreakSignal as sig:
                 self._pop()
                 if sig.label:
-                    raise  # labeled break — let LabeledStmt handle it
+                    raise
+                broke = True
                 break
             except ContinueSignal as sig:
                 self._pop()
@@ -986,6 +1039,10 @@ class Interpreter(Visitor):
                     raise
                 continue
             self._pop()
+
+        # else branch runs only if loop completed WITHOUT a break
+        if node.else_branch and not broke:
+            self._exec_block_no_scope(node.else_branch)
         return None
 
     def _exec_block_no_scope(self, block: BlockStmt):

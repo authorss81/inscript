@@ -397,7 +397,7 @@ python test_audit.py     #  54 tests  — regression suite
 
 ---
 
-## What's New in v1.0.4
+## What's New in v1.0.5
 
 ### Bug fixes
 
@@ -437,7 +437,7 @@ MIT — see [LICENSE](LICENSE)
 
 <div align="center">
 
-**InScript v1.0.4** · Built with Python 3.10+
+**InScript v1.0.5** · Built with Python 3.10+
 
 [REPL Tutorial](REPL_Tutorial.md) · [Language Audit](InScript_Language_Audit.md)
 

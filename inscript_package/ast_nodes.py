@@ -316,8 +316,9 @@ class IfStmt(Node):
 
 @dataclass
 class WhileStmt(Node):
-    condition: Node
-    body:      "BlockStmt"
+    condition:   Node
+    body:        "BlockStmt"
+    else_branch: Optional["BlockStmt"] = None  # else { } runs if loop never executed
 
 @dataclass
 class DoWhileStmt(Node):
@@ -327,10 +328,11 @@ class DoWhileStmt(Node):
 
 @dataclass
 class ForInStmt(Node):
-    """for item in iterable { body }"""
-    var_name: str
-    iterable: Node
-    body:     "BlockStmt"
+    """for item in iterable { body } [else { }]"""
+    var_name:    str
+    iterable:    Node
+    body:        "BlockStmt"
+    else_branch: Optional["BlockStmt"] = None  # else { } runs if no break occurred
 
 @dataclass
 class MatchArm(Node):

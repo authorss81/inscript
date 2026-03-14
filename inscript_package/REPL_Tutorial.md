@@ -1,8 +1,8 @@
 # InScript REPL — Complete Tutorial
 
-> **Version:** 1.0.2  
-> **Start the REPL:** `python repl.py` or `python inscript.py --repl`  
-> **Web Playground:** `python repl.py --web` (opens browser at `localhost:8080`)
+> **Version:** 1.0.5  
+> **Start the REPL:** `python inscript.py --repl`  
+> **Quick help in REPL:** `.help`  `.modules`  `.doc <module>`
 
 ---
 
@@ -17,1214 +17,1235 @@
 7. [Structs and Enums](#7-structs-and-enums)
 8. [Error Handling](#8-error-handling)
 9. [Imports and the Standard Library](#9-imports-and-the-standard-library)
-10. [History and Repeat](#10-history-and-repeat)
-11. [Dot Commands — Overview](#11-dot-commands-overview)
-12. [Inspecting Your Session](#12-inspecting-your-session)
-13. [Timing and Benchmarking](#13-timing-and-benchmarking)
-14. [Bytecode Inspection](#14-bytecode-inspection)
-15. [VM Mode](#15-vm-mode)
-16. [Session Management](#16-session-management)
-17. [Tab Completion](#17-tab-completion)
-18. [The Web Playground](#18-the-web-playground)
-19. [Practical Workflows](#19-practical-workflows)
-20. [Known Limitations](#20-known-limitations)
+10. [Dot Commands — Overview](#10-dot-commands-overview)
+11. [Inspecting Your Session](#11-inspecting-your-session)
+12. [Timing and Benchmarking](#12-timing-and-benchmarking)
+13. [Session Management](#13-session-management)
+14. [Stdlib Reference — All 59 Modules](#14-stdlib-reference)
+    - [Core](#141-core-modules) · [Data](#142-data-modules) · [Format/Iter](#143-formatiter-modules)
+    - [Net/Crypto](#144-netcrypto-modules) · [FS/Process](#145-fsprocess-modules) · [Date/Collections](#146-datecollections-modules)
+    - [Threading/Bench](#147-threadingbench-modules) · [Game Visual](#148-game-visual-modules) · [Game IO](#149-game-io-modules)
+    - [Game World](#1410-game-world-modules) · [Game Systems](#1411-game-systems-modules) · [Utilities](#1412-utility-modules)
+15. [Known Limitations](#15-known-limitations)
 
 ---
 
 ## 1. What is the REPL?
 
-**REPL** stands for **Read → Evaluate → Print → Loop**.
+**REPL** = **Read → Evaluate → Print → Loop**. Type InScript, press Enter, see the result immediately — no files, no compile step.
 
-You type one line (or a block) of InScript, press Enter, and the result appears immediately. You do not need to write a file, save it, and run it — the REPL lets you try things out instantly.
+```
+>>> 2 ** 10
+  → 1024
+>>> let name = "world"
+>>> print(f"Hello {name}!")
+Hello world!
+```
 
-Think of it like a calculator that also knows the entire InScript language.
-
-Basic idea:
-- Type an expression → see its value
-- Define a variable → use it in the next line
-- Define a function → call it immediately
-- Make a mistake → see the error with the line highlighted
-
-Everything you define stays alive until you type `exit` or run `.reset`.
+Everything you define persists until you type `exit` or `.reset`.
 
 ---
 
 ## 2. Starting the REPL
 
 ```bash
-# Standard way:
-python repl.py
-
-# Via the main CLI:
-python inscript.py --repl
-
-# Web playground in browser:
-python repl.py --web
+python inscript.py --repl        # standard
+python repl.py                   # direct
+python inscript.py --repl --vm   # start in VM mode
 ```
 
-You will see the banner:
+You will see the pixel-art InScript banner, then the `>>>` prompt.
 
-```
-  InScript v1.0.2 — Interactive Shell
-  Type .help for commands, exit to quit
-
->>>
-```
-
-The `>>>` is the prompt. Type here and press Enter.
-
-To leave the REPL at any time:
-```
->>> exit
-```
-or `quit`, or press **`Ctrl+C`** (Windows) / `Ctrl+D` (Linux/macOS).
-
-> **If you see `v1.0.1` in the banner** — you are running the old REPL. Follow the publish guide to copy the new `repl.py` to your machine.
-
-> **Windows note:** Tab-completion and persistent arrow-key history require the `readline` module which is not available on Windows by default. The REPL still works fully — you just use the normal terminal Up/Down keys for history instead.
+To exit: type `exit`, `quit`, or press **Ctrl+C**.
 
 ---
 
 ## 3. Auto-Print
 
-**Basic idea:** You do not need `print()` for expressions. If you type a bare expression, the REPL shows its value automatically with a `→` arrow.
+Bare expressions automatically print their value — no need for `print()`:
 
 ```
 >>> 2 + 2
   → 4
-
->>> 3 ** 4
-  → 81
-
 >>> "hello".upper()
   → HELLO
-
->>> true
-  → true
-
->>> nil
-  → nil
+>>> [1,2,3].map(fn(x){return x*2})
+  → [2, 4, 6]
 ```
 
-**Statements do not auto-print.** A `let` or `print()` call is a statement — it runs but shows nothing extra:
-
-```
->>> let x = 10
->>> print(x)
-10
-```
-
-**Advanced: any expression works**, including method calls, array indexing, dict access:
-
-```
->>> [1, 2, 3, 4, 5]
-  → [1, 2, 3, 4, 5]
-
->>> [10, 20, 30][1]
-  → 20
-
->>> {"name": "Alice", "age": 30}["name"]
-  → Alice
-
->>> len("hello world")
-  → 11
-
->>> range(5)
-  → [0, 1, 2, 3, 4]
-```
-
-If execution takes more than 100ms, the REPL also shows the time taken:
-
-```
->>> sort(range(10000))
-  → [0, 1, 2, ...]
-  (143ms)
-```
+Statements (assignments, `if`, `for`) do not auto-print.
 
 ---
 
 ## 4. Variables and Persistent State
 
-**Basic idea:** Variables you define in one line are available in every line after it. The REPL remembers everything until you reset.
+All variables persist across lines:
 
 ```
 >>> let x = 10
 >>> let y = 20
 >>> x + y
   → 30
+>>> x = 99          ← reassignment (use let for first declaration)
+>>> x
+  → 99
 ```
 
-You can reassign variables freely:
-
+Use `const` for constants that cannot be reassigned:
 ```
->>> let score = 0
->>> score += 100
->>> score += 50
->>> score
-  → 150
+>>> const MAX = 100
+>>> MAX = 200        ← error: cannot reassign const
 ```
-
-**All compound assignment operators work:**
-
-```
->>> let n = 2
->>> n **= 10
->>> n
-  → 1024
-
->>> let flags = 0xFF
->>> flags &= 0x0F
->>> flags
-  → 15
-
->>> let bits = 0b0101
->>> bits |= 0b1010
->>> bits
-  → 15
-
->>> let v = 0b1100
->>> v ^= 0b0110
->>> v
-  → 10
-```
-
-**Advanced: closures capture state across calls:**
-
-```
->>> fn make_counter() {\
-...   let n = 0\
-...   return fn() { n += 1; return n }\
-... }
->>> let c = make_counter()
->>> c()
-  → 1
->>> c()
-  → 2
->>> c()
-  → 3
-```
-
-The counter's internal `n` persists between calls — that is closure state.
 
 ---
 
 ## 5. Multiline Input
 
-**Basic idea:** Some code spans multiple lines. The REPL handles this in two ways.
-
-### Method 1 — End a line with `\`
-
-End any line with a backslash `\` to force continuation to the next line. The REPL strips the `\` and joins the lines together before evaluating. This is the **reliable method that works everywhere**.
+Open a `{` and press Enter — the REPL waits for you to close it:
 
 ```
->>> while x <= 100 { \
-... print(x)\
-... x = x + 1}
-1
-2
-3
-...
+>>> fn double(x) {
+...   return x * 2
+... }
+>>> double(21)
+  → 42
 ```
 
+End any line with `\` to force continuation:
 ```
 >>> let result = 1 + \
-...   2 + \
-...   3
+...              2 + \
+...              3
 >>> result
   → 6
 ```
-
-Long expressions split across lines:
-
-```
->>> let message = "Hello, " + \
-...   "world!"
->>> message
-  → Hello, world!
-```
-
-Multiline function with `\` on every line:
-
-```
->>> fn make_counter() {\
-...   let n = 0\
-...   return fn() { n += 1; return n }\
-... }
->>> let c = make_counter()
->>> c()
-  → 1
->>> c()
-  → 2
->>> c()
-  → 3
-```
-
-### Method 2 — Open a brace `{` and press Enter
-
-When you open a `{` and press Enter, the REPL detects the unbalanced brace and waits for you to close it. Continuation lines show `...` as a prompt.
-
-```
->>> fn add(a: int, b: int) -> int {
-...   return a + b
-... }
->>> add(3, 7)
-  → 10
-```
-
-> **Note:** The line numbers (`...2`, `...3`) shown in this tutorial are for readability. Your terminal may show plain `...` — that is normal and correct.
-
-### Cancel multiline input
-
-Press `Ctrl+C` to cancel whatever you have typed and return to the `>>>` prompt.
 
 ---
 
 ## 6. Functions
 
-**Basic idea:** Define a function, then call it. It stays defined for the rest of the session.
-
 ```
->>> fn greet(name: string) -> string {
-...2   return f"Hello, {name}!"
-...3 }
+>>> fn greet(name: string, greeting: string = "Hello") {
+...   print(f"{greeting}, {name}!")
+... }
 >>> greet("Alice")
-  → Hello, Alice!
->>> greet("World")
-  → Hello, World!
+Hello, Alice!
+>>> greet("Bob", greeting: "Hi")
+Hi, Bob!
 ```
 
-Functions with default parameters:
-
+Lambdas:
 ```
->>> fn power(base: int, exp: int = 2) -> int {
-...2   return base ** exp
-...3 }
->>> power(5)
-  → 25
->>> power(3, 4)
-  → 81
+>>> let square = fn(x) { return x * x }
+>>> [1,2,3,4,5].map(square)
+  → [1, 4, 9, 16, 25]
 ```
 
-**Advanced: pipe operator `|>`**
-
-The pipe operator passes the result of the left side as the first argument to the right:
-
+Generators:
 ```
->>> fn double(x: int) -> int { return x * 2 }
->>> fn add_one(x: int) -> int { return x + 1 }
-
->>> 5 |> double
-  → 10
-
->>> 5 |> double |> add_one
-  → 11
-```
-
-**Advanced: generator functions with `fn*`**
-
-Generator functions yield values one at a time and are iterable in `for` loops:
-
-```
->>> fn* countdown(n: int) {
-...2   while n > 0 {
-...3     yield n
-...4     n -= 1
-...5   }
-...6 }
->>> for v in countdown(5) {
-...2   print(v)
-...3 }
-5
-4
-3
-2
+>>> fn* range_gen(n) { let i=0; while i<n { yield i; i+=1 } }
+>>> for v in range_gen(4) { print(v) }
+0
 1
-```
-
-**Advanced: closures and higher-order functions**
-
-```
->>> fn make_adder(n: int) {
-...2   return fn(x: int) { return x + n }
-...3 }
->>> let add10 = make_adder(10)
->>> add10(5)
-  → 15
->>> add10(100)
-  → 110
+2
+3
 ```
 
 ---
 
 ## 7. Structs and Enums
 
-**Basic idea:** Define a struct type, then create instances of it.
-
 ```
->>> struct Point {
-...2   x: float
-...3   y: float
-...4 }
->>> let p = Point{x: 3.0, y: 4.0}
->>> p.x
-  → 3.0
->>> p.y
-  → 4.0
-```
-
-Structs with methods:
-
-```
->>> struct Circle {
-...2   radius: float
-...3   fn area() -> float {
-...4     return 3.14159 * self.radius * self.radius
-...5   }
-...6   fn describe() -> string {
-...7     return f"Circle with radius {self.radius}"
-...8   }
-...9 }
->>> let c = Circle{radius: 5.0}
->>> c.area()
-  → 78.53975
->>> c.describe()
-  → Circle with radius 5.0
+>>> struct Player {
+...   name: string
+...   health: int = 100
+...   pub score: int = 0
+... }
+>>> let p = Player { name: "Hero" }
+>>> p.health
+  → 100
+>>> p.copy()        ← built-in: returns an isolated copy
+>>> p.to_dict()     ← built-in: returns field dict
+>>> p.has("name")   ← built-in: checks if field exists
 ```
 
-**Advanced: inheritance with `extends`**
-
+Generics (type params are annotations only, not enforced at runtime):
 ```
->>> struct Animal {
-...2   name: string
-...3   fn speak() -> string { return "..." }
-...4 }
->>> struct Dog extends Animal {
-...2   fn speak() -> string { return f"{self.name} says: Woof!" }
-...3 }
->>> let d = Dog{name: "Rex"}
->>> d.speak()
-  → Rex says: Woof!
+>>> struct Stack<T> { items: [] }
+>>> let s = Stack { items: [1,2,3] }
+>>> s.items.push(4)
+>>> s.items
+  → [1, 2, 3, 4]
 ```
 
-**Enums:**
-
+Enums:
 ```
->>> enum Direction { North; South; East; West }
->>> let dir = Direction.North
->>> dir
-  → Direction.North
+>>> enum Dir { North South East West }
+>>> let d = Dir.North
+>>> match d {
+...   case Dir.North { print("going north") }
+...   case _         { print("other") }
+... }
+going north
 ```
 
 ---
 
 ## 8. Error Handling
 
-**Basic idea:** The REPL shows errors clearly with the line that caused them.
-
-```
->>> 1 / 0
-  ✗ [InScript InScriptRuntimeError] E0010  Line 1: Division by zero
-    1 / 0
-    ^
-  See: https://docs.inscript.dev/errors/E0010
-```
-
-The `^` caret points to the exact position of the error.
-
-After an error, the session continues normally — nothing is lost:
-
-```
->>> let x = 10
->>> x / 0
-  ✗ Division by zero
->>> x
-  → 10
-```
-
-**`try / catch / finally`:**
-
 ```
 >>> try {
-...2   throw "something went wrong"
-...3 } catch e {
-...4   print("caught:", e)
-...5 } finally {
-...6   print("always runs")
-...7 }
+...   throw "something went wrong"
+... } catch e {
+...   print("caught: " + e)
+... }
 caught: something went wrong
-always runs
 ```
 
-**Typed catch clauses:**
-
+Typed catch:
 ```
->>> try {
-...2   throw 42
-...3 } catch e: int {
-...4   print("caught int:", e)
-...5 } catch e: string {
-...6   print("caught string:", e)
-...7 }
-caught int: 42
+>>> try { throw 42 }
+... catch e: string { print("string error") }
+... catch e         { print("other error:", e) }
+other error: 42
 ```
 
-**Result type (`Ok` / `Err`):**
-
+Assert and panic:
 ```
->>> fn safe_divide(a: int, b: int) {
-...2   if b == 0 { return Err("division by zero") }
-...3   return Ok(a / b)
-...4 }
->>> let r = safe_divide(10, 2)
->>> is_ok(r)
-  → true
->>> unwrap(r)
+>>> assert(1 == 1, "math is broken")    ← passes silently
+>>> assert(false, "boom")               ← throws AssertionError
+>>> panic("fatal error")                ← unconditional throw
+```
+
+Result types:
+```
+>>> fn divide(a: float, b: float) {
+...   if b == 0.0 { return Err("division by zero") }
+...   return Ok(a / b)
+... }
+>>> let r = divide(10.0, 2.0)
+>>> r?   ← unwrap or propagate
   → 5.0
-
->>> let bad = safe_divide(10, 0)
->>> is_err(bad)
-  → true
->>> unwrap_err(bad)
-  → division by zero
 ```
 
 ---
 
 ## 9. Imports and the Standard Library
 
-**Basic idea:** Use `import` to bring in a stdlib module, then access its functions with dot notation.
-
 ```
->>> import "math" as M
->>> M.PI
-  → 3.141592653589793
+>>> import "math" as M         ← preferred: gives module a namespace
 >>> M.sqrt(16.0)
   → 4.0
->>> M.sin(M.PI / 2.0)
-  → 1.0
+
+>>> from "string" import upper, trim    ← import specific names
+>>> upper("hello")
+  → HELLO
+
+>>> import "random"            ← unqualified: dumps all exports into scope
+                               ← Warning: may shadow existing names
 ```
 
-Common modules:
-
+Quick help:
 ```
->>> import "random" as R
->>> R.int(1, 10)
-  → 7
-
->>> import "json" as J
->>> J.encode({"name": "Alice", "age": 30})
-  → {"name": "Alice", "age": 30}
-
->>> import "string" as S
->>> S.split("hello world foo", " ")
-  → [hello, world, foo]
-```
-
-Use `.doc <module>` to see what a module exports (see [Section 12](#12-inspecting-your-session)).
-
-Use `.modules` to list every available module:
-
-```
->>> .modules
-  Importable stdlib modules:
-    math      string    array     io
-    json      random    time      color
-    tween     grid      events    debug    ...
-```
-
-**Advanced: chaining stdlib calls**
-
-```
->>> import "string" as S
->>> S.split("apple,banana,cherry", ",")
-  → [apple, banana, cherry]
-
->>> map(S.split("apple,banana,cherry", ","), fn(s) { return upper(s) })
-  → [APPLE, BANANA, CHERRY]
+>>> .modules          ← shows all 59 modules in categories
+>>> .doc math         ← lists everything math exports
+>>> .doc vec          ← lists vec module exports
 ```
 
 ---
 
-## 10. History and Repeat
+## 10. Dot Commands — Overview
 
-**Basic idea:** The REPL remembers what you have typed. Use the Up/Down arrow keys to navigate back through previous commands.
-
-> **Windows note:** Arrow-key history navigation requires `readline`. On Windows without readline, use `!!` to repeat the last command, or retype commands manually.
-
-**`!!` — repeat the last command:**
-
-Type `!!` and press Enter to re-run the last thing you typed.
-
-```
->>> let n = 0
->>> n += 1
->>> !!
->>> !!
->>> n
-  → 3
-```
-
-> **Note:** `!!` only works in the new REPL v1.0.2. In v1.0.1 it was not supported.
-
-**`.history` — see recent commands:**
-
-```
->>> .history
-```
-
-Shows the last 20 commands. To see more or fewer:
-
-```
->>> .history 5
->>> .history 50
-```
-
-Example output:
-
-```
-  [1]  let x = 10
-  [2]  let y = 20
-  [3]  x + y
-  [4]  fn add(a,b) { return a+b }
-  [5]  add(x, y)
-```
-
-> **Note:** `.history` and all dot commands (`.time`, `.doc`, `.bench`, etc.) are features of the **new REPL v1.0.2** (`repl.py`). If you see `(history not available in fallback REPL)` or a parse error on `.time`, you are running the old v1.0.1 REPL. Copy the new `repl.py` from the zip to your machine.
+| Command | Description |
+|---------|-------------|
+| `.help` | Full coloured help |
+| `.vars` | All defined variables |
+| `.fns` | All defined functions |
+| `.types` | All struct/enum types |
+| `.modules` | All 59 stdlib modules by category |
+| `.doc <mod>` | Module export list |
+| `.clear` | Reset session variables |
+| `.reset` | Full reset (interpreter + history) |
+| `.vm` | Toggle VM / interpreter mode |
+| `.time <expr>` | Measure execution time |
+| `.bench <expr>` | Statistical benchmark (100 runs) |
+| `.bytecode` | Show bytecode for last expression |
+| `.history [n]` | Show last n commands |
+| `.save <file>` | Save session to .ins file |
+| `.load <file>` | Load and run a .ins file |
 
 ---
 
-## 11. Dot Commands — Overview
-
-**Basic idea:** All REPL meta-commands start with a dot `.`. They let you inspect your session, manage files, measure performance, and more.
-
-Type `.help` to see the full list at any time:
-
-```
->>> .help
-
-REPL Commands:
-  .help                Show this help
-  .vars                List all defined variables
-  .fns                 List all defined functions
-  .types               List all defined struct/enum types
-  .env                 Show full environment tree
-  .inspect <expr>      Deep field/method inspection
-  .type <expr>         Show the type of an expression
-  .doc <module>        Show stdlib module exports
-  .clear               Reset session variables
-  .reset               Full reset (interpreter + history)
-  .save <file>         Save session to .ins file
-  .load / .run <file>  Load and run a .ins file
-  .export [file]       Export session as Markdown
-  .time <expr>         Measure execution time (10 runs)
-  .bench <expr>        Statistical benchmark (100 runs)
-  .bytecode [expr]     Compact bytecode listing
-  .asm [expr]          Full annotated assembly
-  .vm                  Toggle VM / interpreter execution mode
-  .history [n]         Show last n commands (default 20)
-  .modules             List importable stdlib modules
-  .packages            List installed packages
-  exit / quit          Leave REPL
-
-Shortcuts:
-  Up/Down   Navigate history        Tab   Auto-complete
-  !!        Repeat last command      Ctrl+C  Cancel input
-```
-
----
-
-## 12. Inspecting Your Session
-
-These commands let you see what is currently defined and understand types and values.
-
----
-
-### `.vars` — all defined names
-
-Shows every name in scope — your variables, built-in functions, and global stubs.
+## 11. Inspecting Your Session
 
 ```
 >>> let x = 42
 >>> let name = "Alice"
->>> let scores = [10, 20, 30]
+>>> fn add(a,b) { return a+b }
 >>> .vars
-  ...
-  name          :string     Alice
-  scores        :array      [10, 20, 30]
-  x             :int        42
-  ...
-```
+  x     → 42
+  name  → "Alice"
 
-Your user-defined names appear alphabetically mixed with builtins. User variables show their type and value. Built-in functions show `:function` or `:builtin_function_or_method`.
-
----
-
-### `.fns` — all user-defined functions
-
-Shows only functions you have defined (not builtins):
-
-```
->>> fn add(a, b) { return a + b }
->>> fn greet(name) { return f"Hello, {name}!" }
 >>> .fns
-  fn add(a, b)
-  fn greet(name)
-```
+  add(a, b)
 
----
-
-### `.types` — all struct and enum types
-
-```
->>> struct Point { x: float; y: float }
->>> enum Color { Red; Green; Blue }
->>> .types
-  struct Point
-    x: float
-    y: float
-  enum Color
-    Red
-    Green
-    Blue
-```
-
----
-
-### `.type <expr>` — type of any expression
-
-**Basic idea:** Find out the type of any value or expression.
-
-```
->>> .type 42
-  int  →  42
-
->>> .type 3.14
-  float  →  3.14
-
->>> .type "hello"
-  string  →  hello
-
->>> .type [1, 2, 3]
-  array  →  [1, 2, 3]
-
->>> .type true
-  bool  →  true
-
->>> .type nil
-  nil  →  nil
-```
-
-Works on variables and expressions too:
-
-```
->>> let x = 100
 >>> .type x
-  int  →  100
+  int
 
->>> .type x * 3.14
-  float  →  314.0
+>>> .inspect [1,"two",3.0]
+  Array[3]:
+    [0] int    → 1
+    [1] string → "two"
+    [2] float  → 3.0
 ```
 
 ---
 
-### `.inspect <expr>` — deep inspection
-
-**Basic idea:** For structs and complex values, `.inspect` shows every field and method.
+## 12. Timing and Benchmarking
 
 ```
->>> struct Vec2 { x: float; y: float }
->>> let v = Vec2{x: 1.0, y: 2.0}
->>> .inspect v
-  InScriptInstance: Vec2{ x=1.0, y=2.0 }
-    methods: get, set
-```
+>>> .time import "math" as M; M.fib(20)
+  10 runs · avg 0.21ms · min 0.19ms · max 0.26ms
 
-**Advanced:** Inspect anything — arrays, dicts, imported modules:
-
-```
->>> .inspect [10, 20, 30]
-  array (3 items): [10, 20, 30]
-
->>> .inspect {"a": 1, "b": 2}
-  dict (2 keys): a, b
+>>> .bench let a=[]; for i in 0..1000 { a.push(i) }
+  100 runs · avg 1.4ms · p95 1.8ms · p99 2.1ms
 ```
 
 ---
 
-### `.env` — full environment tree
-
-Shows the raw environment scope chain — every name at every scope level. More detailed than `.vars`, useful when debugging scope issues:
+## 13. Session Management
 
 ```
->>> .env
-global:
-  x: int = 42
-  name: string = Alice
-  add: function = ...
+>>> .save my_session         ← saves to my_session.ins
+>>> .load my_session.ins     ← loads and runs the file
+>>> .export report.md        ← exports session as Markdown
+>>> .history 10              ← show last 10 commands
+>>> !!                       ← repeat last command
 ```
 
 ---
 
-### `.doc <module>` — stdlib module exports
+## 14. Stdlib Reference
 
-**Basic idea:** Find out what functions a module provides before or after importing it.
-
-```
->>> .doc math
-  math stdlib module (17 exports):
-    sin(x)     cos(x)     tan(x)
-    sqrt(x)    pow(x,y)   abs(x)
-    floor(x)   ceil(x)    round(x)
-    log(x)     log2(x)    log10(x)
-    PI         E          ...
-```
-
-```
->>> .doc json
->>> .doc random
->>> .doc string
->>> .doc array
-```
+Use `.doc <module>` in the REPL for the live export list. The examples below show the most common usage patterns.
 
 ---
 
-## 13. Timing and Benchmarking
+### 14.1 Core Modules
 
-**Basic idea:** Measure how fast your code runs.
-
-### `.time <expr>` — quick timing
-
-Runs the expression 10 times and reports average, min, and max:
-
-```
->>> .time 1 + 1
-  avg 0.03ms  min 0.02ms  max 0.04ms  (10 runs)
-```
-
-```
->>> .time sort(range(1000))
-  avg 2.1ms  min 1.9ms  max 2.8ms  (10 runs)
-```
-
-### `.bench <expr>` — full statistical benchmark
-
-Runs 100 times with a warm-up phase, then gives full statistics:
-
-```
->>> .bench 1 + 1
-  Warming up (5 runs)…
-  Benchmarking (100 runs)…
-  Benchmark (100 runs):
-    mean   0.023ms   stddev 0.005ms
-    min    0.020ms   max    0.039ms
-    p50    0.021ms   p95    0.035ms
-```
-
-**Advanced: compare two implementations**
-
-```
->>> fn slow_sum(n: int) -> int {
-...2   let s = 0
-...3   for i in range(n) { s += i }
-...4   return s
-...5 }
-
->>> fn fast_sum(n: int) -> int {
-...2   return n * (n - 1) / 2
-...3 }
-
->>> .bench slow_sum(1000)
-    mean  1.2ms
-
->>> .bench fast_sum(1000)
-    mean  0.03ms
-```
-
----
-
-## 14. Bytecode Inspection
-
-**Basic idea:** InScript has a bytecode compiler (Phase 6). These commands let you see what bytecode the compiler produces. Useful for learning and for debugging performance.
-
-### `.bytecode [expr]` — compact bytecode
-
-Shows a compact listing of opcodes:
-
-```
->>> .bytecode 1 + 2 * 3
-=== fn <main> ===
-  LOAD_INT  1
-  LOAD_INT  2
-  LOAD_INT  3
-  MUL
-  ADD
-  RETURN
-```
-
-Notice `MUL` comes before `ADD` — the compiler correctly applies `*` before `+`.
-
-### `.asm [expr]` — full annotated assembly
-
-Shows the full register-level assembly with instruction numbers, register slots, and constants:
-
-```
->>> .asm 1 + 2 * 3
-=== fn <main> ===
-  Code (6 instrs, 5 locals):
-       0  LOAD_INT                    1      1      0  ; 1
-       1  LOAD_INT                    3      2      0  ; 2
-       2  LOAD_INT                    4      3      0  ; 3
-       3  MUL                         2      3      4
-       4  ADD                         0      1      2
-       5  RETURN                  65535      0      0
-```
-
-**Advanced: inspect a function's compiled form**
-
-```
->>> fn factorial(n: int) -> int {
-...2   if n <= 1 { return 1 }
-...3   return n * factorial(n - 1)
-...4 }
->>> .asm factorial(5)
-```
-
-This shows exactly how the recursion is compiled — registers allocated, the conditional jump, the recursive call opcode.
-
----
-
-## 15. VM Mode
-
-**Basic idea:** InScript has two execution engines — the tree-walk **interpreter** (default) and the register-based **bytecode VM**. Toggle between them with `.vm`.
-
-```
->>> .vm
-  Execution mode: VM (bytecode)
-
->>> .vm
-  Execution mode: Interpreter (tree-walk)
-```
-
-When VM mode is active, the prompt shows `[VM]`:
-
-```
->>> [VM] let x = 10
->>> [VM] x * 2
-  → 20
-```
-
-**State persists across the toggle.** Variables defined in interpreter mode are available in VM mode and vice versa.
-
-**Why use VM mode?**
-
-The VM mode is the future direction of InScript. Use it to:
-- Test that your code works the same way in both engines
-- Inspect bytecode output with `.asm` for code you are running in VM
-- Develop a feel for how the compiler works
-
-```
->>> .vm
->>> fn fib(n: int) -> int {
-...2   if n <= 1 { return n }
-...3   return fib(n-1) + fib(n-2)
-...4 }
->>> fib(10)
-  → 55
->>> .asm fib(10)
-```
-
----
-
-## 16. Session Management
-
-**Basic idea:** Save your session to a file, load files to run them, and export a session as a Markdown report.
-
-### `.save <file>` — save session as runnable code
-
-Saves every statement from the session as a `.ins` file you can run later:
-
-```
->>> let x = 10
->>> fn double(n) { return n * 2 }
->>> .save my_session.ins
-  Session saved to my_session.ins
-```
-
-The saved file contains:
-
-```inscript
-let x = 10
-fn double(n) { return n * 2 }
-```
-
-### `.load <file>` / `.run <file>` — run a file
-
-Load and execute a `.ins` file as if you had typed it in:
-
-```
->>> .load my_session.ins
->>> .run examples/pong.ins
-```
-
-After loading, all definitions from the file are available in the REPL.
-
-### `.export [file]` — export session as Markdown
-
-Exports the session as an annotated Markdown document, useful for sharing or documentation:
-
-```
->>> .export
-```
-
-Prints the Markdown to the screen. To save it to a file:
-
-```
->>> .export session_notes.md
-  Exported to session_notes.md
-```
-
-The Markdown file includes each command you ran with its output, formatted as code blocks.
-
-### `.clear` — reset variables, keep history
-
-Clears all user-defined variables and functions. History and REPL settings are kept.
-
-```
->>> let x = 10
->>> .clear
-  Session cleared.
->>> x
-  ✗ Undefined variable 'x'
-```
-
-### `.reset` — full reset
-
-Clears everything — variables, functions, history, interpreter state — as if you just started the REPL.
-
-```
->>> .reset
-  REPL reset.
-```
-
----
-
-## 17. Tab Completion
-
-Press **Tab** to auto-complete:
-
-- **Dot commands:** type `.` then Tab to see all commands; type `.h` then Tab to complete to `.help`
-- **Variable names:** type the start of a name then Tab
-- **Method access:** type `myobj.` then Tab to see available methods and fields
-
-```
->>> .h[Tab]
-  .help   .history
-
->>> let person = {name: "Alice"}
->>> person.[Tab]
-  (shows available dict methods)
-```
-
----
-
-## 18. The Web Playground
-
-**Basic idea:** A browser-based version of the REPL, useful when you want a graphical interface or want to share InScript with someone who does not have Python installed locally.
-
-```bash
-python repl.py --web
-```
-
-Opens at `http://localhost:8080` in your browser.
-
-Features:
-- Full InScript editor with syntax highlighting
-- Run button (or `Ctrl+Enter`) to execute
-- VM / Interpreter toggle switch
-- 8 built-in example programs to load and run
-- Tab key inserts 2 spaces (not a tab character)
-- Output appears in the panel below the editor
-
-The 8 built-in examples cover: hello world, fibonacci, structs, closures, generators, error handling, imports, and pattern matching.
-
-The web playground uses the same interpreter as the terminal REPL — all language features work identically.
-
----
-
-## 19. Practical Workflows
-
-### Workflow 1: Explore an idea quickly
-
-Start the REPL and try things without planning a file structure:
-
+#### `math` — Mathematics
 ```
 >>> import "math" as M
+>>> M.sqrt(2.0)           → 1.4142...
+>>> M.sin(M.PI / 2.0)     → 1.0
+>>> M.floor(3.7)          → 3
+>>> M.log2(1024.0)        → 10.0
+>>> M.clamp(15.0, 0.0, 10.0) → 10.0
+>>> M.INF                 → Infinity
+>>> M.PI                  → 3.14159...
+```
+Key exports: `sin cos tan asin acos atan atan2 sqrt log log2 exp abs floor ceil round pow clamp lerp PI E TAU INF NAN`
 
->>> fn circle_area(r: float) -> float {
-...2   return M.PI * r * r
-...3 }
+---
 
->>> circle_area(5.0)
-  → 78.53981633974483
-
->>> circle_area(10.0)
-  → 314.1592653589793
-
->>> // happy with this? save it.
->>> .save geometry.ins
+#### `string` — String utilities
+```
+>>> import "string" as S
+>>> S.upper("hello")       → "HELLO"
+>>> S.trim("  hi  ")       → "hi"
+>>> S.split("a,b,c", ",")  → ["a","b","c"]
+>>> S.join(["x","y"], "-") → "x-y"
+>>> S.repeat("ab", 3)      → "ababab"
+>>> S.starts_with("hello", "he") → true
+>>> S.replace("foo bar", "bar", "baz") → "foo baz"
+>>> S.pad_left("42", 6, "0")     → "000042"
 ```
 
 ---
 
-### Workflow 2: Incremental struct development
-
-Build a struct step by step, testing each method as you add it:
-
+#### `array` — Array utilities
 ```
->>> struct Stack {
-...2   items: array
-...3   fn push(val) { items = items ++ [val] }
-...4   fn pop() { let v = last(items); items = items[:len(items)-1]; return v }
-...5   fn peek() { return last(items) }
-...6   fn is_empty() -> bool { return len(items) == 0 }
-...7 }
-
->>> let s = Stack{items: []}
->>> s.is_empty()
-  → true
-
->>> s.push(10)
->>> s.push(20)
->>> s.push(30)
->>> s.peek()
-  → 30
-
->>> s.pop()
-  → 30
->>> s.pop()
-  → 20
+>>> import "array" as A
+>>> A.chunk([1,2,3,4,5], 2)      → [[1,2],[3,4],[5]]
+>>> A.zip([1,2,3], ["a","b","c"]) → [[1,"a"],[2,"b"],[3,"c"]]
+>>> A.flatten([[1,2],[3,4]])      → [1,2,3,4]
+>>> A.unique([1,2,2,3,1])        → [1,2,3]
+>>> A.shuffle([1,2,3,4,5])       → (shuffled copy)
+>>> A.binary_search([1,2,3,4,5], 3) → 2
+>>> A.average([1.0, 2.0, 3.0])   → 2.0
+>>> A.count([1,2,1,3,1], 1)      → 3
 ```
 
 ---
 
-### Workflow 3: Load a file and poke at its internals
-
+#### `json` — JSON encode/decode
 ```
->>> .load my_game.ins
->>> .vars
->>> .fns
->>> // test a specific function with edge cases:
->>> handle_collision(player, wall, 0.0)
->>> handle_collision(player, wall, 90.0)
-```
-
----
-
-### Workflow 4: Compare two implementations
-
-```
->>> fn naive_fib(n: int) -> int {
-...2   if n <= 1 { return n }
-...3   return naive_fib(n-1) + naive_fib(n-2)
-...4 }
-
->>> fn fast_fib(n: int) -> int {
-...2   let a = 0; let b = 1
-...3   for i in range(n) { let t = a + b; a = b; b = t }
-...4   return a
-...5 }
-
->>> .bench naive_fib(20)
-    mean  48ms
-
->>> .bench fast_fib(20)
-    mean  0.04ms
+>>> import "json" as J
+>>> let s = J.encode({"name": "Alice", "score": 42})
+>>> s
+  → '{"name": "Alice", "score": 42}'
+>>> J.decode(s)
+  → {"name": "Alice", "score": 42}
+>>> J.encode([1, true, nil])
+  → '[1, true, null]'
 ```
 
 ---
 
-### Workflow 5: Use the REPL as a calculator
-
+#### `io` — File and console I/O
 ```
->>> import "math" as M
-
->>> // Area of a sphere radius 7
->>> 4.0 * M.PI * 7.0 ** 2
-  → 615.7521601035994
-
->>> // Convert 98.6°F to Celsius
->>> (98.6 - 32.0) * 5.0 / 9.0
-  → 37.0
-
->>> // Bits in a 32-bit value
->>> 2 ** 32
-  → 4294967296
-
->>> // Bitwise AND mask
->>> 0b11001100 & 0b10101010
-  → 136
-
->>> // Hex to int
->>> 0xFF
-  → 255
+>>> import "io" as IO
+>>> IO.write_file("hello.txt", "Hello, world!")
+>>> IO.read_file("hello.txt")
+  → "Hello, world!"
+>>> IO.file_exists("hello.txt")  → true
+>>> IO.read_lines("hello.txt")   → ["Hello, world!"]
+>>> IO.list_dir(".")             → ["hello.txt", ...]
+>>> let name = IO.input("Your name: ")
 ```
 
 ---
 
-### Workflow 6: Multiline with backslash for long expressions
-
-When an expression is very long, break it across lines with `\`:
-
+#### `random` — Random numbers
 ```
->>> let result = filter([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], \
-...2               fn(x) { return x % 2 == 0 })
->>> result
-  → [2, 4, 6, 8, 10]
-```
-
-```
->>> let total = 100 + 200 + 300 + \
-...2            400 + 500
->>> total
-  → 1500
+>>> import "random" as R
+>>> R.int(1, 6)            → (dice roll 1–6)
+>>> R.float(0.0, 1.0)      → 0.7342...
+>>> R.choice(["a","b","c"]) → "b"
+>>> R.choices([1,2,3,4,5], 3) → [3,1,5]
+>>> R.shuffle_in_place([1,2,3,4,5])
+>>> R.gaussian(0.0, 1.0)   → -0.23...
+>>> R.bool()               → true/false
+>>> R.direction()          → random unit Vec2
 ```
 
 ---
 
-### Workflow 7: Inspect bytecode to understand operator precedence
-
+#### `time` — Timing
 ```
->>> .asm 2 + 3 * 4 - 1
+>>> import "time" as T
+>>> T.now()          → 1710000000.0  (Unix timestamp)
+>>> T.sleep(0.1)     → (waits 100ms)
+>>> T.reset()        → resets internal stopwatch
+>>> T.elapsed()      → seconds since last reset
+>>> T.fps()          → frames per second (game loop)
 ```
-
-Read the opcode order — `MUL` before `ADD` confirms `*` binds tighter than `+`.
-
-```
->>> .asm -2 ** 2
-```
-
-Confirm that `-2 ** 2` equals `-4` (unary minus applied after exponentiation).
 
 ---
 
-## 20. Known Limitations
-
-These are known issues in v1.0.2. Workarounds are provided where they exist.
-
-| Limitation | Workaround |
-|-----------|------------|
-| **`async/await` is not real** | `async fn` parses and runs but is synchronous. No event loop exists yet. |
-| **F-strings cannot contain string literals** | `f"{x > 0 ? \"yes\" : \"no\"}"` fails. Use a variable: `let msg = x > 0 ? "yes" : "no"; f"{msg}"` |
-| **Static struct fields do not parse** | `static PI: float = 3.14` inside a struct body raises ParseError. Only `static fn` works. |
-| **Missing struct fields become nil silently** | `Point{x: 1.0}` with `y` omitted gives `p.y == nil` with no warning. |
-| **Math INF/NAN crash when printed** | `import "math" as M; print(M.INF)` crashes. Use `is_inf(x)` / `is_nan(x)` for comparisons instead. |
-| **Regex argument order is inverted** | `R.match("hello", "h.*o")` fails. Correct: `R.match("h.*o", "hello")` — pattern first, text second. |
-| **Events module callbacks crash** | `E.on("event", fn(x){})` crashes when the event fires. Avoid the events module for now. |
-| **Generators only work in `for` loops** | `let g = counter(); g()` fails. Use `for v in counter() {}`. |
-| **`.vars` includes all builtins** | You cannot currently filter `.vars` to show only user-defined variables. Use `.fns` for functions and `.types` for structs. |
+#### `debug` — Debug utilities
+```
+>>> import "debug" as D
+>>> D.log("player spawned", {x: 10, y: 20})
+>>> D.assert(1 == 1, "math failed")
+>>> D.assert_eq(2 + 2, 4)
+>>> D.inspect({"a": [1,2,3]})   ← deep pretty-print
+>>> D.print_type(42)             → "int"
+>>> D.stats([1,2,3,4,5])         → {min, max, mean, std}
+```
 
 ---
 
-*Tutorial covers InScript v1.0.2 — REPL as implemented in `repl.py`.*  
-*For the full language reference, see the InScript Language Guide.*  
-*For known bugs and design issues, see `InScript_Language_Audit.md`.*
+### 14.2 Data Modules
+
+#### `csv` — CSV files
+```
+>>> import "csv" as CSV
+>>> let data = CSV.parse("name,age\nAlice,30\nBob,25")
+>>> data["headers"]   → ["name", "age"]
+>>> data["rows"][0]   → {"name": "Alice", "age": "30"}
+>>> CSV.write_file("out.csv", CSV.from_dicts([{"x":1,"y":2}]))
+```
+
+---
+
+#### `regex` — Regular expressions
+```
+>>> import "regex" as R
+>>> R.test("hello@world.com", R.EMAIL)  → true
+>>> R.match("hello123", R.WORD)
+  → {"matched": true, "value": "hello123", ...}
+>>> R.find_all("one 1 two 2 three 3", R.DIGITS)
+  → ["1", "2", "3"]
+>>> R.replace("foo_bar_baz", "_", "-")
+  → "foo-bar-baz"
+```
+Built-in patterns: `EMAIL URL WORD DIGITS WHITESPACE`
+
+---
+
+#### `xml` — XML parsing
+```
+>>> import "xml" as X
+>>> let doc = X.parse("<root><item id='1'>hello</item></root>")
+>>> X.find(doc, "item")
+>>> X.get_attr(doc, "id")
+>>> X.children(doc)
+```
+
+---
+
+#### `toml` — TOML config files
+```
+>>> import "toml" as T
+>>> let cfg = T.parse_file("config.toml")
+>>> T.get(cfg, "server.port")   → 8080
+>>> T.to_string({"name": "app", "version": "1.0"})
+```
+
+---
+
+#### `yaml` — YAML files
+```
+>>> import "yaml" as Y
+>>> let data = Y.parse("name: Alice\nage: 30")
+>>> data["name"]   → "Alice"
+>>> Y.to_string({"x": 1, "y": 2})
+```
+
+---
+
+#### `url` — URL parsing/building
+```
+>>> import "url" as U
+>>> U.encode("hello world!")        → "hello%20world%21"
+>>> U.build("https://example.com", {"q": "inscript", "page": "1"})
+  → "https://example.com?q=inscript&page=1"
+>>> U.get_host("https://example.com/path")  → "example.com"
+>>> U.get_path("https://example.com/a/b")   → "/a/b"
+```
+
+---
+
+#### `base64` — Base64 encoding
+```
+>>> import "base64" as B
+>>> B.encode("Hello, world!")   → "SGVsbG8sIHdvcmxkIQ=="
+>>> B.decode("SGVsbG8sIHdvcmxkIQ==")  → "Hello, world!"
+>>> B.encode_url("Hello+World")  → URL-safe variant
+```
+
+---
+
+#### `uuid` — Unique IDs
+```
+>>> import "uuid" as U
+>>> U.v4()     → "f47ac10b-58cc-4372-a567-0e02b2c3d479"
+>>> U.short()  → "f47ac10b"  (first 8 chars)
+>>> U.is_valid("f47ac10b-58cc-4372-a567-0e02b2c3d479")  → true
+```
+
+---
+
+### 14.3 Format/Iter Modules
+
+#### `format` — String formatting utilities
+```
+>>> import "format" as F
+>>> F.number(1234567.89, ",")      → "1,234,567.89"
+>>> F.file_size(1048576)           → "1.0 MB"
+>>> F.duration(3661)               → "1h 1m 1s"
+>>> F.hex(255)                     → "0xff"
+>>> F.bin(42)                      → "0b101010"
+>>> F.indent("line1\nline2", 4)    → "    line1\n    line2"
+>>> F.camel_case("hello_world")    → "helloWorld"
+>>> F.pad_table([["a","b"],["cc","dd"]], [8,8])
+```
+
+---
+
+#### `iter` — Functional iteration
+```
+>>> import "iter" as I
+>>> I.map([1,2,3,4,5], fn(x){return x*x})
+  → [1, 4, 9, 16, 25]
+>>> I.filter([1,2,3,4,5], fn(x){return x%2==0})
+  → [2, 4]
+>>> I.reduce([1,2,3,4,5], 0, fn(acc,x){return acc+x})
+  → 15
+>>> I.zip([1,2,3], ["a","b","c"])
+  → [[1,"a"],[2,"b"],[3,"c"]]
+>>> I.flat_map([[1,2],[3,4]], fn(x){return x})
+  → [1,2,3,4]
+>>> I.take([1,2,3,4,5], 3)     → [1,2,3]
+>>> I.skip([1,2,3,4,5], 2)     → [3,4,5]
+>>> I.enumerate(["a","b","c"])  → [[0,"a"],[1,"b"],[2,"c"]]
+>>> I.group_by([1,2,3,4,6], fn(x){return x%2==0 ? "even" : "odd"})
+  → {"odd":[1,3],"even":[2,4,6]}
+>>> I.count_by(["a","b","a","c","b","a"], fn(x){return x})
+  → {"a":3,"b":2,"c":1}
+```
+
+---
+
+#### `template` — String templates
+```
+>>> import "template" as T
+>>> let tmpl = T.compile("Hello {{name}}, you have {{count}} messages.")
+>>> T.render(tmpl, {"name": "Alice", "count": 3})
+  → "Hello Alice, you have 3 messages."
+>>> T.render_str("Score: {{score}}", {"score": 42})
+  → "Score: 42"
+```
+
+---
+
+#### `argparse` — CLI argument parsing
+```
+>>> import "argparse" as A
+>>> A.option("--name", "Your name", "World")
+>>> A.flag("--verbose", "Enable verbose output")
+>>> A.positional("file", "Input file")
+>>> let args = A.parse()
+>>> args["name"]
+```
+
+---
+
+### 14.4 Net/Crypto Modules
+
+#### `http` — HTTP requests
+```
+>>> import "http" as H
+>>> let resp = H.get("https://httpbin.org/json")
+>>> resp["status"]    → 200
+>>> resp["body"]      → "{...}"
+>>> H.post("https://example.com/api", {"key": "value"})
+```
+*Note: requires network access; disabled in sandbox environments.*
+
+---
+
+#### `ssl` — HTTPS / TLS
+```
+>>> import "ssl" as S
+>>> let html = S.https_get("https://example.com")
+>>> let ctx = S.create_context()
+```
+
+---
+
+#### `crypto` — Cryptography
+```
+>>> import "crypto" as C
+>>> C.sha256("hello")
+  → "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+>>> C.md5("hello")        → "5d41402abc4b2a76b9719d911017c592"
+>>> C.hmac_sign("secret", "message")
+>>> C.random_bytes(16)    → [...16 random bytes...]
+>>> C.b64_encode("data")  → base64 string
+```
+
+---
+
+#### `hash` — Hashing algorithms
+```
+>>> import "hash" as H
+>>> H.blake3("hello")
+>>> H.adler32("hello")   → checksum int
+>>> H.algorithms()       → list of available algorithms
+>>> H.compare(h1, h2)    → constant-time comparison
+```
+
+---
+
+#### `net` — TCP/UDP networking
+```
+>>> import "net" as N
+>>> N.local_ip()          → "192.168.1.100"
+>>> N.hostname()          → "my-machine"
+>>> N.is_port_open("localhost", 8080)  → true/false
+>>> let server = N.TcpServer(8080)
+>>> let client = N.TcpClient("localhost", 8080)
+```
+
+---
+
+### 14.5 FS/Process Modules
+
+#### `path` — File path utilities
+```
+>>> import "path" as P
+>>> P.join("src", "utils", "main.ins")  → "src/utils/main.ins"
+>>> P.basename("src/main.ins")          → "main.ins"
+>>> P.dirname("src/utils/main.ins")     → "src/utils"
+>>> P.ext("main.ins")                   → ".ins"
+>>> P.exists("main.ins")               → true/false
+>>> P.glob("src/*.ins")                → ["src/main.ins", ...]
+>>> P.home()                           → "/home/user"
+>>> P.cwd()                            → current directory
+```
+
+---
+
+#### `fs` — File system operations
+```
+>>> import "fs" as FS
+>>> FS.read("hello.txt")
+>>> FS.write("out.txt", "content")
+>>> FS.append("log.txt", "new line\n")
+>>> FS.copy("a.txt", "b.txt")
+>>> FS.delete("old.txt")
+>>> FS.mkdir("new_dir")
+>>> FS.list(".")          → directory listing
+>>> FS.glob("**/*.ins")   → recursive glob
+```
+
+---
+
+#### `process` — Process and environment
+```
+>>> import "process" as P
+>>> P.platform()          → "windows" / "linux" / "darwin"
+>>> P.env("HOME")         → "/home/user"
+>>> P.args()              → command line args
+>>> P.pid()               → current process ID
+>>> P.cwd()               → working directory
+>>> P.python_version()    → "3.12.0"
+>>> P.exit(0)             → exit with code
+```
+
+---
+
+#### `compress` — Compression
+```
+>>> import "compress" as C
+>>> let compressed = C.gzip("lots of repeated text text text")
+>>> C.gunzip(compressed)   → original string
+>>> C.zip_files("archive.zip", ["a.txt","b.txt"])
+>>> C.unzip("archive.zip", "output_dir/")
+```
+
+---
+
+#### `log` — Structured logging
+```
+>>> import "log" as L
+>>> L.info("Server started on port 8080")
+>>> L.debug("Processing request", {method: "GET", path: "/api"})
+>>> L.error("Database connection failed", {retry: 3})
+>>> L.set_level("debug")     ← show all levels
+>>> L.set_level("error")     ← errors only
+>>> L.to_file("app.log")
+>>> L.structured(true)       ← JSON output format
+```
+
+---
+
+### 14.6 Date/Collections Modules
+
+#### `datetime` — Dates and times
+```
+>>> import "datetime" as DT
+>>> let now = DT.now()
+>>> DT.format(now, "%Y-%m-%d")    → "2026-03-14"
+>>> DT.format(now, "%H:%M:%S")    → "14:30:00"
+>>> let d = DT.date(2026, 3, 14)
+>>> DT.add(d, {days: 7})         → date 7 days later
+>>> DT.diff_seconds(d1, d2)      → difference in seconds
+>>> DT.MONTHS                    → ["January", ...]
+>>> DT.WEEKDAYS                  → ["Monday", ...]
+```
+
+---
+
+#### `collections` — Data structures
+```
+>>> import "collections" as C
+
+// Set — unordered unique values
+>>> let s = C.Set([1,2,2,3,3])
+>>> C.set_size(s)           → 3
+>>> C.set_add(s, 4)
+>>> C.set_has(s, 2)         → true
+>>> C.set_union(s1, s2)     → new Set
+>>> C.set_intersect(s1, s2) → new Set
+>>> s.to_array()            → [1,2,3,4]
+
+// Queue (FIFO)
+>>> let q = C.Queue()
+>>> q.enqueue(1); q.enqueue(2)
+>>> q.dequeue()    → 1
+
+// Deque (double-ended queue)
+>>> let d = C.Deque()
+>>> d.push_front(0); d.push_back(3)
+
+// PriorityQueue
+>>> let pq = C.PriorityQueue()
+>>> pq.push(5, "low"); pq.push(1, "urgent")
+>>> pq.pop()    → "urgent"  (lowest priority number first)
+
+// Helpers
+>>> C.counter(["a","b","a","c","a"])  → {"a":3,"b":1,"c":1}
+>>> C.flatten([[1,2],[3,[4,5]]])      → [1,2,3,4,5]
+>>> C.sliding_window([1,2,3,4,5], 3) → [[1,2,3],[2,3,4],[3,4,5]]
+```
+
+---
+
+#### `database` — SQLite database
+```
+>>> import "database" as DB
+>>> let db = DB.open("game.db")         ← file-backed
+>>> let mem = DB.open_memory()          ← in-memory
+
+// Database object methods:
+>>> db.exec("CREATE TABLE scores (name TEXT, value INT)")
+>>> db.exec("INSERT INTO scores VALUES (?, ?)", ["Alice", 100])
+>>> let rows = db.query("SELECT * FROM scores")
+>>> rows     → [{"name": "Alice", "value": 100}]
+>>> db.close()
+```
+
+---
+
+### 14.7 Threading/Bench Modules
+
+#### `thread` — Multi-threading
+```
+>>> import "thread" as T
+>>> let t = T.spawn(fn() { print("hello from thread") })
+>>> T.join_all([t])
+>>> T.sleep(0.5)                ← sleep 500ms
+
+// Mutex for shared state
+>>> let mu = T.Mutex()
+>>> mu.lock(); mu.unlock()
+>>> mu.with(fn() { /* critical section */ })
+
+// Channel for communication
+>>> let ch = T.Channel()
+>>> T.spawn(fn() { ch.send(42) })
+>>> ch.recv()    → 42
+```
+⚠️ InScript closures are not thread-safe. Use Python callables for thread functions.
+
+---
+
+#### `bench` — Benchmarking
+```
+>>> import "bench" as B
+>>> let result = B.time(fn() { return 2**32 })
+>>> result["ms"]    → execution time in ms
+>>> B.run([
+...   B.Case("fib20", fn() { return fib(20) }),
+...   B.Case("fib25", fn() { return fib(25) }),
+... ])
+>>> B.compare(fn_a, fn_b, 100)   ← compare two functions over N runs
+```
+
+---
+
+### 14.8 Game Visual Modules
+
+#### `color` — Color operations
+```
+>>> import "color" as C
+>>> let red = C.rgb(1.0, 0.0, 0.0)       ← 0.0-1.0 scale
+>>> let blue = C.from_hex("#0000FF")
+>>> C.mix(red, blue, 0.5)                ← 50% blend
+>>> C.darken(red, 0.2)                   ← 20% darker
+>>> C.lighten(blue, 0.3)                 ← 30% lighter
+>>> C.to_hex(red)                        → "#FF0000"
+>>> C.RED; C.GREEN; C.BLUE               ← named constants
+>>> C.BLACK; C.WHITE; C.TRANSPARENT
+```
+
+---
+
+#### `tween` — Easing and interpolation
+```
+>>> import "tween" as T
+
+// 1-arg form: maps t ∈ [0,1] through easing curve
+>>> T.linear(0.5)           → 0.5
+>>> T.ease_in(0.5)          → 0.25   (quadratic)
+>>> T.ease_out(0.5)         → 0.75
+>>> T.ease_in_out(0.5)      → 0.5
+>>> T.ease_in_bounce(0.8)   → (bouncy value)
+
+// 3-arg form: interpolate from→to over t
+>>> T.linear(0.5, 0.0, 100.0)     → 50.0
+>>> T.ease_in(0.5, 0.0, 100.0)    → 25.0
+>>> T.ease_out_elastic(0.7, 0.0, 1.0)
+
+// Full tween with custom easing:
+>>> T.tween(0.0, 100.0, 0.5, T.ease_in_cubic)  → 12.5
+```
+Available: `linear ease_in ease_out ease_in_out ease_in_quad ease_out_quad ease_in_cubic ease_out_cubic ease_in_sine ease_out_sine ease_in_expo ease_out_expo ease_in_bounce ease_out_bounce ease_in_elastic ease_out_elastic ease_in_back ease_out_back`
+
+---
+
+#### `image` — Image loading and manipulation
+```
+>>> import "image" as I
+>>> let img = I.load("sprite.png")
+>>> I.get_pixel(img, 10, 20)       → [r, g, b, a]
+>>> let grey = I.grayscale(img)
+>>> let flipped = I.flip_h(img)
+>>> let cropped = I.crop(img, 0, 0, 64, 64)
+>>> I.blit(dest, src, 100, 200)    ← draw src onto dest at (100,200)
+```
+
+---
+
+#### `atlas` — Sprite atlases
+```
+>>> import "atlas" as A
+>>> let atlas = A.load("sprites.png", "sprites.json")
+>>> let frame = atlas.get("player_walk_1")
+>>> let packed = A.pack(["a.png","b.png","c.png"])
+```
+
+---
+
+#### `animation` — Sprite animation
+```
+>>> import "animation" as A
+>>> let clip = A.Clip("walk", ["frame1","frame2","frame3"], fps: 12.0, loop: true)
+>>> let anim = A.Animator()
+>>> anim.add_clip(clip)
+>>> anim.play("walk")
+>>> anim.update(0.016)   ← delta time in seconds
+>>> anim.current_frame() → current frame name
+```
+
+---
+
+#### `shader` — Shader effects
+```
+>>> import "shader" as S
+>>> let sh = S.load("blur.glsl")
+>>> S.screen_effect(sh, {radius: 2.0})
+>>> S.screen_pass(sh)
+```
+*Note: shader execution requires a pygame/OpenGL window context.*
+
+---
+
+### 14.9 Game IO Modules
+
+#### `input` — Input management
+```
+>>> import "input" as I
+>>> let mgr = I.Manager()
+>>> I.map(mgr, "jump", keys: ["space", "up"])
+>>> I.map(mgr, "left", keys: ["left", "a"])
+>>> I.map(mgr, "right", keys: ["right", "d"])
+
+// Per-frame (call inside game loop):
+>>> I.pressed(mgr, "jump")    → true on press frame
+>>> I.held(mgr, "left")       → true while held
+>>> I.axis(mgr, "horizontal") → -1.0 to 1.0
+>>> I.mouse_pos(mgr)          → [x, y]
+>>> I.mouse_pressed(mgr, 0)   → left button
+```
+
+---
+
+#### `audio` — Sound and music
+```
+>>> import "audio" as A
+>>> let sfx = A.load("explosion.wav")
+>>> A.play(sfx)
+>>> A.play(sfx, volume: 0.5, loops: 0)
+>>> let music = A.Sound("theme.ogg")
+>>> A.play_music(music)
+>>> A.pause_music()
+>>> A.resume_music()
+>>> A.fade_out(1000)         ← fade out over 1 second
+>>> A.mute(true)
+>>> A.ENABLED                → true if pygame.mixer available
+```
+
+---
+
+### 14.10 Game World Modules
+
+#### `physics2d` — 2D physics
+```
+>>> import "physics2d" as P
+>>> let world = P.World(gravity: P.Vec2(0.0, 9.8))
+>>> let body = P.RigidBody(mass: 1.0, pos: P.Vec2(0.0, 0.0))
+>>> let ground = P.StaticBody(shape: P.Rect(0.0, 10.0, 20.0, 1.0))
+>>> world.add(body); world.add(ground)
+>>> world.step(0.016)            ← advance simulation by 16ms
+>>> body.pos                     → Vec2 after physics step
+>>> let circle = P.Circle(radius: 0.5, pos: P.Vec2(5.0, 0.0))
+>>> let area = P.Area(shape: P.Rect(0.0,0.0,10.0,10.0))
+```
+
+---
+
+#### `tilemap` — Tile maps
+```
+>>> import "tilemap" as T
+>>> let map = T.load("level1.tmj")
+>>> T.get_tile(map, "ground", 5, 3)    → tile id at (5,3) on "ground" layer
+>>> T.get_layer(map, "ground")         → layer data
+>>> T.get_objects(map, "enemies")      → list of object dicts
+>>> T.draw_layer(map, "ground", camera_x: 0, camera_y: 0)
+```
+
+---
+
+#### `camera2d` — 2D camera
+```
+>>> import "camera2d" as C
+>>> let cam = C.Camera2D()
+>>> C.set_target(cam, 400.0, 300.0)   ← look at this world point
+>>> C.follow(cam, player.x, player.y) ← smooth follow
+>>> C.shake(cam, intensity: 8.0, duration: 0.3)
+>>> C.update(cam, dt)                 ← call every frame
+>>> C.begin(cam)                      ← start camera transform
+>>> // draw world objects here
+>>> C.end(cam)                        ← restore transform
+>>> C.world_to_screen(cam, 100.0, 200.0)  → [sx, sy]
+>>> C.bounds(cam)                     → visible world rect
+```
+
+---
+
+#### `particle` — Particle systems
+```
+>>> import "particle" as P
+>>> let emitter = P.Emitter(400.0, 300.0)
+>>> P.rate(emitter, 30)           ← 30 particles/second
+>>> P.lifetime(emitter, 1.5)      ← each lives 1.5s
+>>> P.speed(emitter, 80.0)
+>>> P.angle(emitter, 45.0)        ← emit direction degrees
+>>> P.color_start(emitter, 1.0, 0.5, 0.0, 1.0)   ← orange
+>>> P.color_end(emitter, 1.0, 0.0, 0.0, 0.0)     ← red, fade out
+>>> P.gravity(emitter, 0.0, 50.0)
+>>> P.start(emitter)
+>>> P.burst(emitter, 20)          ← instant burst of 20
+>>> P.update(emitter, dt)         ← call every frame
+>>> P.count(emitter)              → active particle count
+```
+
+---
+
+#### `pathfind` — Pathfinding
+```
+>>> import "pathfind" as PF
+>>> let grid = PF.Grid(20, 15)       ← 20×15 tile grid
+>>> grid.set_walkable(5, 3, false)   ← block a tile
+>>> let path = PF.astar(grid, [0,0], [19,14])
+>>> path    → [[0,0],[1,0],[2,1],...]  (list of [x,y] steps)
+>>> PF.dijkstra(grid, [0,0])         → distance map
+>>> let flow = PF.flow_field(grid, [10,7])
+>>> PF.sample_flow(flow, 3, 4)       → direction at (3,4)
+```
+
+---
+
+### 14.11 Game Systems Modules
+
+#### `ecs` — Entity Component System
+```
+>>> import "ecs" as E
+>>> let world = E.World()
+
+// Spawn entities with component dicts
+>>> let player = E.spawn(world, {pos: [0.0,0.0], vel: [0.0,0.0], health: 100})
+>>> let enemy  = E.spawn(world, {pos: [5.0,0.0], vel: [0.0,0.0], ai: "chase"})
+
+// Query entities with specific components
+>>> let movers = E.query(world, "pos", "vel")
+>>> for eid, comps in movers {
+...   comps["pos"][0] += comps["vel"][0]
+... }
+
+// Get/set individual components
+>>> E.get(world, player, "health")   → 100
+>>> E.mark_dead(world, enemy)
+>>> E.remove_dead(world)
+>>> E.alive_count(world)             → 1
+```
+
+---
+
+#### `fsm` — Finite State Machine
+```
+>>> import "fsm" as F
+>>> let ai = F.Machine("idle")
+>>> F.add_state(ai, "idle",    on_update: fn(dt){ print("idle") })
+>>> F.add_state(ai, "chase",   on_enter: fn(){ print("start chase!") })
+>>> F.add_state(ai, "attack",  on_enter: fn(){ print("attacking!") })
+>>> F.add_transition(ai, "idle",  "chase",  fn(){ return player_nearby })
+>>> F.add_transition(ai, "chase", "attack", fn(){ return player_in_range })
+>>> F.update(ai, dt)        ← checks transitions, calls on_update
+>>> F.current(ai)           → "idle"
+>>> F.in_state(ai, "chase") → false
+>>> F.history(ai)           → ["idle"]
+```
+
+---
+
+#### `save` — Save game slots
+```
+>>> import "save" as S
+>>> let slot = S.Slot("save1.dat")
+>>> slot.set("player_name", "Alice")
+>>> slot.set("level", 5)
+>>> slot.set("inventory", ["sword", "shield"])
+>>> slot.save()
+>>> slot.load()
+>>> slot.get("level")         → 5
+>>> S.list_slots()            → ["save1.dat", ...]
+>>> S.copy_slot("save1.dat", "backup.dat")
+```
+
+---
+
+#### `localize` — Localization / i18n
+```
+>>> import "localize" as L
+>>> let loc = L.Localizer()
+>>> L.load(loc, "en.json")    ← {"greeting": "Hello", "farewell": "Goodbye"}
+>>> L.load(loc, "es.json")    ← {"greeting": "Hola", "farewell": "Adiós"}
+>>> L.set_language(loc, "es")
+>>> L.get(loc, "greeting")    → "Hola"
+>>> L.set_fallback(loc, "en") ← use English for missing keys
+>>> L.available_languages(loc) → ["en", "es"]
+```
+
+---
+
+#### `grid` — 2D grid utilities
+```
+>>> import "grid" as G
+>>> let g = G.Grid(10, 10, default: 0)  ← 10×10 grid filled with 0
+>>> g.set(3, 4, 99)
+>>> g.get(3, 4)               → 99
+>>> G.manhattan([0,0], [3,4]) → 7
+>>> G.euclidean([0,0], [3,4]) → 5.0
+>>> G.chebyshev([0,0], [3,4]) → 4
+>>> G.to_index(g, 3, 4)       → 43  (row-major flat index)
+>>> G.from_index(g, 43)       → [3, 4]
+```
+
+---
+
+#### `events` — Event bus
+```
+>>> import "events" as E
+>>> E.on("player_died", fn(data){ print("Player died at", data["x"]) })
+>>> E.on("level_complete", fn(data){ print("Level", data["level"], "done!") })
+>>> E.emit("player_died", {"x": 100, "y": 200})
+Player died at 100
+>>> E.once("game_start", fn(){ print("Started!") })  ← fires once only
+>>> E.off("player_died")     ← remove all listeners for event
+>>> E.clear()                ← remove all listeners
+```
+
+---
+
+#### `net_game` — Multiplayer networking
+```
+>>> import "net_game" as N
+>>> let server = N.GameServer(port: 7777)
+>>> let client = N.GameClient()
+>>> client.connect("localhost", 7777)
+>>> client.send(N.pack({"type": "move", "x": 100, "y": 200}))
+>>> let msg = N.unpack(client.recv())
+>>> msg["type"]    → "move"
+```
+
+---
+
+### 14.12 Utility Modules
+
+#### `signal` — Typed pub/sub signals
+```
+>>> import "signal" as S
+
+// Signals are typed event channels you attach to objects
+>>> let on_hit    = S.Signal("on_hit")
+>>> let on_death  = S.Signal("on_death")
+
+>>> S.connect(on_hit, fn(damage){ print("Hit for", damage) })
+>>> S.once(on_death, fn(){ print("Died!") })   ← fires once only
+
+>>> S.emit(on_hit, 25)
+Hit for 25
+>>> S.emit(on_death)
+Died!
+>>> S.emit(on_death)     ← once listener already removed
+
+>>> S.listener_count(on_hit)  → 1
+>>> S.disconnect(on_hit, my_fn)
+>>> S.clear(on_hit)
+```
+
+---
+
+#### `vec` — 2D/3D vector math
+```
+>>> import "vec" as V
+
+// Create vectors (plain arrays [x,y] or [x,y,z])
+>>> let a = V.v2(3.0, 4.0)
+>>> let b = V.v2(1.0, 0.0)
+>>> V.len(a)               → 5.0
+>>> V.norm(a)              → [0.6, 0.8]
+>>> V.add(a, b)            → [4.0, 4.0]
+>>> V.sub(a, b)            → [2.0, 4.0]
+>>> V.scale(a, 2.0)        → [6.0, 8.0]
+>>> V.dot(a, b)            → 3.0
+>>> V.dist(a, b)           → 4.472...
+>>> V.lerp(a, b, 0.5)      → [2.0, 2.0]
+>>> V.angle(b)             → 0.0  (radians)
+>>> V.from_angle(1.57)     → [0.0, 1.0]  (approx)
+>>> V.perp(b)              → [0.0, 1.0]  (rotate 90°)
+>>> V.reflect(a, V.up())   → reflection vector
+
+// 3D
+>>> let c = V.v3(1.0, 0.0, 0.0)
+>>> let d = V.v3(0.0, 1.0, 0.0)
+>>> V.cross(c, d)           → [0.0, 0.0, 1.0]
+
+// Direction constants
+>>> V.up()    → [0.0, -1.0]
+>>> V.down()  → [0.0, 1.0]
+>>> V.left()  → [-1.0, 0.0]
+>>> V.right() → [1.0, 0.0]
+>>> V.zero2() → [0.0, 0.0]
+>>> V.forward() → [0.0, 0.0, -1.0]
+```
+
+---
+
+#### `pool` — Object pool (game performance)
+```
+>>> import "pool" as P
+
+// Pre-allocate bullet objects, reuse without GC pressure
+>>> let bullets = P.Pool(
+...   fn() { return {x:0.0, y:0.0, active:false} },
+...   capacity: 100
+... )
+
+>>> let b = P.acquire(bullets)   ← get a bullet from pool
+>>> b["x"] = 100.0; b["y"] = 50.0; b["active"] = true
+
+>>> P.release(bullets, b)        ← return bullet to pool
+>>> P.release_all(bullets)       ← return all active bullets
+
+>>> P.active_count(bullets)   → 0
+>>> P.free_count(bullets)     → 1
+>>> P.capacity(bullets)       → 100
+```
+
+---
+
+## 15. Known Limitations
+
+- **Performance:** InScript is ~40–130× slower than Python for CPU-intensive code. Game logic that runs once per frame (AI, physics queries) is fine; tight loops over thousands of items each frame are not. This will be addressed in Phase 6.2 (C extension).
+- **`async/await`:** Accepted by the parser but executes synchronously. Use `thread` module for real concurrency.
+- **Generics:** `struct Stack<T>` accepts type parameters but does not enforce them at runtime. `Stack<int>` and `Stack<string>` are identical.
+- **Struct assignment:** `let b = a` creates an alias, not a copy. Use `a.copy()` when you need isolation.
+- **VM mode (`.vm`):** The VM and interpreter now produce identical results for most programs. A few edge cases remain. The interpreter is the default and recommended mode.
+- **Windows:** Tab-completion and arrow-key history require the `readline` module (not installed by default on Windows). The REPL works fully without it.
+- **Shader/Audio/Network:** These modules require pygame and network access. They print stub messages in environments where these are unavailable.

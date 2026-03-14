@@ -942,19 +942,41 @@ class Analyzer(Visitor):
         for arg in node.args:
             self.visit(arg.value)
 
-        # If callee is a known function, return its declared return type
+        # If callee is a known function, check arg count and return declared type
         if isinstance(node.callee, IdentExpr):
             sym = self._scope.lookup(node.callee.name)
             if sym and sym.kind == "fn" and sym.fn_node:
-                return self._resolve_type_ann(sym.fn_node.return_type)
+                fn = sym.fn_node
+                # Count required params (those without defaults) vs total
+                n_args   = len(node.args)
+                params   = fn.params or []
+                n_total  = len(params)
+                n_required = sum(1 for p in params
+                                 if not getattr(p, 'default', None) and
+                                    not getattr(p, 'variadic', False))
+                has_variadic = any(getattr(p, 'variadic', False) for p in params)
+                if not has_variadic:
+                    if n_args < n_required:
+                        self._warn(
+                            "arg-count",
+                            f"Too few arguments: '{node.callee.name}' expects at least "
+                            f"{n_required} arg(s), got {n_args}",
+                            node.line
+                        )
+                    elif n_args > n_total:
+                        self._warn(
+                            "arg-count",
+                            f"Too many arguments: '{node.callee.name}' expects at most "
+                            f"{n_total} arg(s), got {n_args}",
+                            node.line
+                        )
+                return self._resolve_type_ann(fn.return_type)
             if sym:
-                # Constructor call for struct
                 if sym.kind == "struct":
                     return InScriptType(sym.name)
                 return sym.type_
 
         if isinstance(node.callee, GetAttrExpr):
-            # method call — return any for now
             return T_ANY
 
         return T_ANY
