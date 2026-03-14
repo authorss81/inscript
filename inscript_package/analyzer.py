@@ -505,6 +505,18 @@ class Analyzer(Visitor):
                 node.line
             )
 
+        # Warn if function declares a non-void return type but body may not return
+        if (node.return_type is not None and
+                ret_type.name not in ("void", "nil", "any", "") and
+                not node.is_native if hasattr(node, 'is_native') else True):
+            if node.body and not self._body_always_returns(node.body):
+                self._warn(
+                    "missing-return",
+                    f"Function '{node.name}' declares return type '{ret_type.name}' "
+                    f"but not all code paths return a value",
+                    node.line
+                )
+
         # Analyze body in a new scope
         self._push_scope("fn")
         prev_ret = self._current_fn_return_type
@@ -524,6 +536,26 @@ class Analyzer(Visitor):
         self._current_fn_return_type = prev_ret
         self._pop_scope()
         return ret_type
+
+    def _body_always_returns(self, block) -> bool:
+        """Return True if every code path through block ends with a return/throw."""
+        from ast_nodes import (ReturnStmt, ThrowStmt, BlockStmt, IfStmt,
+                               WhileStmt, ForInStmt, MatchStmt)
+        stmts = getattr(block, 'body', [])
+        for stmt in reversed(stmts):
+            if isinstance(stmt, (ReturnStmt, ThrowStmt)):
+                return True
+            if isinstance(stmt, IfStmt):
+                if (stmt.else_branch and
+                        self._body_always_returns(stmt.then_branch) and
+                        self._body_always_returns(stmt.else_branch)):
+                    return True
+            if isinstance(stmt, MatchStmt):
+                # If there's a wildcard arm and all arms return, it's exhaustive
+                has_wildcard = any(arm.pattern is None for arm in stmt.arms)
+                if has_wildcard and all(self._body_always_returns(arm.body) for arm in stmt.arms):
+                    return True
+        return False
 
     def visit_StructDecl(self, node: StructDecl) -> InScriptType:
         struct_type = InScriptType(node.name)

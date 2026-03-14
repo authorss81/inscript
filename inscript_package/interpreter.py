@@ -309,7 +309,12 @@ class Interpreter(Visitor):
             "has_key":    lambda d, k: k in d,
             "keys":       lambda d: [k for k in d.keys() if not str(k).startswith("_")],
             "values":     lambda d: [v for k,v in d.items() if not str(k).startswith("_")],
-            "entries":    lambda d: [[k,v] for k,v in d.items() if not str(k).startswith("_")],
+            "entries":    lambda d: (
+                [[k, v] for k, v in d.fields.items()
+                 if not isinstance(v, InScriptFunction)]
+                if isinstance(d, InScriptInstance)
+                else [[k, v] for k, v in d.items() if not str(k).startswith("_")]
+            ),
             "delete":     lambda d, k: d.pop(k, None),
             "merge":      lambda *dicts: {k:v for d in dicts for k,v in d.items()},
             # ── String helpers ────────────────────────────────────────────────
@@ -355,16 +360,7 @@ class Interpreter(Visitor):
             "cwd":         lambda: __import__('os').getcwd(),
             "list_dir":    lambda p=".": __import__('os').listdir(p),
             # ── Type introspection ─────────────────────────────────────────────
-            "typeof":      lambda v: (v.struct_name if isinstance(v, InScriptInstance) else
-                                      v.get("_enum", "enum") if isinstance(v, dict) and "_variant" in v else
-                                      "nil"   if v is None else
-                                      "bool"  if isinstance(v, bool) else
-                                      "int"   if isinstance(v, int) else
-                                      "float" if isinstance(v, float) else
-                                      "str"   if isinstance(v, str) else
-                                      "array" if isinstance(v, list) else
-                                      "dict"  if isinstance(v, dict) else
-                                      type(v).__name__),
+            "typeof":      lambda v: self._inscript_type_name(v),
             "implements":  lambda inst, iface_name: (
                                isinstance(inst, InScriptInstance) and
                                iface_name in getattr(
@@ -475,7 +471,16 @@ class Interpreter(Visitor):
         return value
 
     def visit_FunctionDecl(self, node: FunctionDecl) -> Any:
-        fn = InScriptFunction(
+        # DESIGN-01: async fn is purely synchronous — warn once per function
+        if getattr(node, 'is_async', False) and not getattr(self, '_async_warned', False):
+            import sys as _sys
+            print(
+                f"\033[33m[InScript] Warning: 'async fn {node.name}' executes synchronously. "
+                f"InScript has no event loop — use the 'thread' module for real concurrency.\033[0m",
+                file=_sys.stderr
+            )
+            self._async_warned = True  # warn once per interpreter session
+        fn = self._make_fn(
             name    = node.name,
             params  = node.params,
             body    = node.body,
@@ -1532,12 +1537,17 @@ class Interpreter(Visitor):
         if isinstance(val, float):  return "float"
         if isinstance(val, str):    return "string"
         if isinstance(val, list):   return "array"
+        if isinstance(val, InScriptFunction): return "function"
+        if isinstance(val, InScriptRange):    return "range"
+        if isinstance(val, InScriptGenerator): return "generator"
+        if isinstance(val, InScriptInstance): return val.struct_name
         if isinstance(val, dict):
             if "_variant" in val:   return val.get("_enum", "enum")
             if "_ok" in val or "_err" in val: return "Result"
             if "_type" in val:      return val["_type"]
             return "dict"
-        return type(val).__name__
+        if callable(val):           return "function"
+        return type(val).__name__.lower()
 
     def _enforce_type(self, value, type_name: str, line: int, context: str = "") -> object:
         """
@@ -2447,6 +2457,63 @@ def _list_method(lst, name, interp, line):
         return None
     def index_of(v): return lst.index(v) if v in lst else -1
 
+    def flat_map_fn(fn):
+        result = []
+        for x in lst:
+            r = interp._call_function(fn, [x], [None], line) if isinstance(fn, InScriptFunction) else fn(x)
+            if isinstance(r, list): result.extend(r)
+            else: result.append(r)
+        return result
+
+    def zip_fn(other):
+        return [[a, b] for a, b in zip(lst, other)]
+
+    def count_fn(fn=None):
+        if fn is None: return len(lst)
+        return sum(1 for x in lst if _is_truthy(
+            interp._call_function(fn, [x], [None], line) if isinstance(fn, InScriptFunction) else fn(x)))
+
+    def any_fn(fn=None):
+        if fn is None: return any(_is_truthy(x) for x in lst)
+        return any(_is_truthy(interp._call_function(fn, [x], [None], line) if isinstance(fn, InScriptFunction) else fn(x)) for x in lst)
+
+    def all_fn(fn=None):
+        if fn is None: return all(_is_truthy(x) for x in lst)
+        return all(_is_truthy(interp._call_function(fn, [x], [None], line) if isinstance(fn, InScriptFunction) else fn(x)) for x in lst)
+
+    def each_fn(fn):
+        for x in lst:
+            interp._call_function(fn, [x], [None], line) if isinstance(fn, InScriptFunction) else fn(x)
+        return None
+
+    def sum_fn(fn=None):
+        if fn is None: return sum(lst)
+        return sum(interp._call_function(fn, [x], [None], line) if isinstance(fn, InScriptFunction) else fn(x) for x in lst)
+
+    def min_by(fn):
+        return min(lst, key=lambda x: interp._call_function(fn, [x], [None], line) if isinstance(fn, InScriptFunction) else fn(x)) if lst else None
+
+    def max_by(fn):
+        return max(lst, key=lambda x: interp._call_function(fn, [x], [None], line) if isinstance(fn, InScriptFunction) else fn(x)) if lst else None
+
+    def group_by_fn(fn):
+        result = {}
+        for x in lst:
+            k = interp._call_function(fn, [x], [None], line) if isinstance(fn, InScriptFunction) else fn(x)
+            key = str(k)
+            if key not in result: result[key] = []
+            result[key].append(x)
+        return result
+
+    def unique_fn(fn=None):
+        if fn is None: return list(dict.fromkeys(lst))
+        seen = set(); result = []
+        for x in lst:
+            k = interp._call_function(fn, [x], [None], line) if isinstance(fn, InScriptFunction) else fn(x)
+            sk = str(k)
+            if sk not in seen: seen.add(sk); result.append(x)
+        return result
+
     methods = {
         "push": push, "pop": pop, "pop_at": pop_at,
         "insert": insert, "remove": remove, "contains": contains,
@@ -2454,6 +2521,10 @@ def _list_method(lst, name, interp, line):
         "first": first, "last": last, "slice": slice_,
         "join": join, "map": map_fn, "filter": filter_fn,
         "reduce": reduce_fn, "find": find, "index_of": index_of,
+        "flat_map": flat_map_fn, "zip": zip_fn, "count": count_fn,
+        "any": any_fn, "all": all_fn, "each": each_fn, "sum": sum_fn,
+        "min_by": min_by, "max_by": max_by,
+        "group_by": group_by_fn, "unique": unique_fn,
         "length": len(lst), "len": len(lst),   # as properties
     }
     if name in methods:
@@ -2510,14 +2581,29 @@ def _string_method(s, name, interp, line):
         "trim":        lambda: s.strip(),
         "trim_start":  lambda: s.lstrip(),
         "trim_end":    lambda: s.rstrip(),
-        "split":       lambda sep=" ": s.split(sep),
+        "split":       lambda sep=None, maxsplit=-1: (list(s) if sep=="" else s.split(sep, maxsplit)),
         "starts_with": lambda prefix: s.startswith(prefix),
         "ends_with":   lambda suffix: s.endswith(suffix),
         "contains":    lambda sub: sub in s,
-        "replace":     lambda old, new: s.replace(old, new),
+        "replace":     lambda old, new, count=-1: s.replace(old, new) if count<0 else s.replace(old, new, count),
         "to_int":      lambda: int(s),
         "to_float":    lambda: float(s),
         "chars":       lambda: list(s),
+        "reverse":     lambda: s[::-1],
+        "repeat":      lambda n: s * int(n),
+        "count":       lambda sub: s.count(sub),
+        "index":       lambda sub: s.find(sub),
+        "pad_left":    lambda width, ch=" ": s.rjust(int(width), ch[0] if ch else " "),
+        "pad_right":   lambda width, ch=" ": s.ljust(int(width), ch[0] if ch else " "),
+        "format":      lambda *args, **kwargs: s.format(*args, **kwargs),
+        "is_empty":    lambda: len(s) == 0,
+        "is_numeric":  lambda: s.isnumeric(),
+        "is_alpha":    lambda: s.isalpha(),
+        "is_alnum":    lambda: s.isalnum(),
+        "to_upper":    lambda: s.upper(),   # alias
+        "to_lower":    lambda: s.lower(),   # alias
+        "substr":      lambda start, end=None: s[int(start):] if end is None else s[int(start):int(end)],
+        "char_at":     lambda i: s[int(i)] if 0 <= int(i) < len(s) else None,
         "length": len(s), "len": len(s),
     }
     if name in methods:
@@ -2577,22 +2663,30 @@ def _inscript_str(val) -> str:
     if isinstance(val, list):
         return "[" + ", ".join(_inscript_repr(v) for v in val) + "]"
     if isinstance(val, float):
-        # Handle special IEEE values first to avoid OverflowError on int(inf)
         if math.isinf(val): return "Infinity" if val > 0 else "-Infinity"
         if math.isnan(val): return "NaN"
-        # Always show at least one decimal place: 4.0 → "4.0", 3.14 → "3.14"
         if val == int(val):
             return f"{int(val)}.0"
         return str(val)
     if isinstance(val, str):
         return val  # bare string — no quotes when printing top-level
+    # InScript struct instance — show data fields only, no methods
+    if hasattr(val, 'struct_name') and hasattr(val, 'fields'):
+        data = {k: v for k, v in val.fields.items()
+                if not (callable(v) or (hasattr(v, 'is_native') or hasattr(v, 'params')))}
+        if not data:
+            return f"{val.struct_name}{{}}"
+        pairs = ", ".join(f"{k}: {_inscript_repr(v)}" for k, v in data.items())
+        return f"{val.struct_name}{{ {pairs} }}"
+    # InScript range
+    if hasattr(val, 'inclusive') and hasattr(val, 'start') and hasattr(val, 'end'):
+        op = "..=" if val.inclusive else ".."
+        return f"{val.start}{op}{val.end}"
     if isinstance(val, dict):
-        # Result types
         if "_ok" in val:
             return f"Ok({_inscript_str(val['_ok'])})"
         if "_err" in val:
             return f"Err({_inscript_str(val['_err'])})"
-        # ADT enum with fields
         if "_variant" in val and "_enum" in val:
             fields = {k: v for k, v in val.items() if not k.startswith("_")}
             if "_value" not in val and not fields:
@@ -2601,7 +2695,6 @@ def _inscript_str(val) -> str:
                 field_str = ", ".join(f"{k}: {_inscript_str(v)}" for k, v in fields.items())
                 return f"{val['_variant']}({field_str})"
             return f"{val['_enum']}::{val['_variant']}"
-        # Plain dict — InScript double-quote style (not Python repr)
         pairs = ", ".join(
             f'"{k}": {_inscript_repr(v)}' if isinstance(k, str)
             else f'{_inscript_repr(k)}: {_inscript_repr(v)}'

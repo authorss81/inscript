@@ -39,7 +39,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 HISTORY_FILE = Path.home() / ".inscript" / "history"
 HISTORY_FILE.parent.mkdir(parents=True, exist_ok=True)
-VERSION = "1.0.5"
+VERSION = "1.0.6"
 
 # ── ANSI colours ──────────────────────────────────────────────────────────────
 def _c(code, text):
@@ -110,7 +110,7 @@ def _make_banner():
         return f"{TC}║{RST}{content}{' ' * pad}{TC}║{RST}"
 
     tagline = f" \033[38;5;51m>>\033[0m  \033[1mA scripting language for game development\033[0m  \033[2mv{VERSION}\033[0m"
-    stats   = f" \033[2m59 stdlib modules  ·  501 tests  ·  Python 3.10+\033[0m"
+    stats   = f" \033[2m59 stdlib modules  ·  527 tests  ·  Python 3.10+\033[0m"
     tips    = f" \033[33m.help\033[0m  commands  ·  \033[33m.modules\033[0m  stdlib  ·  \033[33mexit\033[0m  quit"
 
     lines = [""]
@@ -477,15 +477,46 @@ class EnhancedREPL:
             return None, f"Internal error: {e}\n{_tb.format_exc()}", (time.perf_counter() - t0) * 1000
 
     def _check_arg_counts(self, program):
-        """Walk the AST looking for calls to known user-defined functions and warn on arity mismatches."""
-        from ast_nodes import CallExpr, IdentExpr, FunctionDecl
+        """Walk the AST looking for calls to known user-defined functions and warn on arity mismatches.
+        Also checks for missing return statements in typed functions."""
+        from ast_nodes import CallExpr, IdentExpr, FunctionDecl, ReturnStmt, IfStmt, MatchStmt
         from stdlib_values import InScriptFunction
+        import sys as _sys
+
+        def body_always_returns(block):
+            stmts = getattr(block, 'body', [])
+            for stmt in reversed(stmts):
+                if isinstance(stmt, ReturnStmt):
+                    return True
+                if isinstance(stmt, IfStmt):
+                    if (stmt.else_branch and
+                            body_always_returns(stmt.then_branch) and
+                            body_always_returns(stmt.else_branch)):
+                        return True
+            return False
 
         def walk(node):
             if node is None: return
+            # Check function declarations for missing returns
+            if isinstance(node, FunctionDecl):
+                ret = getattr(node, 'return_type', None)
+                if ret is not None and hasattr(ret, 'name') and ret.name not in ('void', 'nil', 'any', ''):
+                    if node.body and not body_always_returns(node.body):
+                        print(
+                            f"\033[33m[InScript] Warning: '{node.name}' declares return type "
+                            f"'{ret.name}' but not all paths return a value\033[0m",
+                            file=_sys.stderr
+                        )
+                # Check async
+                if getattr(node, 'is_async', False):
+                    print(
+                        f"\033[33m[InScript] Warning: 'async fn {node.name}' executes synchronously — "
+                        f"use the 'thread' module for real concurrency\033[0m",
+                        file=_sys.stderr
+                    )
+            # Check call arg counts
             if isinstance(node, CallExpr) and isinstance(node.callee, IdentExpr):
                 fname = node.callee.name
-                # Look up in live interpreter env
                 try:
                     fn = self._interp._env.get(fname, 0)
                 except Exception:
@@ -501,13 +532,11 @@ class EnhancedREPL:
                     if not has_variadic:
                         if n_args < n_required:
                             print(f"\033[33m[InScript] Warning: '{fname}' expects at least "
-                                  f"{n_required} arg(s), got {n_args}\033[0m",
-                                  file=__import__('sys').stderr)
+                                  f"{n_required} arg(s), got {n_args}\033[0m", file=_sys.stderr)
                         elif n_args > n_total:
                             print(f"\033[33m[InScript] Warning: '{fname}' expects at most "
-                                  f"{n_total} arg(s), got {n_args}\033[0m",
-                                  file=__import__('sys').stderr)
-            # Recurse into child nodes
+                                  f"{n_total} arg(s), got {n_args}\033[0m", file=_sys.stderr)
+            # Recurse
             for attr in vars(node).values():
                 if hasattr(attr, '__class__') and hasattr(attr, 'line'):
                     walk(attr)

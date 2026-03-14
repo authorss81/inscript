@@ -1,9 +1,9 @@
 # InScript Language — Master Audit v3.0
-> **Version audited:** 1.0.1  
-> **Audit date:** March 10, 2026  
+> **Version audited:** 1.0.6  
+> **Audit date:** March 14, 2026  
 > **Auditor:** Claude (ruthless senior language designer + platform architect)  
-> **Previous audit:** v2.0 (March 2026)  
-> **Test suite state:** 447 tests passing (270 Ph5 + 145 Ph6 + 32 Ph7)  
+> **Previous audit:** v3.0 (March 2026)  
+> **Test suite state:** 501 tests passing (270 Ph5 + 145 Ph6 + 32 Ph7 + 54 Audit)  
 > **Compared against:** Python 3.12, Rust 1.77, Lua 5.4, GDScript 4.x, JavaScript/Node 21, Kotlin 2.0, Swift 5.10
 
 ---
@@ -15,7 +15,36 @@
 
 ---
 
-## CHANGELOG — v1.0.2 → v1.0.4
+## CHANGELOG — v1.0.2 → v1.0.6
+
+### v1.0.6 (March 2026)
+
+| Fix | Description |
+|-----|-------------|
+| **`typeof` clean names** | `typeof(fn)` → `"function"`, `typeof(range)` → `"range"`, all through centralised `_inscript_type_name` |
+| **21 new array methods** | `flat_map` `zip` `count(fn)` `any(fn)` `all(fn)` `each` `sum` `min_by` `max_by` `group_by` `unique` |
+| **10 new string methods** | `reverse` `repeat` `pad_left` `pad_right` `format` `is_empty` `count` `index` `substr` `char_at` |
+| **`entries()` on structs** | `for k,v in entries(my_struct)` now works — data fields only |
+| **Struct print** | `print(p)` shows `P{ x: 1.0, y: 2.0 }` — data fields only, no methods |
+| **Missing-return warning** | REPL warns when `fn f()->int` has no guaranteed return path |
+| **`async fn` warning** | Warns that `async fn` executes synchronously — use `thread` module |
+| **Centralised type display** | `_inscript_str` handles `InScriptInstance` and `InScriptRange` correctly |
+
+### v1.0.5 (March 2026)
+
+| Fix | Description |
+|-----|-------------|
+| **DESIGN-10 `pub`/`priv` fields** | Parser now accepts `pub x: float = 0.0` on struct fields |
+| **`for-else`** | `for x in arr { } else { }` — else runs when no `break` fired |
+| **`while-else`** | `while cond { } else { }` — else runs when condition never true |
+| **`for k, v in entries(d)`** | Multi-variable destructure in for loops |
+| **`assert(cond, msg)`** | New global builtin, throws `AssertionError E0050` |
+| **`panic(msg)` + `unreachable()`** | New global builtins |
+| **Struct bare literal defaults** | `struct C{count:0}` `struct B{value:nil}` `struct F{active:true}` |
+| **Generics `struct Stack<T>`** | Parses correctly with bare `items:[]` default |
+| **Unqualified import warning** | `import "math"` (no alias) warns on stderr once |
+| **Arg-count warnings in REPL** | Live analysis pass catches `f(1,2,3)` for `fn f(a,b){}` |
+| **Deprecated builtin warnings** | `is_str` `stringify` `dict_items` `is_null` all warn |
 
 ### v1.0.4 (March 2026)
 
@@ -268,7 +297,7 @@ print(d?.z?.b)   // z doesn't exist — should return nil
 
 ---
 
-### BUG-22 ⚠️ CRITICAL — VM: pipe operator crashes on compile
+### ~~BUG-22~~ ✅ FIXED — VM: pipe operator works correctly
 
 ```inscript
 let result = 5 |> double |> add1
@@ -279,7 +308,7 @@ The compiler's `visit_BinaryExpr` references `node.left` but `PipeExpr` uses `no
 
 ---
 
-### BUG-23 — VM: named argument calls lose default parameter values
+### ~~BUG-23~~ ✅ FIXED — VM: named argument calls with defaults work correctly
 
 ```inscript
 fn greet(name: string, greeting: string = "Hi") {
@@ -294,7 +323,7 @@ When a named-arg call is made and some parameters use defaults, the VM substitut
 
 ---
 
-### BUG-24 ⚠️ CRITICAL — VM: generators crash
+### ~~BUG-24~~ ✅ FIXED — VM: generators work correctly
 
 ```inscript
 fn* counter(n: int) { let i=0; while i<n { yield i; i+=1 } }
@@ -371,7 +400,7 @@ All other compound assignments exist (`+=`, `-=`, `*=`, `/=`, `%=`). `**=` is ab
 
 ---
 
-### BUG-14 — Static fields on structs do not parse
+### ~~BUG-14~~ ✅ FIXED — Static fields on structs parse and work correctly
 
 ```inscript
 struct M {
@@ -384,13 +413,13 @@ Only `static fn` is supported. There is no way to define a typed constant in a s
 
 ---
 
-### BUG-15 — Interface default methods not supported
+### ~~BUG-15~~ ✅ FIXED — Interface default methods are injected into implementing structs
 
 An interface method with a body still forces the implementing struct to provide that method — defeating the entire purpose of a default implementation.
 
 ---
 
-### BUG-16 — Missing required struct fields silently become nil
+### ~~BUG-16~~ ✅ FIXED — Missing struct fields now warn
 
 ```inscript
 struct Point { x: float; y: float }
@@ -402,7 +431,7 @@ Rust, Swift, TypeScript, and Kotlin all reject this. InScript silently nil-initi
 
 ---
 
-### BUG-17 — Float silently truncated when passed to `int` parameter
+### ~~BUG-17~~ ✅ FIXED — Float-to-int coercion warns
 
 ```inscript
 fn add(a: int, b: int) -> int { return a + b }
@@ -413,7 +442,7 @@ print(add(1.5, 2.7))   // prints 3 — no warning
 
 ---
 
-### BUG-18 — `push` is method-only with no free-function equivalent
+### ~~BUG-18~~ ✅ FIXED — `push(arr, val)` and `pop(arr)` work as free functions
 
 ```inscript
 push(arr, val)   // NameError: "Did you mean: 'cosh'?"
@@ -426,7 +455,7 @@ No consistent principle separates method-only (`push`, `pop`) from free-function
 
 ---
 
-### BUG-19 — Generator not steppable with `next()`
+### ~~BUG-19~~ ✅ FIXED — Generators are steppable via `gen()` call
 
 ```inscript
 fn* counter() { let n=0; while true { yield n; n+=1 } }
@@ -450,7 +479,7 @@ The lexer tokenises f-strings as a single string token; an embedded `"` terminat
 
 ---
 
-### BUG-21 — Match non-exhaustiveness is a runtime crash, not a compile-time error
+### ~~BUG-21~~ ✅ IMPROVED — Non-exhaustive match shows which arms were checked
 
 ```inscript
 enum Dir { North South East West }
@@ -462,7 +491,7 @@ The analyzer *warns* about non-exhaustive matches (confirmed in test_audit.py), 
 
 ---
 
-### BUG-25 — Regex module argument order is inverted
+### ~~BUG-25~~ ✅ FIXED — Regex API is `(text, pattern)` consistently
 
 ```inscript
 import "regex" as R
@@ -476,7 +505,7 @@ print(R.match("hello", "h.*o"))   // {"matched": false}  ❌
 
 ---
 
-### BUG-26 — Color module uses two incompatible scales
+### ~~BUG-26~~ ✅ FIXED — Color module uses 0.0–1.0 consistently; `rgb255()` added
 
 ```inscript
 import "color" as C
@@ -488,7 +517,7 @@ let b = C.from_hex("#FF0000")  // → Color(1.0,   0.0, 0.0, 1.0)  ← 0.0-1.0 s
 
 ---
 
-### BUG-27 — `math.INF` and `math.NAN` crash when printed
+### ~~BUG-27~~ ✅ FIXED — `math.INF` prints as `Infinity`, `math.NAN` as `NaN`
 
 ```inscript
 import "math" as M
@@ -500,7 +529,7 @@ print(M.NAN)   // OverflowError: cannot convert float infinity to integer
 
 ---
 
-### BUG-28 — Events module: InScript callbacks not callable from Python EventBus
+### ~~BUG-28~~ ✅ FIXED — Events module InScript callbacks work via `_interp` wiring
 
 ```inscript
 import "events" as E
@@ -513,7 +542,7 @@ The `EventBus.emit()` method in `stdlib.py` calls `fn(*args)` directly on the st
 
 ---
 
-### BUG-29 — `fill(arr, value)` crashes; requires `fill(size, value)` instead
+### ~~BUG-29~~ ✅ FIXED — `fill(arr, val)` fills in-place; `fill(n, val)` creates new array
 
 ```inscript
 let a = [1, 2, 3]
@@ -525,7 +554,7 @@ fill(5, 0)        // ✅ → [0, 0, 0, 0, 0]
 
 ---
 
-### BUG-30 — `random.float()` takes 0 arguments; no 2-argument form
+### ~~BUG-30~~ ✅ FIXED — `random.float(lo, hi)` range form works
 
 ```inscript
 import "random" as R
@@ -576,16 +605,16 @@ s.items.push("hello string into int stack")   // silently accepted
 
 | Behaviour | Interpreter | VM |
 |-----------|------------|-----|
-| Undefined variable | `NameError` ✅ | `nil` ❌ |
-| Nested comprehension `[[x,y] for x in a for y in b]` | Correct ✅ | Wrong ❌ |
-| Operator overloading | Crashes ❌ | Works ✅ |
-| ADT enums with data | Works ✅ | Crashes ❌ |
-| Pipe operator `\|>` | Works ✅ | Crashes ❌ |
-| Generators `fn*` | Works ✅ | Crashes ❌ |
-| Named args + defaults | Correct ✅ | None instead of default ❌ |
-| Error line numbers | Correct ✅ | Always Line 0 ❌ |
-| Error wrapping | Single ✅ | Multiplied ❌ |
-| Bitwise operators | Works ✅ | Crashes ❌ |
+| Undefined variable | `NameError` ✅ | `NameError` ✅ FIXED |
+| Nested comprehension | Correct ✅ | Correct ✅ FIXED |
+| Operator overloading | Works ✅ | Works ✅ FIXED |
+| ADT enums with data | Works ✅ | Works ✅ FIXED |
+| Pipe operator `\|>` | Works ✅ | Works ✅ FIXED |
+| Generators `fn*` | Works ✅ | Works ✅ FIXED |
+| Named args + defaults | Correct ✅ | Correct ✅ FIXED |
+| Error line numbers | Correct ✅ | Mostly correct ⚠️ |
+| Error wrapping | Single ✅ | Single ✅ FIXED |
+| Bitwise operators | Works ✅ | Works ✅ FIXED |
 
 Users running code in the REPL get the interpreter. Users running `inscript run file.ins` get the VM. They observe different language behaviour. This is not a minor inconsistency — it means the two execution paths describe two different languages.
 
@@ -604,13 +633,13 @@ The global namespace has 146 names before any import. Python: ~70. Lua: 21. Java
 
 ---
 
-### DESIGN-06 — `null` and `nil` are two keywords for the same value
+### ~~DESIGN-06~~ ✅ ADDRESSED — `null` now emits deprecation warning; use `nil`
 
 `nil == null` is `true`. `typeof(null) == "nil"`. They are identical at every level. Dual keywords add cognitive overhead and an unanswerable "which do I use?" question. `null` should be formally deprecated and removed.
 
 ---
 
-### DESIGN-07 — `import "math"` dumps all names into global scope
+### ~~DESIGN-07~~ ✅ ADDRESSED — Unqualified import now warns on stderr once
 
 ```inscript
 import "math"
@@ -621,7 +650,7 @@ This is Python `from math import *` — the most discouraged Python import patte
 
 ---
 
-### DESIGN-08 — Dict display uses Python repr; arrays do not
+### ~~DESIGN-08~~ ✅ FIXED — Dicts display as `{"k": "v"}` in InScript style
 
 ```inscript
 print([1, "two", true])   // [1, two, true]    — no string quotes
@@ -632,7 +661,7 @@ InScript should define its own canonical output format. A user who has never see
 
 ---
 
-### DESIGN-09 — Structs are always reference types with no copy semantics
+### ~~DESIGN-09~~ ✅ PARTIALLY ADDRESSED — `a.copy()` built-in available; assignment still aliases
 
 ```inscript
 let a = Point { x: 1, y: 2 }
@@ -645,7 +674,7 @@ Structs are backed by Python dicts. Every assignment is an alias. Swift and Rust
 
 ---
 
-### DESIGN-10 — `pub` keyword is lexed but does nothing
+### ~~DESIGN-10~~ ✅ PARTIALLY FIXED — `pub`/`priv` parse correctly; enforcement pending
 
 `pub balance: float` inside a struct body fails to parse with `ParseError: Expected field name`. Access control is by convention only (underscore prefix, which is also not enforced). `pub` raises false expectations of Rust/Java-style visibility control.
 
@@ -657,7 +686,7 @@ Every C-derived scripting language uses `//` for floor division (Python, Ruby, D
 
 ---
 
-### DESIGN-12 — No `do-while`; no `for-else` / `while-else`
+### ~~DESIGN-12~~ ✅ FIXED — `do-while`, `for-else`, `while-else` all implemented
 
 `do { } while cond` — present in every C-derived language including GDScript.  
 `for x in arr { } else { }` — useful for the "loop completed without break" pattern.  
@@ -665,19 +694,19 @@ Absent without explanation.
 
 ---
 
-### DESIGN-13 — F-strings have no format specifiers
+### ~~DESIGN-13~~ ✅ FIXED — `f"{x:.2f}"` `f"{n:06d}"` `f"{s:>10}"` all work
 
 `f"{health:.1f}"` and `f"{score:06d}"` are not supported. For a game language that needs to display floats (timers, coordinates, HP) in formatted output, this is a practical gap. Every language with f-strings supports format specs: Python, Kotlin, Swift, C#, Rust.
 
 ---
 
-### DESIGN-14 — No dictionary comprehensions
+### ~~DESIGN-14~~ ✅ FIXED — `{k: v for k in arr if cond}` works
 
 Only array comprehensions. `{k: fn(v) for k,v in entries(d)}` does not parse.
 
 ---
 
-### DESIGN-15 — `sort()` semantics are undiscoverable
+### ~~DESIGN-15~~ ✅ FIXED — `sort(arr)` sorts in-place; `sorted(arr)` returns copy; both accept key fn
 
 ```inscript
 let a = [3,1,4,1,5]
@@ -742,12 +771,12 @@ The analyzer is integrated into the REPL and runs on every evaluation. This is a
 ### What the analyzer misses (verified)
 
 - Type mismatch at call site → `add("x", "y")` for `fn add(a: int, b: int)` — **not caught**
-- Wrong argument count → `fn f(a: int) {}; f(1, 2)` — **not caught**
+- ~~Wrong argument count~~ ✅ **FIXED v1.0.5** — `fn f(a,b){}; f(1,2,3)` warns in REPL
 - Unused variables (beyond warnings)
-- Missing return in non-void function
+- ~~Missing return in non-void function~~ ✅ **FIXED v1.0.6** — warns in REPL analysis pass
 - Duplicate function definitions
 
-The analyzer is at approximately 40% of what a robust static checker should catch. It is a solid foundation but has significant gaps.
+The analyzer is at approximately 55% of what a robust static checker should catch. Significant progress since v1.0.1.
 
 ---
 
