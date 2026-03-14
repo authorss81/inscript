@@ -320,6 +320,12 @@ class WhileStmt(Node):
     body:      "BlockStmt"
 
 @dataclass
+class DoWhileStmt(Node):
+    """do { body } while condition"""
+    body:      "BlockStmt"
+    condition: Node
+
+@dataclass
 class ForInStmt(Node):
     """for item in iterable { body }"""
     var_name: str
@@ -640,6 +646,15 @@ class ListComprehensionExpr(Node):
     def __post_init__(self):
         if self.extra_clauses is None:
             self.extra_clauses = []
+
+@dataclass
+class DictComprehensionExpr(Node):
+    """{key_expr: val_expr for var in iterable if condition}"""
+    key_expr:  "Node"
+    val_expr:  "Node"
+    var:       str
+    iterable:  "Node"
+    condition: Optional["Node"] = None
 
 @dataclass
 class CastExpr(Node):

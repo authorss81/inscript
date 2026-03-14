@@ -1508,3 +1508,175 @@ register_module("thread", _wrapmod({
         "Use Python callables only. This restriction is lifted in Phase 6 (bytecode VM)."
     ),
 }, "thread"))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# MODULE — signal  (typed pub/sub signal channels)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class _Signal:
+    """A typed pub/sub signal. Listeners are InScript callables."""
+    def __init__(self, name="signal"):
+        self._name      = name
+        self._listeners = []
+        self._interp    = None    # set by _wire_interp when first used in REPL
+
+    def connect(self, fn):
+        self._listeners.append(fn)
+        return None
+
+    def disconnect(self, fn):
+        self._listeners = [f for f in self._listeners if f is not fn]
+        return None
+
+    def emit(self, *args):
+        for fn in list(self._listeners):
+            if callable(fn):
+                fn(*args)
+        return None
+
+    def once(self, fn):
+        """Connect a listener that auto-disconnects after first emit."""
+        wrapper = [None]
+        def _once(*args):
+            fn(*args)
+            self.disconnect(wrapper[0])
+        wrapper[0] = _once
+        self.connect(wrapper[0])
+        return None
+
+    def clear(self):
+        self._listeners.clear()
+        return None
+
+    def listener_count(self):
+        return len(self._listeners)
+
+    def __repr__(self):
+        return f"Signal({self._name!r}, {len(self._listeners)} listeners)"
+
+
+register_module("signal", _wrapmod({
+    "Signal":          lambda name="signal": _Signal(name),
+    "connect":         lambda sig, fn: sig.connect(fn),
+    "disconnect":      lambda sig, fn: sig.disconnect(fn),
+    "emit":            lambda sig, *args: sig.emit(*args),
+    "once":            lambda sig, fn: sig.once(fn),
+    "clear":           lambda sig: sig.clear(),
+    "listener_count":  lambda sig: sig.listener_count(),
+}, "signal"))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# MODULE — vec  (2D/3D vector math helpers without needing Vec2/Vec3 types)
+# ─────────────────────────────────────────────────────────────────────────────
+
+import math as _math
+
+def _v2(x, y):           return [float(x), float(y)]
+def _v3(x, y, z):        return [float(x), float(y), float(z)]
+def _v2_add(a, b):       return [a[0]+b[0], a[1]+b[1]]
+def _v2_sub(a, b):       return [a[0]-b[0], a[1]-b[1]]
+def _v2_scale(v, s):     return [v[0]*s, v[1]*s]
+def _v2_dot(a, b):       return a[0]*b[0] + a[1]*b[1]
+def _v2_len(v):          return _math.sqrt(v[0]**2 + v[1]**2)
+def _v2_norm(v):
+    l = _v2_len(v)
+    return [v[0]/l, v[1]/l] if l > 0 else [0.0, 0.0]
+def _v2_dist(a, b):      return _v2_len(_v2_sub(b, a))
+def _v2_lerp(a, b, t):   return [a[0]+(b[0]-a[0])*t, a[1]+(b[1]-a[1])*t]
+def _v2_angle(v):        return _math.atan2(v[1], v[0])
+def _v2_from_angle(a, l=1.0): return [_math.cos(a)*l, _math.sin(a)*l]
+def _v2_perp(v):         return [-v[1], v[0]]
+def _v2_reflect(v, n):
+    d = 2 * _v2_dot(v, n)
+    return [v[0]-d*n[0], v[1]-d*n[1]]
+def _v3_add(a, b):       return [a[0]+b[0], a[1]+b[1], a[2]+b[2]]
+def _v3_sub(a, b):       return [a[0]-b[0], a[1]-b[1], a[2]-b[2]]
+def _v3_scale(v, s):     return [v[0]*s, v[1]*s, v[2]*s]
+def _v3_dot(a, b):       return a[0]*b[0]+a[1]*b[1]+a[2]*b[2]
+def _v3_cross(a, b):     return [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]]
+def _v3_len(v):          return _math.sqrt(v[0]**2+v[1]**2+v[2]**2)
+def _v3_norm(v):
+    l = _v3_len(v)
+    return [v[0]/l, v[1]/l, v[2]/l] if l > 0 else [0.0, 0.0, 0.0]
+def _v3_lerp(a, b, t):   return [a[0]+(b[0]-a[0])*t, a[1]+(b[1]-a[1])*t, a[2]+(b[2]-a[2])*t]
+
+register_module("vec", _wrapmod({
+    # 2D constructors / ops
+    "v2":          _v2,
+    "v3":          _v3,
+    "add":         lambda a, b: _v2_add(a, b) if len(a)==2 else _v3_add(a, b),
+    "sub":         lambda a, b: _v2_sub(a, b) if len(a)==2 else _v3_sub(a, b),
+    "scale":       lambda v, s: _v2_scale(v, s) if len(v)==2 else _v3_scale(v, s),
+    "dot":         lambda a, b: _v2_dot(a, b) if len(a)==2 else _v3_dot(a, b),
+    "cross":       _v3_cross,
+    "len":         lambda v: _v2_len(v) if len(v)==2 else _v3_len(v),
+    "norm":        lambda v: _v2_norm(v) if len(v)==2 else _v3_norm(v),
+    "dist":        _v2_dist,
+    "lerp":        lambda a, b, t: _v2_lerp(a, b, t) if len(a)==2 else _v3_lerp(a, b, t),
+    "angle":       _v2_angle,
+    "from_angle":  _v2_from_angle,
+    "perp":        _v2_perp,
+    "reflect":     _v2_reflect,
+    "zero2":       lambda: [0.0, 0.0],
+    "one2":        lambda: [1.0, 1.0],
+    "up":          lambda: [0.0, -1.0],
+    "down":        lambda: [0.0,  1.0],
+    "left":        lambda: [-1.0, 0.0],
+    "right":       lambda: [1.0,  0.0],
+    "zero3":       lambda: [0.0, 0.0, 0.0],
+    "forward":     lambda: [0.0, 0.0, -1.0],
+}, "vec"))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# MODULE — pool  (object pool for game-performance memory reuse)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class _ObjectPool:
+    """Fixed-capacity object pool. Acquire / release without allocation."""
+    def __init__(self, factory, capacity=64):
+        self._factory  = factory
+        self._capacity = int(capacity)
+        self._free     = []
+        self._active   = []
+
+    def acquire(self):
+        if self._free:
+            obj = self._free.pop()
+        elif len(self._active) < self._capacity:
+            obj = self._factory() if callable(self._factory) else None
+        else:
+            return None   # pool exhausted
+        self._active.append(obj)
+        return obj
+
+    def release(self, obj):
+        if obj in self._active:
+            self._active.remove(obj)
+            self._free.append(obj)
+        return None
+
+    def release_all(self):
+        self._free.extend(self._active)
+        self._active.clear()
+        return None
+
+    def active_count(self):  return len(self._active)
+    def free_count(self):    return len(self._free)
+    def capacity(self):      return self._capacity
+
+    def __repr__(self):
+        return f"Pool(active={len(self._active)}, free={len(self._free)}, cap={self._capacity})"
+
+
+register_module("pool", _wrapmod({
+    "Pool":         lambda factory=None, capacity=64: _ObjectPool(factory, capacity),
+    "acquire":      lambda p: p.acquire(),
+    "release":      lambda p, obj: p.release(obj),
+    "release_all":  lambda p: p.release_all(),
+    "active_count": lambda p: p.active_count(),
+    "free_count":   lambda p: p.free_count(),
+    "capacity":     lambda p: p.capacity(),
+}, "pool"))

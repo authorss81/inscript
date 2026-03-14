@@ -248,8 +248,7 @@ class Interpreter(Visitor):
                               0 if len(a)==1 else int(a[0]),
                               int(a[0]) if len(a)==1 else int(a[1]),
                               int(a[2]) if len(a)>=3 else 1),
-            "sort":       lambda lst, key=None: sorted(
-                              lst, key=(lambda x: self._call_fn(key,[x]) if key else x)),
+            "sort":       lambda lst, key=None: (lst.sort(key=(lambda x: self._call_fn(key,[x])) if key else None) or lst),
             "sorted":     lambda lst, key=None: sorted(
                               lst, key=(lambda x: self._call_fn(key,[x]) if key else x)),
             "map":        lambda lst, fn: [self._call_fn(fn, [x]) for x in lst],
@@ -938,6 +937,22 @@ class Interpreter(Visitor):
                 continue
         return None
 
+    def visit_DoWhileStmt(self, node) -> Any:
+        """do { body } while condition — body executes at least once."""
+        while True:
+            try:
+                self._exec_block_no_scope(node.body)
+            except BreakSignal as sig:
+                if sig.label:
+                    raise
+                break
+            except ContinueSignal as sig:
+                if sig.label:
+                    raise
+            if not _is_truthy(self.visit(node.condition)):
+                break
+        return None
+
     def visit_ForInStmt(self, node: ForInStmt) -> Any:
         iterable = self.visit(node.iterable)
         # Enum namespace: for v in MyEnum iterates all variants
@@ -1282,7 +1297,13 @@ class Interpreter(Visitor):
     def visit_FloatLiteralExpr(self, n): return n.value
     def visit_StringLiteralExpr(self,n): return n.value
     def visit_BoolLiteralExpr(self,  n): return n.value
-    def visit_NullLiteralExpr(self,  n): return None
+    def visit_NullLiteralExpr(self,  n):
+        # DESIGN-06: 'null' is a deprecated alias for 'nil' — warn once per session
+        if not getattr(self, '_null_warned', False):
+            import sys
+            print("\033[33m[InScript] Warning: 'null' is deprecated — use 'nil' instead\033[0m", file=sys.stderr)
+            self._null_warned = True
+        return None
 
     def visit_IdentExpr(self, node: IdentExpr) -> Any:
         # BUG-10 fix: 'super' resolves to a proxy that dispatches to the parent struct's methods
@@ -1975,28 +1996,53 @@ class Interpreter(Visitor):
         return self.visit(node.then_expr) if cond else self.visit(node.else_expr)
 
     def visit_FStringExpr(self, node: FStringExpr) -> Any:
-        """f"Hello {name}, score={score}" — evaluate {expr} segments at runtime.
+        """f"Hello {name}, score={score:.1f}" — evaluate {expr} segments at runtime.
+        Supports Python-style format specs: {x:.2f}, {n:06d}, {s:>20} etc.
         {{ and }} in source produce literal braces (stored as \x00{ and }\x00 sentinels)."""
         import re
         result = []
         template = node.template
         pos = 0
-        # Only match {expr} that are NOT sentinel-escaped (not preceded by \x00)
         for m in re.finditer(r'(?<!\x00)\{([^}\x00][^}]*)\}', template):
             result.append(template[pos:m.start()])
-            expr_src = m.group(1).strip()
+            inner = m.group(1).strip()
+
+            # Split off format spec: {expr:spec}  — but only split on the LAST colon
+            # that isn't part of a ternary/slice/dict-literal inside the expr.
+            # Simple heuristic: if inner contains ':' not inside brackets, split there.
+            fmt_spec = None
+            depth = 0
+            split_at = -1
+            for i, ch in enumerate(inner):
+                if ch in '([{': depth += 1
+                elif ch in ')]}': depth -= 1
+                elif ch == ':' and depth == 0:
+                    split_at = i
+                    break
+            if split_at > 0:
+                expr_src = inner[:split_at].strip()
+                fmt_spec = inner[split_at+1:].strip()
+            else:
+                expr_src = inner
+
             try:
                 from parser import parse
                 prog = parse(expr_src)
                 val = None
                 for stmt in prog.body:
                     val = self.visit(stmt)
-                result.append(_inscript_str(val))
-            except Exception as e:
-                result.append(f"{{{expr_src}}}")
+                if fmt_spec:
+                    # Apply Python format spec directly — supports .2f, 06d, >10s etc.
+                    try:
+                        result.append(format(val, fmt_spec))
+                    except Exception:
+                        result.append(_inscript_str(val))
+                else:
+                    result.append(_inscript_str(val))
+            except Exception:
+                result.append(f"{{{inner}}}")
             pos = m.end()
         result.append(template[pos:])
-        # Remove sentinels: \x00{ → { and }\x00 → }
         final = "".join(result).replace("\x00{", "{").replace("}\x00", "}")
         return final
 
@@ -2141,6 +2187,24 @@ class Interpreter(Visitor):
             self._pop()
         return result
 
+    def visit_DictComprehensionExpr(self, node) -> Any:
+        """{k: v for var in iterable if cond}"""
+        iterable = self.visit(node.iterable)
+        if isinstance(iterable, InScriptRange):
+            iterable = list(iterable)
+        result = {}
+        for item in iterable:
+            self._push("dict_comprehension")
+            self._env.define(node.var, item)
+            try:
+                if node.condition is None or _is_truthy(self.visit(node.condition)):
+                    k = self.visit(node.key_expr)
+                    v = self.visit(node.val_expr)
+                    result[k] = v
+            finally:
+                self._pop()
+        return result
+
     def visit_LabeledStmt(self, node: LabeledStmt) -> Any:
         """label: stmt — run inner stmt, intercept labeled breaks/continues."""
         try:
@@ -2173,6 +2237,20 @@ def _get_attr(obj: Any, name: str, line: int, interp: Interpreter) -> Any:
     # InScript instance (user struct)
     if isinstance(obj, InScriptInstance):
         # Check property getters BEFORE direct field access
+        # Built-in struct methods available on every instance
+        if name == "copy":
+            import copy as _copy
+            def _struct_copy():
+                return InScriptInstance(obj.struct_name, _copy.copy(obj.fields))
+            return _struct_copy
+        if name == "to_dict":
+            def _struct_to_dict():
+                return {k: v for k, v in obj.fields.items()
+                        if not isinstance(v, InScriptFunction)}
+            return _struct_to_dict
+        if name == "has":
+            return lambda field_name: field_name in obj.fields and \
+                   not isinstance(obj.fields[field_name], InScriptFunction)
         if interp:
             try:
                 decl = interp._env.get(obj.struct_name, 0)
@@ -2427,12 +2505,20 @@ def _is_truthy(val) -> bool:
     if isinstance(val, list) and len(val) == 0: return False
     return True
 
+def _inscript_repr(val) -> str:
+    """Like _inscript_str but wraps string values in double quotes (for dict/array display)."""
+    if isinstance(val, str):
+        escaped = val.replace('\\', '\\\\').replace('"', '\\"')
+        return f'"{escaped}"'
+    return _inscript_str(val)
+
+
 def _inscript_str(val) -> str:
     if val is None:  return "nil"
     if val is True:  return "true"
     if val is False: return "false"
     if isinstance(val, list):
-        return "[" + ", ".join(_inscript_str(v) for v in val) + "]"
+        return "[" + ", ".join(_inscript_repr(v) for v in val) + "]"
     if isinstance(val, float):
         # Handle special IEEE values first to avoid OverflowError on int(inf)
         if math.isinf(val): return "Infinity" if val > 0 else "-Infinity"
@@ -2442,24 +2528,30 @@ def _inscript_str(val) -> str:
             return f"{int(val)}.0"
         return str(val)
     if isinstance(val, str):
-        return val  # bare string — no quotes when printing
+        return val  # bare string — no quotes when printing top-level
     if isinstance(val, dict):
         # Result types
         if "_ok" in val:
             return f"Ok({_inscript_str(val['_ok'])})"
         if "_err" in val:
             return f"Err({_inscript_str(val['_err'])})"
-        # ADT enum with fields: Circle{r: 5.0}
+        # ADT enum with fields
         if "_variant" in val and "_enum" in val:
             fields = {k: v for k, v in val.items() if not k.startswith("_")}
             if "_value" not in val and not fields:
-                # Simple non-ADT variant stored as tagged dict
                 return f"{val['_enum']}::{val['_variant']}"
             if fields:
                 field_str = ", ".join(f"{k}: {_inscript_str(v)}" for k, v in fields.items())
                 return f"{val['_variant']}({field_str})"
-            # Simple variant wrapped with _value
             return f"{val['_enum']}::{val['_variant']}"
+        # Plain dict — InScript double-quote style (not Python repr)
+        pairs = ", ".join(
+            f'"{k}": {_inscript_repr(v)}' if isinstance(k, str)
+            else f'{_inscript_repr(k)}: {_inscript_repr(v)}'
+            for k, v in val.items()
+            if not str(k).startswith("_")
+        )
+        return "{" + pairs + "}"
     return str(val)
 
 

@@ -7,7 +7,7 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-501%20passing-brightgreen.svg)](#testing)
-[![Version](https://img.shields.io/badge/version-1.0.3-blue.svg)](#)
+[![Version](https://img.shields.io/badge/version-1.0.4-blue.svg)](#)
 
 </div>
 
@@ -397,40 +397,38 @@ python test_audit.py     #  54 tests  — regression suite
 
 ---
 
-## What's New in v1.0.3
+## What's New in v1.0.4
 
-### New in v1.0.3
-
-| Fix | Description |
-|-----|-------------|
-| **`**` hang** | `4**4**4**4` now gives a clean error instantly instead of freezing forever |
-| **BUG-15** | Interface default methods (with a body) are now inherited by implementing structs |
-| **Dict bare keys** | `{x: 10, y: 20}` now works — identifier keys are treated as strings |
-| **tween 3-arg** | All tween functions now work as `T.linear(t)` or `T.linear(t, from, to)` |
-| **iter module** | `I.map/filter/reduce` now accept InScript lambdas and functions |
-| **collections** | `C.set([1,2,3])` (lowercase) + `set_size/set_add/set_has/set_remove` helpers |
-| **Decorator fix** | Decorators and higher-order functions work correctly again |
-| **REPL banner** | Gemini-style pixel-art ASCII logo with cyan→magenta gradient |
-| **REPL `.help`** | Full coloured help text with sections and syntax highlighting |
-| **REPL `.modules`** | Categorised display of all 56 stdlib modules |
-
-### Also in v1.0.2 (carried forward)
+### Bug fixes
 
 | Fix | Description |
 |-----|-------------|
-| **Windows REPL** | No longer crashes when `readline` is missing |
-| **BUG-14** | Static fields on structs: `static PI: float = 3.14` works |
-| **BUG-16** | Missing required struct fields now print a clear warning |
-| **BUG-17** | Float passed to `int` parameter now warns about truncation |
-| **BUG-18** | `push(arr, val)` and `pop(arr)` work as free functions |
-| **BUG-19** | Generator objects callable: `gen()` advances one step |
-| **BUG-21** | Non-exhaustive match error shows which arms were checked |
-| **BUG-25** | Regex API is now `(text, pattern)`: `R.test("hello", "\\w+")` |
-| **BUG-26** | `color.rgb()` uses 0.0–1.0 scale; `rgb255()` added |
-| **BUG-27** | `math.INF` / `math.NAN` now print as `Infinity` / `NaN` |
-| **BUG-28** | `events.on()` InScript callbacks now fire correctly |
-| **BUG-29** | `fill(arr, val)` fills in-place; `fill(n, val)` makes new array |
-| **BUG-30** | `random.float(lo, hi)` range form works |
+| **`.doc` for all modules** | `.doc audio`, `.doc ecs`, `.doc physics2d` etc. now work — reads from live `stdlib._MODULES` instead of a hardcoded whitelist |
+| **DESIGN-08 dict display** | `print({"k": "v"})` now shows `{"k": "v"}` (InScript style) not `{'k': 'v'}` (Python repr) |
+| **DESIGN-13 f-string format specs** | `f"{x:.2f}"`, `f"{n:06d}"`, `f"{s:>10}"` all work — full Python `format()` spec support |
+| **DESIGN-14 dict comprehensions** | `{k: v*2 for k in arr if cond}` — new `DictComprehensionExpr` AST node |
+| **DESIGN-12 `do-while`** | `do { body } while cond` — body always runs at least once |
+| **Struct `.copy()`** | `let b = a.copy()` — deep-copies fields, mutations don't affect original |
+| **Struct `.to_dict()` + `.has()`** | New built-in methods on every struct instance |
+| **DESIGN-06 `null` deprecation** | Using `null` now prints a one-time warning: use `nil` instead |
+| **DESIGN-15 `sort()` semantics** | `sort(a)` now sorts in-place and returns `a`; `sorted(a)` returns new copy |
+| **Banner box alignment** | Fixed floating `║` on Windows terminals — uses `unicodedata` for accurate column width |
+
+### Thin module expansions
+
+`ecs`, `fsm`, `camera2d`, and `particle` now expose their full functional API (was: just the constructor):
+- **ecs** — 11 exports: `World`, `spawn`, `get`, `query`, `query_sorted`, `mark_dead`, `remove_dead`, `entity_count`, `alive_count`, …
+- **fsm** — 9 exports: `Machine`, `add_state`, `add_transition`, `trigger`, `update`, `current`, `in_state`, …
+- **camera2d** — 13 exports: `Camera2D`, `update`, `follow`, `shake`, `begin`/`end`, `world_to_screen`, `bounds`, …
+- **particle** — 16 exports: `Emitter`, `start`, `stop`, `update`, `burst`, `color_start`, `color_end`, `gravity`, …
+
+### New stdlib modules (59 total, +3)
+
+| Module | Description |
+|--------|-------------|
+| **`signal`** | Typed pub/sub signal channels — `Signal`, `connect`, `emit`, `once`, `disconnect`, `clear` |
+| **`vec`** | Pure 2D/3D vector math — `v2`, `v3`, `add`, `sub`, `dot`, `cross`, `norm`, `lerp`, `reflect`, `from_angle`, … |
+| **`pool`** | Object pool for game performance — `Pool`, `acquire`, `release`, `release_all`, `active_count` |
 ## License
 
 MIT — see [LICENSE](LICENSE)
@@ -439,7 +437,7 @@ MIT — see [LICENSE](LICENSE)
 
 <div align="center">
 
-**InScript v1.0.3** · Built with Python 3.10+
+**InScript v1.0.4** · Built with Python 3.10+
 
 [REPL Tutorial](REPL_Tutorial.md) · [Language Audit](InScript_Language_Audit.md)
 

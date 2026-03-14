@@ -746,7 +746,19 @@ class _Camera2D:
         return f"<Camera2D pos=({self._x:.1f},{self._y:.1f}) zoom={self.zoom}>"
 
 register_module("camera2d", _wrapmod({
-    "Camera2D": _Camera2D,
+    "Camera2D":        _Camera2D,
+    "update":          lambda c, dt: c.update(dt),
+    "follow":          lambda c, x, y: c.follow(x, y),
+    "set_target":      lambda c, x, y: c.set_target(x, y),
+    "shake":           lambda c, intensity=5.0, duration=0.3: c.shake(intensity, duration),
+    "snap":            lambda c: c.snap(),
+    "begin":           lambda c: c.begin(),
+    "end":             lambda c: c.end(),
+    "world_to_screen": lambda c, x, y: c.world_to_screen(x, y),
+    "screen_to_world": lambda c, x, y: c.screen_to_world(x, y),
+    "bounds":          lambda c: c.bounds(),
+    "zoom":            lambda c: c.zoom(),
+    "set_zoom":        lambda c, v: c.set_zoom(v) if hasattr(c,'set_zoom') else setattr(c,'_zoom',float(v)),
 }, "camera2d"))
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -855,7 +867,22 @@ class _Emitter:
     def __repr__(self): return f"<Emitter particles={len(self._particles)} running={self._running}>"
 
 register_module("particle", _wrapmod({
-    "Emitter": lambda x=0, y=0: _Emitter(x, y),
+    "Emitter":      lambda x=0, y=0: _Emitter(x, y),
+    "start":        lambda e: e.start(),
+    "stop":         lambda e: e.stop(),
+    "update":       lambda e, dt: e.update(dt),
+    "burst":        lambda e, n=None: e.burst(n),
+    "set_position": lambda e, x, y: e.set_position(x, y),
+    "rate":         lambda e, v: e.rate(v),
+    "lifetime":     lambda e, v: e.lifetime(v),
+    "speed":        lambda e, v: e.speed(v),
+    "angle":        lambda e, v: e.angle(v),
+    "count":        lambda e: e.count(),
+    "color_start":  lambda e, r, g, b, a=1.0: e.color_start(r, g, b, a),
+    "color_end":    lambda e, r, g, b, a=0.0: e.color_end(r, g, b, a),
+    "size_start":   lambda e, v: e.size_start(v),
+    "size_end":     lambda e, v: e.size_end(v),
+    "gravity":      lambda e, x, y: (e.gravity_x(x), e.gravity_y(y)),
 }, "particle"))
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1069,7 +1096,17 @@ class _ECSWorld:
     def __repr__(self): return f"<ECS.World entities={len(self._entities)} components={list(self._components)}>"
 
 register_module("ecs", _wrapmod({
-    "World": _ECSWorld,
+    "World":             _ECSWorld,
+    "spawn":             lambda world, comps=None: world.spawn(comps or {}),
+    "get":               lambda world, eid, comp: world.get(eid, comp),
+    "query":             lambda world, *comps: world.query(*comps),
+    "query_sorted":      lambda world, comp, *comps: world.query_sorted(comp, *comps),
+    "mark_dead":         lambda world, eid: world.mark_dead(eid),
+    "remove_dead":       lambda world: world.remove_dead(),
+    "remove_component":  lambda world, eid, comp: world.remove_component(eid, comp),
+    "is_dead":           lambda world, eid: world.is_dead(eid),
+    "entity_count":      lambda world: world.entity_count(),
+    "alive_count":       lambda world: world.alive_count(),
 }, "ecs"))
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1238,7 +1275,15 @@ class _FSMachine:
     def __repr__(self): return f"<FSM state={self._current!r} states={list(self._states)}>"
 
 register_module("fsm", _wrapmod({
-    "Machine": lambda initial="idle": _FSMachine(initial),
+    "Machine":        lambda initial="idle": _FSMachine(initial),
+    "add_state":      lambda m, name, on_enter=None, on_exit=None, on_update=None: m.add_state(name, on_enter=on_enter, on_exit=on_exit, on_update=on_update),
+    "add_transition": lambda m, frm, to, condition=None: m.add_transition(frm, to, condition),
+    "trigger":        lambda m, event: m.trigger(event),
+    "update":         lambda m, dt: m.update(dt),
+    "current":        lambda m: m.current(),
+    "previous":       lambda m: m.previous(),
+    "in_state":       lambda m, name: m.in_state(name),
+    "history":        lambda m: m.history(),
 }, "fsm"))
 
 # ═══════════════════════════════════════════════════════════════════════════

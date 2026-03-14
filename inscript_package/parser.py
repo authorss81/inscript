@@ -1018,6 +1018,10 @@ class Parser:
         if tok.type == TT.WHILE:
             return self.parse_while()
 
+        # do-while: 'do' is an IDENT (not a reserved word)
+        if tok.type == TT.IDENT and tok.value == "do" and self.peek.type == TT.LBRACE:
+            return self.parse_do_while()
+
         if tok.type == TT.FOR:
             return self.parse_for_in()
 
@@ -1107,6 +1111,18 @@ class Parser:
         condition = self.parse_expr()
         body      = self.parse_block()
         return WhileStmt(condition=condition, body=body, line=line, col=col)
+
+    def parse_do_while(self):
+        """do { body } while condition"""
+        from ast_nodes import DoWhileStmt
+        line, col = self._pos()
+        self.advance()  # consume 'do' (IDENT)
+        body = self.parse_block()
+        if not (self.check(TT.WHILE)):
+            self._error("Expected 'while' after do-block")
+        self.advance()  # consume 'while'
+        condition = self.parse_expr()
+        return DoWhileStmt(body=body, condition=condition, line=line, col=col)
 
     def parse_for_in(self) -> ForInStmt:
         line, col = self._pos()
@@ -1924,11 +1940,39 @@ class Parser:
             return self.parse_expr()
 
         if not self.check(TT.RBRACE):
+            # Parse the first key — but in a comprehension the key is a real expression
+            # So parse with parse_expr() first, then check if next is ':'
             key   = parse_key()
             self.expect(TT.COLON, "Expected ':' in dict literal")
             value = self.parse_expr()
-            pairs.append((key, value))
 
+            # Check for dict comprehension: {key: val for var in iter [if cond]}
+            # When it IS a comprehension, re-parse the key as a real variable expression
+            if self.check(TT.FOR):
+                # The key was already parsed via parse_key() which may have turned
+                # a bare ident into a string. Re-check: if key is a StringLiteralExpr
+                # that matches an IDENT we already consumed, treat it as IdentExpr instead
+                from ast_nodes import StringLiteralExpr, IdentExpr
+                if isinstance(key, StringLiteralExpr):
+                    key = IdentExpr(name=key.value, line=key.line, col=key.col)
+                self.advance()  # consume 'for'
+                var = self.current.value
+                self.advance()  # consume var name
+                if not self.check(TT.IN):
+                    self._error("Expected 'in' after loop variable in dict comprehension")
+                self.advance()  # consume 'in'
+                iterable = self.parse_expr()
+                condition = None
+                if self.check(TT.IF):
+                    self.advance()
+                    condition = self.parse_expr()
+                self.expect(TT.RBRACE, "Expected '}' to close dict comprehension")
+                from ast_nodes import DictComprehensionExpr
+                return DictComprehensionExpr(key_expr=key, val_expr=value,
+                                             var=var, iterable=iterable,
+                                             condition=condition, line=line, col=col)
+
+            pairs.append((key, value))
             while self.match(TT.COMMA):
                 if self.check(TT.RBRACE):
                     break

@@ -12,6 +12,70 @@
 > running actual InScript code against both the tree-walk interpreter and the bytecode VM.  
 > Happy-path tests are not a correctness guarantee.
 
+
+---
+
+## CHANGELOG — v1.0.2 → v1.0.4
+
+### v1.0.4 (March 2026)
+
+| Fix | Status |
+|-----|--------|
+| `.doc` for all 59 modules | ✅ Fixed — reads live `stdlib._MODULES` |
+| Dict display uses InScript style `{"k": "v"}` | ✅ Fixed — DESIGN-08 |
+| f-string format specs `f"{x:.2f}"` `f"{n:06d}"` | ✅ Fixed — DESIGN-13 |
+| Dict comprehensions `{k: v for k in arr}` | ✅ Fixed — DESIGN-14 |
+| `do-while` loops | ✅ Fixed — DESIGN-12 |
+| Struct `.copy()` — isolated deep copy | ✅ New built-in |
+| Struct `.to_dict()` + `.has()` | ✅ New built-ins |
+| `null` deprecation warning | ✅ Fixed — DESIGN-06 |
+| `sort()` in-place; `sorted()` returns copy | ✅ Fixed — DESIGN-15 |
+| Banner `║` alignment on Windows | ✅ Fixed — Unicode width |
+| `ecs`, `fsm`, `camera2d`, `particle` expanded | ✅ 9–16 exports each (was 1) |
+| **New:** `signal`, `vec`, `pool` stdlib modules | ✅ 59 total modules |
+
+### v1.0.3 (March 2026)
+
+| Fix | Status |
+|-----|--------|
+| `4**4**4**4` hang | ✅ Fixed — clean error instantly |
+| BUG-15 interface default methods | ✅ Fixed |
+| Dict literal bare keys `{x: 10}` | ✅ Fixed |
+| `tween` 3-arg form `T.linear(t, from, to)` | ✅ Fixed |
+| `iter.map/filter/reduce` with InScript lambdas | ✅ Fixed |
+| `collections.set()` lowercase + helpers | ✅ Fixed |
+| REPL pixel-art ASCII banner | ✅ New |
+| REPL `.modules` shows 59 modules in categories | ✅ New |
+| REPL `.help` fully coloured with sections | ✅ New |
+
+### v1.0.2 (March 2026)
+
+| Fix | Status |
+|-----|--------|
+| BUG-01 VM undefined variable → nil | ✅ Fixed |
+| BUG-02 VM bitwise operators crash | ✅ Fixed |
+| BUG-03 VM ADT enums with data | ✅ Fixed |
+| BUG-04 VM nested comprehensions | ✅ Fixed |
+| BUG-05 VM error double-wrapping + Line 0 | ✅ Fixed |
+| BUG-14 Static struct fields | ✅ Fixed |
+| BUG-16 Missing struct fields warn | ✅ Fixed |
+| BUG-17 Float→int coercion warns | ✅ Fixed |
+| BUG-18 `push(arr, val)` free function | ✅ Fixed |
+| BUG-19 Generator `.next()` / `gen()` step | ✅ Fixed |
+| BUG-21 Non-exhaustive match error | ✅ Fixed |
+| BUG-22 VM pipe operator | ✅ Fixed |
+| BUG-23 VM named args + defaults | ✅ Fixed |
+| BUG-24 VM generators | ✅ Fixed |
+| BUG-25 Regex argument order | ✅ Fixed |
+| BUG-26 Color scale consistency | ✅ Fixed |
+| BUG-27 `math.INF`/`NAN` print | ✅ Fixed |
+| BUG-28 Events InScript callbacks | ✅ Fixed |
+| BUG-29 `fill()` in-place vs new | ✅ Fixed |
+| BUG-30 `random.float(lo, hi)` range | ✅ Fixed |
+| Windows REPL readline crash | ✅ Fixed |
+
+---
+
 ---
 
 ## I. EXECUTIVE SUMMARY
@@ -163,7 +227,7 @@ throw "test error"
 
 ---
 
-### BUG-06 ⚠️ CRITICAL — Operator overloading only works in VM; interpreter crashes
+### ~~BUG-06~~ ✅ FIXED — Operator overloading works in both interpreter and VM
 
 ```inscript
 struct Vec2 {
@@ -179,7 +243,7 @@ Operator overloading was built for the VM's `OP_CALL` opcode but never backporte
 
 ---
 
-### BUG-07 — `NamespaceAccessExpr` UnboundLocalError in interpreter match
+### ~~BUG-07~~ ✅ FIXED — NamespaceAccessExpr match works in interpreter
 
 ```inscript
 enum Dir { North South }
@@ -192,7 +256,7 @@ match d { case Dir.North { print("n") } }
 
 ---
 
-### BUG-08 — Optional chaining broken on missing dict key
+### ~~BUG-08~~ ✅ FIXED — Optional chaining works on missing dict keys
 
 ```inscript
 let d = {"a": {"b": 42}}
@@ -247,7 +311,7 @@ Generator functions (`fn*`/`yield`) are not compiled for the VM. The VM crashes 
 
 ---
 
-### BUG-09 — Unary minus has wrong precedence vs `**`
+### ~~BUG-09~~ ✅ FIXED — Unary minus precedence fixed vs **
 
 ```inscript
 print(-2 ** 2)
@@ -259,7 +323,7 @@ Every mainstream language gives `**` higher binding power than unary minus. InSc
 
 ---
 
-### BUG-10 — `super` keyword does not exist
+### ~~BUG-10~~ ✅ FIXED — `super` keyword implemented
 
 ```inscript
 struct Dog extends Animal {
@@ -274,7 +338,7 @@ InScript has `extends` and multi-level inheritance but no way to call the overri
 
 ---
 
-### BUG-11 — Typed `catch` fails to parse
+### ~~BUG-11~~ ✅ VERIFIED WORKING — Typed catch parses correctly
 
 ```inscript
 try { throw "err" }
@@ -285,7 +349,7 @@ No typed catch dispatch. Every catch block is untyped and catches everything. Yo
 
 ---
 
-### BUG-12 — `finally` block does not exist
+### ~~BUG-12~~ ✅ FIXED — `finally` block implemented
 
 ```inscript
 try { } catch e { } finally { }
@@ -296,7 +360,7 @@ try { } catch e { } finally { }
 
 ---
 
-### BUG-13 — `**=` compound assignment missing
+### ~~BUG-13~~ ✅ VERIFIED WORKING — `**=` compound assignment works
 
 ```inscript
 let x = 2; x **= 3

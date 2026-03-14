@@ -39,7 +39,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 HISTORY_FILE = Path.home() / ".inscript" / "history"
 HISTORY_FILE.parent.mkdir(parents=True, exist_ok=True)
-VERSION = "1.0.3"
+VERSION = "1.0.4"
 
 # ── ANSI colours ──────────────────────────────────────────────────────────────
 def _c(code, text):
@@ -102,13 +102,15 @@ def _make_banner():
     box_mid = f"{TC}╠{'═' * W}╣{RST}"
 
     def box_row(content):
-        import re
+        import re, unicodedata
         plain = re.sub(r'\033\[[0-9;]*m', '', content)
-        pad = max(0, W - len(plain) - 1)   # -1 for leading space in content
+        # Use display width so box aligns on Windows (handles ambiguous-width chars)
+        dw = sum(2 if unicodedata.east_asian_width(ch) in ('W', 'F') else 1 for ch in plain)
+        pad = max(0, W - dw)
         return f"{TC}║{RST}{content}{' ' * pad}{TC}║{RST}"
 
-    tagline = f" \033[38;5;51m▶\033[0m  \033[1mA scripting language for game development\033[0m  \033[2mv{VERSION}\033[0m"
-    stats   = f" \033[2m56 stdlib modules  ·  501 tests  ·  Python 3.10+\033[0m"
+    tagline = f" \033[38;5;51m>>\033[0m  \033[1mA scripting language for game development\033[0m  \033[2mv{VERSION}\033[0m"
+    stats   = f" \033[2m59 stdlib modules  ·  501 tests  ·  Python 3.10+\033[0m"
     tips    = f" \033[33m.help\033[0m  commands  ·  \033[33m.modules\033[0m  stdlib  ·  \033[33mexit\033[0m  quit"
 
     lines = [""]
@@ -161,7 +163,7 @@ def _make_help():
         cmd(".inspect <expr>",     "Deep field / method inspection"),
         cmd(".type <expr>",        "Show type of an expression"),
         cmd(".doc <module>",       "Show module exports"),
-        cmd(".modules",            "Browse all 56 stdlib modules"),
+        cmd(".modules",            "Browse all 59 stdlib modules"),
         section("── Session ──────────────────────────────────────────"),
         cmd(".clear",              "Reset session variables"),
         cmd(".reset",              "Full reset (interpreter + history)"),
@@ -200,7 +202,7 @@ def _make_help():
 HELP_TEXT = _make_help()
 
 
-# All 56 stdlib modules, grouped by category
+# All 59 stdlib modules, grouped by category
 STDLIB_MODULES = [
     # Core
     "math","string","array","json","io","random","time","debug",
@@ -224,6 +226,8 @@ STDLIB_MODULES = [
     "physics2d","tilemap","camera2d","particle","pathfind",
     # Game: Systems
     "grid","events","ecs","fsm","save","localize","net_game",
+    # Utilities
+    "signal","vec","pool",
 ]
 
 STDLIB_CATEGORIES = {
@@ -238,6 +242,7 @@ STDLIB_CATEGORIES = {
     "Game: I/O":        ["input","audio"],
     "Game: World":      ["physics2d","tilemap","camera2d","particle","pathfind"],
     "Game: Systems":    ["grid","events","ecs","fsm","save","localize","net_game"],
+    "Utilities":        ["signal","vec","pool"],
 }
 
 STDLIB_DOCS = {
@@ -632,28 +637,50 @@ class EnhancedREPL:
                 print(f"  Usage: {YELLOW('.doc <module>')}  —  modules: {', '.join(STDLIB_MODULES)}")
                 return True
             mod = arg.strip().strip("\"'")
+
+            # Priority 1: hardcoded STDLIB_DOCS (rich signature strings)
             if mod in STDLIB_DOCS:
                 fns = STDLIB_DOCS[mod]
                 print(f"  {BOLD(CYAN(mod))} stdlib module ({len(fns)} exports):")
                 for i in range(0, len(fns), 3):
                     row = fns[i:i+3]
                     print("    " + "  ".join(BLUE(f.ljust(24)) for f in row))
-            else:
-                try:
-                    from interpreter import Interpreter
-                    tmp = Interpreter()
-                    tmp.execute(f'import "{mod}"')
-                    env_mod = tmp._env._store.get(mod)
-                    if isinstance(env_mod, dict):
-                        keys = [k for k in sorted(env_mod) if not k.startswith("_")]
-                        print(f"  {BOLD(CYAN(mod))} — {len(keys)} exports:")
-                        for i in range(0, len(keys), 4):
-                            row = keys[i:i+4]
-                            print("    " + "  ".join(CYAN(k.ljust(16)) for k in row))
-                    else:
-                        print(DIM(f"  Module '{mod}' not found."))
-                except Exception as e:
-                    print(RED(f"  Cannot load '{mod}': {e}"))
+                return True
+
+            # Priority 2: query stdlib._MODULES directly (works for ALL 59 modules)
+            try:
+                from stdlib import _MODULES
+                if mod in _MODULES:
+                    mod_dict = _MODULES[mod]
+                    keys = sorted(k for k in mod_dict if not k.startswith("_"))
+                    print(f"  {BOLD(CYAN(mod))} stdlib module ({len(keys)} exports):")
+                    W = 62
+                    col_w = 20
+                    per_row = max(1, W // (col_w + 2))
+                    for i in range(0, len(keys), per_row):
+                        row = keys[i:i+per_row]
+                        print("    " + "  ".join(CYAN(k.ljust(col_w)) for k in row))
+                    print(f"  {DIM('Usage:')} import \"{mod}\" as {mod[0].upper()}")
+                    return True
+            except Exception:
+                pass
+
+            # Priority 3: try dynamic import as last resort
+            try:
+                from interpreter import Interpreter
+                tmp = Interpreter()
+                tmp.execute(f'import "{mod}" as _doc_tmp_')
+                env_mod = tmp._env._store.get('_doc_tmp_')
+                if isinstance(env_mod, dict):
+                    keys = [k for k in sorted(env_mod) if not k.startswith("_")]
+                    print(f"  {BOLD(CYAN(mod))} — {len(keys)} exports:")
+                    for i in range(0, len(keys), 4):
+                        row = keys[i:i+4]
+                        print("    " + "  ".join(CYAN(k.ljust(16)) for k in row))
+                else:
+                    print(DIM(f"  Module '{mod}' not found."))
+            except Exception as e:
+                print(RED(f"  Cannot load '{mod}': {e}"))
 
         elif c == ".clear":
             from interpreter import Interpreter
@@ -960,7 +987,7 @@ main{flex:1;display:grid;grid-template-columns:1fr 1fr;overflow:hidden}
 <body>
 <header>
   <div class="logo">&#127918; InScript <span>Playground</span></div>
-  <span class="vbadge">v1.0.3</span>
+  <span class="vbadge">v1.0.4</span>
   <div class="hactions">
     <button class="btn btn-sec" onclick="shareCode()">&#128279; Share</button>
     <button class="btn btn-sec" onclick="clearOutput()">Clear</button>
@@ -1005,7 +1032,7 @@ main{flex:1;display:grid;grid-template-columns:1fr 1fr;overflow:hidden}
   <span class="si" id="st-mode">Mode: <span class="s-ac">Interpreter</span></span>
   <span class="si" id="st-res"></span>
   <span style="flex:1"></span>
-  <span class="si">InScript v1.0.3</span>
+  <span class="si">InScript v1.0.4</span>
 </div>
 <script>
 const EX = {
