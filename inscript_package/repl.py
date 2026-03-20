@@ -39,7 +39,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 HISTORY_FILE = Path.home() / ".inscript" / "history"
 HISTORY_FILE.parent.mkdir(parents=True, exist_ok=True)
-VERSION = "1.0.9"
+VERSION = "1.0.10"
 
 # ── ANSI colours ──────────────────────────────────────────────────────────────
 def _c(code, text):
@@ -562,6 +562,18 @@ class EnhancedREPL:
                         if arg_type and arg_type != ann:
                             print(f"\033[33m[InScript] Warning: '{fname}' arg {i+1} expects "
                                   f"'{ann}' but got '{arg_type}'\033[0m", file=_sys.stderr)
+
+            # Non-exhaustive match check
+            from ast_nodes import MatchStmt as _MS, IdentExpr as _IE
+            if isinstance(node, _MS):
+                has_wildcard = any(
+                    arm.pattern is None or (isinstance(arm.pattern, _IE) and arm.pattern.name == '_')
+                    for arm in node.arms
+                )
+                if not has_wildcard:
+                    print(f"\033[33m[InScript] Warning: match may not be exhaustive — "
+                          f"add 'case _ {{ }}' to handle unmatched values\033[0m", file=_sys.stderr)
+
             # Recurse
             for attr in vars(node).values():
                 if hasattr(attr, '__class__') and hasattr(attr, 'line'):

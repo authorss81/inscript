@@ -1643,7 +1643,8 @@ class Interpreter(Visitor):
             truncated = int(value)
             if value != truncated:
                 ctx_msg = f" in {context}" if context else ""
-                print(f"\033[33m  Warning: float {value} truncated to int {truncated}{ctx_msg} — use 'as int' for explicit cast\033[0m")
+                import sys as _sys2
+                print(f"\033[33m[InScript] Warning: float {value} truncated to int {truncated}{ctx_msg} — use 'as int' for explicit cast\033[0m", file=_sys2.stderr)
             return truncated
 
         if rule is None:

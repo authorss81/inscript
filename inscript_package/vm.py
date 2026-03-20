@@ -273,57 +273,92 @@ def _eval_default(node, vm):
 def _list_method(obj,name,vm):
     def b(*a):
         m = {
-            'append':  lambda: obj.append(a[0]) or None,
-            'pop':     lambda: obj.pop(int(a[0]) if a else -1),
-            'insert':  lambda: obj.insert(int(a[0]),a[1]),
-            'remove':  lambda: obj.remove(a[0]) or None,
-            'index':   lambda: obj.index(a[0]),
-            'count':   lambda: obj.count(a[0]),
-            'sort':    lambda: (obj.sort(key=lambda x:vm.call(a[0],[x])) if a else obj.sort()) or None,
-            'reverse': lambda: obj.reverse() or None,
-            'copy':    lambda: list(obj),
-            'clear':   lambda: obj.clear() or None,
-            'extend':  lambda: obj.extend(a[0]) or None,
-            'contains':lambda: a[0] in obj,
-            'join':    lambda: (a[0] if a else '').join(_ins_str(x) for x in obj),
-            'map':     lambda: [vm.call(a[0],[x]) for x in obj],
-            'filter':  lambda: [x for x in obj if vm.call(a[0],[x])],
-            'find':    lambda: next((x for x in obj if vm.call(a[0],[x])),None),
-            'any':     lambda: any(vm.call(a[0],[x]) for x in obj),
-            'all':     lambda: all(vm.call(a[0],[x]) for x in obj),
-            'slice':   lambda: obj[int(a[0]):int(a[1])] if len(a)>=2 else obj[int(a[0]):],
-            'first':   lambda: obj[0] if obj else None,
-            'last':    lambda: obj[-1] if obj else None,
-            'flatten': lambda: [x for sub in obj for x in (sub if isinstance(sub,list) else [sub])],
+            'append':   lambda: obj.append(a[0]) or None,
+            'push':     lambda: obj.append(a[0]) or None,
+            'pop':      lambda: obj.pop(int(a[0]) if a else -1),
+            'pop_at':   lambda: obj.pop(int(a[0])) if a else None,
+            'insert':   lambda: obj.insert(int(a[0]),a[1]),
+            'remove':   lambda: obj.remove(a[0]) or None,
+            'index':    lambda: obj.index(a[0]) if a[0] in obj else -1,
+            'index_of': lambda: obj.index(a[0]) if a[0] in obj else -1,
+            'count':    lambda: obj.count(a[0]) if a else len(obj),
+            'sort':     lambda: (obj.sort(key=lambda x:vm.call(a[0],[x])) if a else obj.sort()) or None,
+            'sorted':   lambda: sorted(obj, key=lambda x:vm.call(a[0],[x])) if a else sorted(obj),
+            'reverse':  lambda: obj.reverse() or None,
+            'copy':     lambda: list(obj),
+            'clear':    lambda: obj.clear() or None,
+            'extend':   lambda: obj.extend(a[0]) or None,
+            'contains': lambda: a[0] in obj,
+            'includes': lambda: a[0] in obj,
+            'join':     lambda: (a[0] if a else '').join(_ins_str(x) for x in obj),
+            'map':      lambda: [vm.call(a[0],[x]) for x in obj],
+            'filter':   lambda: [x for x in obj if vm.call(a[0],[x])],
+            'reduce':   lambda: (lambda fn,lst,init: (lambda acc,items: [acc := vm.call(fn,[acc,x]) for x in items] and acc)
+                                 (lst[0] if init is _NOTFOUND else init, lst[1:] if init is _NOTFOUND else lst)
+                                )(a[0], obj, a[1] if len(a)>1 else _NOTFOUND),
+            'find':     lambda: next((x for x in obj if vm.call(a[0],[x])),None),
+            'any':      lambda: any(vm.call(a[0],[x]) for x in obj),
+            'all':      lambda: all(vm.call(a[0],[x]) for x in obj),
+            'each':     lambda: [vm.call(a[0],[x]) for x in obj] and None,
+            'flat_map': lambda: [y for x in obj for y in (vm.call(a[0],[x]) if a else x)],
+            'zip':      lambda: [list(pair) for pair in zip(obj, a[0])] if a else obj,
+            'sum':      lambda: sum(vm.call(a[0],[x]) for x in obj) if a else sum(obj),
+            'min_by':   lambda: min(obj, key=lambda x: vm.call(a[0],[x])) if a else min(obj),
+            'max_by':   lambda: max(obj, key=lambda x: vm.call(a[0],[x])) if a else max(obj),
+            'group_by': lambda: (lambda d: [d.setdefault(_ins_str(vm.call(a[0],[x])),[]).append(x) for x in obj] and d)({}) if a else {},
+            'unique':   lambda: list(dict.fromkeys(obj)),
+            'slice':    lambda: obj[int(a[0]):int(a[1])] if len(a)>=2 else obj[int(a[0]):],
+            'take':     lambda: obj[:int(a[0])] if a else obj,
+            'skip':     lambda: obj[int(a[0]):] if a else obj,
+            'chunk':    lambda: [obj[i:i+int(a[0])] for i in range(0,len(obj),int(a[0]))] if a else [obj],
+            'is_empty': lambda: len(obj) == 0,
+            'first':    lambda: obj[0] if obj else None,
+            'last':     lambda: obj[-1] if obj else None,
+            'flatten':  lambda: [x for sub in obj for x in (sub if isinstance(sub,list) else [sub])],
         }.get(name)
         return m() if m else _NOTFOUND
-    if name=='length': return len(obj)
+    if name in ('length','len'): return len(obj)
     return b
 
 def _str_method(obj,name,vm):
     def b(*a):
         m = {
-            'split':      lambda: obj.split(a[0] if a else None),
+            'split':      lambda: obj.split(a[0] if a else None, int(a[1]) if len(a)>1 else -1),
             'join':       lambda: obj.join(_ins_str(x) for x in a[0]),
             'trim':       lambda: obj.strip(),
+            'trim_start': lambda: obj.lstrip(),
+            'trim_end':   lambda: obj.rstrip(),
             'upper':      lambda: obj.upper(),
             'lower':      lambda: obj.lower(),
+            'to_upper':   lambda: obj.upper(),
+            'to_lower':   lambda: obj.lower(),
             'starts_with':lambda: obj.startswith(a[0] if a else ''),
             'ends_with':  lambda: obj.endswith(a[0] if a else ''),
             'contains':   lambda: (a[0] in obj) if a else False,
             'replace':    lambda: obj.replace(a[0],a[1]) if len(a)>=2 else obj,
+            'index':      lambda: obj.find(a[0]) if a else -1,
             'index_of':   lambda: obj.find(a[0]) if a else -1,
             'substr':     lambda: obj[int(a[0]):int(a[1])] if len(a)>=2 else obj[int(a[0]):],
             'char_at':    lambda: obj[int(a[0])] if a else '',
+            'chars':      lambda: list(obj),
             'to_int':     lambda: int(obj),
             'to_float':   lambda: float(obj),
+            'to_string':  lambda: obj,
             'pad_left':   lambda: obj.rjust(int(a[0]),a[1] if len(a)>1 else ' '),
             'pad_right':  lambda: obj.ljust(int(a[0]),a[1] if len(a)>1 else ' '),
             'repeat':     lambda: obj*(int(a[0]) if a else 1),
+            'reverse':    lambda: obj[::-1],
+            'count':      lambda: obj.count(a[0]) if a else len(obj),
+            'format':     lambda: (obj.format(*[x for x in a if not isinstance(x,dict)],
+                                              **{k:v for d in a if isinstance(d,dict) for k,v in d.items()})),
+            'is_empty':   lambda: len(obj)==0,
+            'is_alpha':   lambda: obj.isalpha(),
+            'is_numeric': lambda: obj.isnumeric(),
+            'is_alnum':   lambda: obj.isalnum(),
             'bytes':      lambda: list(obj.encode()),
         }.get(name)
         return m() if m else _NOTFOUND
-    if name=='length': return len(obj)
+    if name in ('length','len'): return len(obj)
     return b
 
 def _dict_method(obj,name,vm):
@@ -911,10 +946,38 @@ class VM:
         m = self._get_field(obj, mname)
         if m is None:
             # built-in method fallback
-            if isinstance(obj,list):   r=_list_method(obj,mname,self)(*args); return r if r is not _NOTFOUND else None
-            if isinstance(obj,str):    r=_str_method(obj,mname,self)(*args); return r if r is not _NOTFOUND else None
-            if isinstance(obj,dict):   r=_dict_method(obj,mname,self)(*args); return r if r is not _NOTFOUND else None
-            raise InScriptRuntimeError(f"no method '{mname}' on {_type_name(obj)}",0,0,"")
+            if isinstance(obj, list):
+                r = _list_method(obj, mname, self)(*args)
+                return r if r is not _NOTFOUND else None
+            if isinstance(obj, str):
+                r = _str_method(obj, mname, self)(*args)
+                return r if r is not _NOTFOUND else None
+            if isinstance(obj, dict):
+                r = _dict_method(obj, mname, self)(*args)
+                return r if r is not _NOTFOUND else None
+            if isinstance(obj, VMInstance):
+                # Built-in struct instance methods
+                import copy as _copy_mod
+                if mname == 'copy':
+                    new_fields = {}
+                    for k, v in obj.fields.items():
+                        if isinstance(v, VMClosure):
+                            new_fields[k] = v
+                        elif isinstance(v, (list, dict)):
+                            new_fields[k] = _copy_mod.deepcopy(v)
+                        else:
+                            new_fields[k] = v
+                    new_inst = VMInstance(obj.struct_name, new_fields, obj._desc)
+                    return new_inst
+                if mname == 'to_dict':
+                    return {k: v for k, v in obj.fields.items()
+                            if not isinstance(v, VMClosure)}
+                if mname == 'has':
+                    return args[0] in obj.fields if args else False
+                # Primitive type methods on struct fields (int/float)
+                if mname in ('to_string',):
+                    return _ins_str(obj)
+            raise InScriptRuntimeError(f"no method '{mname}' on {_type_name(obj)}", 0, 0, "")
         if callable(m) and not isinstance(m, (VMClosure,)):
             return m(*args)
         return self._do_call(m, args, obj)

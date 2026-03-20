@@ -687,6 +687,77 @@ class Compiler:
         elif isinstance(node, SpreadExpr):
             src = self._expr(node.expr); self._e(Op.MOVE, dst, src); self._free(src)
 
+        elif isinstance(node, TryExpr):
+            # try { expr } catch e { fallback } — compile like try-catch but dst gets result
+            exc_r = self._alloc()
+            pi    = self._e(Op.PUSH_HANDLER, 0, exc_r)
+            # compile try body — last value goes to dst
+            for stmt in node.body.body[:-1]:
+                self._stmt(stmt)
+            if node.body.body:
+                last = node.body.body[-1]
+                from ast_nodes import ExprStmt, ReturnStmt
+                if isinstance(last, ExprStmt):
+                    vr = self._expr(last.expr); self._e(Op.MOVE, dst, vr); self._free(vr)
+                elif isinstance(last, ReturnStmt) and last.value:
+                    vr = self._expr(last.value); self._e(Op.MOVE, dst, vr); self._free(vr)
+                else:
+                    self._stmt(last)
+            self._e(Op.POP_HANDLER)
+            je = self._e(Op.JUMP, 0)
+            self._patch_a(pi)
+            if node.catch_var:
+                lr = self._scope.add_local(node.catch_var); self._e(Op.MOVE, lr, exc_r)
+            # compile handler body — last value to dst
+            if node.handler.body:
+                for stmt in node.handler.body[:-1]:
+                    self._stmt(stmt)
+                last = node.handler.body[-1]
+                if isinstance(last, ExprStmt):
+                    vr = self._expr(last.expr); self._e(Op.MOVE, dst, vr); self._free(vr)
+                elif isinstance(last, ReturnStmt) and last.value:
+                    vr = self._expr(last.value); self._e(Op.MOVE, dst, vr); self._free(vr)
+                else:
+                    self._stmt(last)
+            self._patch_b(je); self._free(exc_r)
+
+        elif isinstance(node, MatchStmt):
+            # match as expression — compile each arm body as an expression to dst
+            subj = self._expr(node.subject); ends = []
+            for arm in node.arms:
+                pat = arm.pattern
+                wild = (pat is None or (isinstance(pat, IdentExpr) and pat.name == '_'))
+                if wild:
+                    self._scope.begin_block()
+                    from ast_nodes import ExprStmt as _ES
+                    for s in arm.body.body[:-1]: self._stmt(s)
+                    if arm.body.body:
+                        last = arm.body.body[-1]
+                        if isinstance(last, _ES):
+                            vr = self._expr(last.expr); self._e(Op.MOVE, dst, vr); self._free(vr)
+                        else: self._stmt(last)
+                    self._scope.end_block()
+                    ends.append(self._e(Op.JUMP, 0)); break
+                cr = self._alloc(); pr = self._expr(pat)
+                self._e(Op.EQ, cr, subj, pr); self._free(pr)
+                jf = self._e(Op.JUMP_IF_FALSE, cr, 0); self._free(cr)
+                self._scope.begin_block()
+                from ast_nodes import ExprStmt as _ES2
+                for s in arm.body.body[:-1]: self._stmt(s)
+                if arm.body.body:
+                    last = arm.body.body[-1]
+                    if isinstance(last, _ES2):
+                        vr = self._expr(last.expr); self._e(Op.MOVE, dst, vr); self._free(vr)
+                    else: self._stmt(last)
+                self._scope.end_block()
+                ends.append(self._e(Op.JUMP, 0)); self._patch_b(jf)
+            self._free(subj)
+            for j in ends: self._patch_b(j)
+
+        elif isinstance(node, DictComprehensionExpr):
+            # {k: v for k,v in entries(d)} — compile to array-build loop then convert
+            self._free(dst); dst = self._dict_comp(node)
+
         else:
             self._e(Op.LOAD_NIL, dst)
 
@@ -750,10 +821,35 @@ class Compiler:
         if isinstance(node.callee, GetAttrExpr):
             obj = self._expr(node.callee.obj); ni = self._name(node.callee.attr)
             t   = self._top()
-            for arg in node.args:
+            pos_args = [arg for arg in node.args if not arg.name]
+            named_args = [arg for arg in node.args if arg.name]
+            # Compile positional args into consecutive registers starting at t
+            for arg in pos_args:
                 r = self._alloc(); v = self._expr(arg.value)
                 if v != r: self._e(Op.MOVE, r, v); self._free(v)
-            self._e(Op.CALL_METHOD, obj, ni, len(node.args))
+            if named_args:
+                # Build kwargs dict into the next consecutive register slot
+                kw_slot = self._top()  # this is where next arg should be
+                # Build dict in temps above kw_slot
+                kw_key_start = kw_slot + 1
+                self._scope.n_regs = kw_key_start
+                for i, arg in enumerate(named_args):
+                    ks = kw_key_start + i*2
+                    vs = kw_key_start + i*2 + 1
+                    self._scope.n_regs = max(self._scope.n_regs, ks+1)
+                    self._e(Op.LOAD_CONST, ks, self._const(arg.name))
+                    self._scope.n_regs = ks + 1
+                    self._scope.n_regs = max(self._scope.n_regs, vs+1)
+                    vv = self._expr(arg.value)
+                    if vv != vs: self._e(Op.MOVE, vs, vv); self._free(vv)
+                    self._scope.n_regs = vs + 1
+                # MAKE_DICT result goes to kw_slot
+                self._e(Op.MAKE_DICT, kw_slot, kw_key_start, len(named_args))
+                self._scope.n_regs = kw_slot + 1
+                total_args = len(pos_args) + 1
+            else:
+                total_args = len(pos_args)
+            self._e(Op.CALL_METHOD, obj, ni, total_args)
             self._e(Op.MOVE, dst, obj); self._free_to(t); self._free(obj)
             return dst
         fn = self._expr(node.callee); t = self._top()
@@ -930,6 +1026,48 @@ class Compiler:
 
         self._free_to(t)
         self._scope.n_regs = res + 1
+        return res
+
+    def _dict_comp(self, node):
+        """Compile {k: v for k[,v] in iterable [if cond]} to a dict-building loop."""
+        t   = self._top()
+        res = self._alloc()
+        # Initialise res = {} using MAKE_DICT with 0 pairs
+        self._e(Op.MAKE_DICT, res, 0, 0)
+
+        extra_vars = getattr(node, '_extra_vars', [])
+        isrc = self._expr(node.iterable); ir = self._alloc()
+        self._e(Op.ITER_START, ir, isrc); self._free(isrc)
+        ls  = len(self._scope.proto.code)
+        self._break_patches.append([]); self._cont_patches.append([])
+        vr  = self._alloc(); jx = self._e(Op.ITER_NEXT, vr, ir, 0)
+        self._scope.begin_block()
+
+        if extra_vars:
+            # Multi-var: for k,v in entries(d)
+            all_vars = [node.var] + extra_vars
+            for i, vname in enumerate(all_vars):
+                lr = self._scope.add_local(vname); ir2 = self._alloc()
+                self._e(Op.LOAD_INT, ir2, i); self._e(Op.GET_INDEX, lr, vr, ir2); self._free(ir2)
+        else:
+            lr = self._scope.add_local(node.var); self._e(Op.MOVE, lr, vr)
+
+        # Optional condition
+        js = None
+        if node.condition:
+            cr = self._expr(node.condition); js = self._e(Op.JUMP_IF_FALSE, cr, 0); self._free(cr)
+
+        # Evaluate key and value, then res[key] = val
+        kr = self._expr(node.key_expr); vvr = self._expr(node.val_expr)
+        self._e(Op.SET_INDEX, res, kr, vvr); self._free(kr); self._free(vvr)
+
+        if js: self._patch_b(js)
+        self._scope.end_block()
+        self._e(Op.JUMP, 0, ls - len(self._scope.proto.code) - 1)
+        ep = len(self._scope.proto.code); self._patch_c(jx, ep-jx-1)
+        self._free(vr)
+        self._break_patches.pop(); self._cont_patches.pop()
+        self._free_to(t); self._scope.n_regs = res + 1
         return res
 
 
