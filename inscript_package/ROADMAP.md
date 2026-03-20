@@ -1,6 +1,6 @@
 # InScript Language Roadmap
 
-> **Current version:** v1.0.6 (March 2026)
+> **Current version:** v1.0.7 (March 2026)
 > **Tests passing:** 501 (270 Ph5 + 145 Ph6 + 32 Ph7 + 54 Audit)
 > **Stdlib modules:** 59
 > **Status:** Active development — language is usable, bugs being fixed iteratively
@@ -172,3 +172,4 @@ Q4   2026   v1.3.0   Phase 6.2 performance: C extension, TCO, bytecode opts
 | v1.0.4 | 2026-03-14 | `.doc` all 59 modules, dict comprehensions, `do-while`, struct `.copy()` |
 | v1.0.5 | 2026-03-14 | `pub` fields, `for-else`, `assert`/`panic`, generics bare defaults, arg-count warnings |
 | v1.0.6 | 2026-03-14 | `typeof` clean names, 21 new array/string methods, struct print, missing-return + async warnings |
+| v1.0.7 | 2026-03-14 | `x in arr/dict/string`, `not in`, 15 new methods, for/while/do-while in VM, full audit update |

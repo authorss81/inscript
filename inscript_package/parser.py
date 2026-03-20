@@ -480,8 +480,17 @@ class Parser:
         if self.current.type in _OP_TOKENS:
             name = _OP_TOKENS[self.current.type]
             self.advance()
+        elif self.current.type == TT.IDENT:
+            name = self.current.value
+            self.advance()
         else:
-            name = self.expect_ident("Expected function name after 'fn'")
+            # Allow reserved keywords as function names (e.g. fn div(...), fn mod(...))
+            # This handles cases where a keyword like 'div' is used as a function name
+            if self.current.value and self.current.value.isidentifier():
+                name = self.current.value
+                self.advance()
+            else:
+                name = self.expect_ident("Expected function name after 'fn'")
 
         # Optional generic type params AFTER name: fn identity<T>(...)
         fn_type_params = list(_pre_type_params)
@@ -1428,6 +1437,21 @@ class Parser:
             return RangeExpr(start=left, end=right, inclusive=inclusive,
                              line=line, col=col)
 
+        # Membership: x in collection  /  x not in collection
+        if self.check(TT.IN):
+            self.advance()
+            right = self.parse_shift()
+            return BinaryExpr(left=left, op="in", right=right, line=line, col=col)
+        if self.check(TT.IDENT) and self.current.value == "not":
+            saved = self.pos
+            self.advance()
+            if self.check(TT.IN):
+                self.advance()
+                right = self.parse_shift()
+                return BinaryExpr(left=left, op="not in", right=right, line=line, col=col)
+            else:
+                self.pos = saved  # backtrack
+
         while self.check(TT.LT, TT.GT, TT.LTE, TT.GTE):
             op    = self.advance().value
             right = self.parse_shift()
@@ -1748,6 +1772,10 @@ class Parser:
             expr = self.parse_unary()
             return AwaitExpr(expr=expr, line=line, col=col)
 
+        # try { expr } catch e { expr } — try as expression (returns value)
+        if tok.type == TT.TRY:
+            return self._parse_try_expr()
+
         # Identifier, keyword-ident, struct init, namespace access
         if tok.type == TT.IDENT:
             # comptime { ... } — evaluated immediately at runtime (dynamic interpreter)
@@ -1761,6 +1789,13 @@ class Parser:
         # but handle INT_TYPE etc. used as function names (rare)
         if tok.type in (TT.INT_TYPE, TT.FLOAT_TYPE, TT.BOOL_TYPE,
                         TT.STRING_TYPE, TT.SELF):
+            name = tok.value
+            self.advance()
+            return IdentExpr(name=name, line=line, col=col)
+
+        # Allow operator-keyword tokens used as identifiers (e.g. a variable named 'div')
+        # These arise when user names a function/variable with an operator keyword
+        if tok.type == TT.DIV and tok.value and tok.value.isidentifier():
             name = tok.value
             self.advance()
             return IdentExpr(name=name, line=line, col=col)
@@ -1911,11 +1946,11 @@ class Parser:
         elements = []
 
         if not self.check(TT.RBRACKET):
-            # Allow spread as first element: [...arr, 1, 2]
+            # Allow spread as first element: [...arr, 1, 2]  or  [...0..5]
             if self.check(TT.ELLIPSIS):
                 sp_line, sp_col = self._pos()
                 self.advance()
-                sp_expr = self.parse_unary()
+                sp_expr = self.parse_expr()   # was parse_unary — needs parse_expr for ranges
                 first = SpreadExpr(expr=sp_expr, line=sp_line, col=sp_col)
             else:
                 first = self.parse_expr()
@@ -1985,6 +2020,27 @@ class Parser:
             return self.parse_expr()
 
         if not self.check(TT.RBRACE):
+            # Handle spread as first element: {...obj, key: val}
+            if self.check(TT.ELLIPSIS):
+                sp_line, sp_col = self._pos()
+                self.advance()
+                spread_expr = self.parse_expr()
+                from ast_nodes import SpreadExpr
+                pairs.append((None, SpreadExpr(expr=spread_expr, line=sp_line, col=sp_col)))
+                while self.match(TT.COMMA):
+                    if self.check(TT.RBRACE): break
+                    if self.check(TT.ELLIPSIS):
+                        sp_line2, sp_col2 = self._pos(); self.advance()
+                        spread_expr2 = self.parse_expr()
+                        pairs.append((None, SpreadExpr(expr=spread_expr2, line=sp_line2, col=sp_col2)))
+                        continue
+                    key   = parse_key()
+                    self.expect(TT.COLON, "Expected ':' in dict literal")
+                    value = self.parse_expr()
+                    pairs.append((key, value))
+                self.expect(TT.RBRACE, "Expected '}' to close dict literal")
+                return DictLiteralExpr(pairs=pairs, line=line, col=col)
+
             # Parse the first key — but in a comprehension the key is a real expression
             # So parse with parse_expr() first, then check if next is ':'
             key   = parse_key()
@@ -2021,6 +2077,14 @@ class Parser:
             while self.match(TT.COMMA):
                 if self.check(TT.RBRACE):
                     break
+                # Spread: {...other_dict, more_key: val}
+                if self.check(TT.ELLIPSIS):
+                    sp_line, sp_col = self._pos()
+                    self.advance()  # consume '...'
+                    spread_expr = self.parse_expr()
+                    from ast_nodes import SpreadExpr
+                    pairs.append((None, SpreadExpr(expr=spread_expr, line=sp_line, col=sp_col)))
+                    continue
                 key   = parse_key()
                 self.expect(TT.COLON, "Expected ':' in dict literal")
                 value = self.parse_expr()
@@ -2126,6 +2190,26 @@ class Parser:
         # Parse the target declaration
         target = self.parse_top_level()
         return DecoratedDecl(decorators=decorators, target=target, line=line, col=col)
+
+    def _parse_try_expr(self):
+        """try { value } catch e { fallback } — try used as an expression"""
+        from ast_nodes import TryExpr
+        line, col = self._pos()
+        self.advance()  # consume 'try'
+        body = self.parse_block()
+        catch_var = None
+        # Optional catch clause
+        if self.check(TT.CATCH):
+            self.advance()  # consume 'catch'
+            if self.check(TT.IDENT):
+                catch_var = self.current.value
+                self.advance()
+            handler = self.parse_block()
+        else:
+            from ast_nodes import BlockStmt
+            handler = BlockStmt(body=[], line=line, col=col)
+        return TryExpr(body=body, catch_var=catch_var, handler=handler,
+                       line=line, col=col)
 
     def parse_try_catch(self) -> "TryCatchStmt":
         """try { ... } catch(e) { ... } [catch e: T { ... }] [finally { ... }]"""

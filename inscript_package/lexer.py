@@ -354,30 +354,38 @@ class Lexer:
         self._error("Unterminated triple-quoted string", sl, sc)
 
     def _scan_fstring(self, quote: str, sl: int, sc: int):
-        """Scan f\"...{expr}...\" — store the raw template as FSTRING token.
-        {{ and }} are literal brace escapes."""
+        """Scan f"...{expr}..." — store the raw template as FSTRING token.
+        {{ and }} are literal brace escapes.
+        Inside {}, quote characters are allowed (e.g. d["key"])."""
         chars = []
-        while self.current is not None and self.current != quote:
+        brace_depth = 0
+        while self.current is not None:
+            if self.current == quote and brace_depth == 0:
+                break
             ch = self.advance()
             if ch == "\n":
                 self._error("Unterminated f-string — newline inside string", sl, sc)
-            elif ch == "{" and self.current == "{":
-                # {{ → literal { (stored as sentinel \x00{ to avoid re-interpolation)
+            elif ch == "{" and self.current == "{" and brace_depth == 0:
                 self.advance()
                 chars.append("\x00{")
-            elif ch == "}" and self.current == "}":
-                # }} → literal } (stored as sentinel }\x00 to avoid re-interpolation)
+            elif ch == "}" and self.current == "}" and brace_depth == 0:
                 self.advance()
                 chars.append("}\x00")
-            elif ch == "\\" and self.current is not None:
+            elif ch == "{":
+                brace_depth += 1
+                chars.append(ch)
+            elif ch == "}":
+                brace_depth = max(0, brace_depth - 1)
+                chars.append(ch)
+            elif ch == "\\" and self.current is not None and brace_depth == 0:
                 esc = self.advance()
-                _ESC = {"n":"\n","t":"\t","r":"\r","\\":"\\",'\"':'\"',"'":"'"}
+                _ESC = {"n":"\n","t":"\t","r":"\r","\\":"\\",'"':'"',"\'":"\'"}
                 chars.append(_ESC.get(esc, esc))
             else:
                 chars.append(ch)
         if self.current is None:
             self._error("Unterminated f-string", sl, sc)
-        self.advance()  # closing quote
+        self.advance()
         self._emit(TT.FSTRING, "".join(chars), sl, sc)
 
     # ── Strings ───────────────────────────────────────

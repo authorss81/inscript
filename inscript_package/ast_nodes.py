@@ -455,6 +455,13 @@ class TryCatchStmt(Node):
     finally_body:  Optional["BlockStmt"] = None  # BUG-12 fix
 
 @dataclass
+class TryExpr(Node):
+    """let x = try { value_expr } catch e { fallback_expr } — try as expression"""
+    body:      "BlockStmt"
+    catch_var: Optional[str]
+    handler:   "BlockStmt"
+
+@dataclass
 class SpawnExpr(Node):
     """spawn Entity { components... }"""
     entity_name: str

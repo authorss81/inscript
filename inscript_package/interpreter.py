@@ -255,6 +255,10 @@ class Interpreter(Visitor):
             # game types
             "Vec2":  _vec2, "Vec3":  _vec3,
             "Color": _color, "Rect": _rect,
+            # Collection constructors
+            "dict":  lambda pairs=None: (dict((k, v) for k, v in pairs) if isinstance(pairs, list)
+                     else pairs.copy() if isinstance(pairs, dict) else {}),
+            "array": lambda n=None, val=None: ([val]*int(n) if n is not None else []),
             # array/string
             "len":   _len,
             # time
@@ -1215,6 +1219,37 @@ class Interpreter(Visitor):
         err.thrown_value = val
         raise err
 
+    def visit_TryExpr(self, node) -> Any:
+        """try { value } catch e { fallback } — try as expression returning last value."""
+        try:
+            result = None
+            for stmt in node.body.body:
+                result = self.visit(stmt)
+            return result
+        except InScriptRuntimeError as e:
+            err_val = e.message if hasattr(e, 'message') else str(e)
+            self._push("try_expr")
+            if node.catch_var:
+                self._env.define(node.catch_var, err_val)
+            try:
+                result = None
+                for stmt in node.handler.body:
+                    result = self.visit(stmt)
+                return result
+            finally:
+                self._pop()
+        except Exception as e:
+            self._push("try_expr")
+            if node.catch_var:
+                self._env.define(node.catch_var, str(e))
+            try:
+                result = None
+                for stmt in node.handler.body:
+                    result = self.visit(stmt)
+                return result
+            finally:
+                self._pop()
+
     def visit_TryCatchStmt(self, node: TryCatchStmt) -> Any:
         try:
             self.visit(node.body)
@@ -1402,7 +1437,16 @@ class Interpreter(Visitor):
     def visit_DictLiteralExpr(self, node: DictLiteralExpr) -> Any:
         d = {}
         for k, v in node.pairs:
-            d[self.visit(k)] = self.visit(v)
+            if k is None:
+                # Spread: {...other_dict} — merge other dict into d
+                spread_val = self.visit(v.expr) if hasattr(v, 'expr') else self.visit(v)
+                if isinstance(spread_val, dict):
+                    d.update({kk: vv for kk, vv in spread_val.items() if not str(kk).startswith('_')})
+                elif isinstance(spread_val, InScriptInstance):
+                    d.update({kk: vv for kk, vv in spread_val.fields.items()
+                              if not isinstance(vv, InScriptFunction)})
+            else:
+                d[self.visit(k)] = self.visit(v)
         return d
 
     def visit_BinaryExpr(self, node: BinaryExpr) -> Any:
@@ -1475,6 +1519,21 @@ class Interpreter(Visitor):
         if op == ">":  return left >  right
         if op == "<=": return left <= right
         if op == ">=": return left >= right
+        # Membership
+        if op == "in":
+            if isinstance(right, str): return str(left) in right
+            if isinstance(right, dict): return left in right
+            if isinstance(right, list): return left in right
+            if isinstance(right, InScriptRange): return left in right
+            if hasattr(right, 'fields'): return left in right.fields
+            return False
+        if op == "not in":
+            if isinstance(right, str): return str(left) not in right
+            if isinstance(right, dict): return left not in right
+            if isinstance(right, list): return left not in right
+            if isinstance(right, InScriptRange): return left not in right
+            if hasattr(right, 'fields'): return left not in right.fields
+            return True
         # Bitwise
         if op == "&":  return int(left) & int(right)
         if op == "|":  return int(left) | int(right)
@@ -1629,7 +1688,6 @@ class Interpreter(Visitor):
 
     def visit_IsExpr(self, node) -> Any:
         """expr is int — runtime type check, returns bool."""
-        from ast_nodes import IsExpr
         value = self.visit(node.expr)
         t = node.check_type
         if t == "nil":    return value is None
@@ -1639,7 +1697,23 @@ class Interpreter(Visitor):
         if t == "bool":   return isinstance(value, bool)
         if t == "array":  return isinstance(value, list)
         if t == "dict":   return isinstance(value, dict) and "_variant" not in value
-        # Struct name check
+        if t == "function": return isinstance(value, InScriptFunction) or callable(value)
+        if t == "range":  return isinstance(value, InScriptRange)
+        # Struct instance name check: p is P
+        if isinstance(value, InScriptInstance):
+            if value.struct_name == t:
+                return True
+            # Also check inheritance chain
+            try:
+                decl = self._env.get(value.struct_name, 0)
+                while decl and hasattr(decl, 'parent_name') and decl.parent_name:
+                    if decl.parent_name == t:
+                        return True
+                    try: decl = self._env.get(decl.parent_name, 0)
+                    except: break
+            except: pass
+            return False
+        # Dict with _type field (legacy struct format)
         if isinstance(value, dict) and value.get("_type") == t:
             return True
         return False
@@ -2074,18 +2148,23 @@ class Interpreter(Visitor):
             result.append(template[pos:m.start()])
             inner = m.group(1).strip()
 
-            # Split off format spec: {expr:spec}  — but only split on the LAST colon
-            # that isn't part of a ternary/slice/dict-literal inside the expr.
-            # Simple heuristic: if inner contains ':' not inside brackets, split there.
+            # Split off format spec: {expr:spec}
+            # Key: only split on ':' that is NOT inside brackets AND NOT after '?'
+            # (ternary x ? a : b uses ':' but it's not a format spec)
             fmt_spec = None
             depth = 0
+            ternary_depth = 0
             split_at = -1
             for i, ch in enumerate(inner):
                 if ch in '([{': depth += 1
                 elif ch in ')]}': depth -= 1
+                elif ch == '?' and depth == 0: ternary_depth += 1
                 elif ch == ':' and depth == 0:
-                    split_at = i
-                    break
+                    if ternary_depth > 0:
+                        ternary_depth -= 1  # this ':' closes the ternary
+                    else:
+                        split_at = i
+                        break
             if split_at > 0:
                 expr_src = inner[:split_at].strip()
                 fmt_spec = inner[split_at+1:].strip()
@@ -2156,8 +2235,9 @@ class Interpreter(Visitor):
         # BUG-08 fix: short-circuit when key is absent from a dict
         if isinstance(obj, dict) and node.member not in obj:
             # Check it's also not a built-in method name before short-circuiting
-            _dict_methods = {"get","set","has","remove","keys","values","items",
-                             "clear","length","len"}
+            _dict_methods = {"get","set","has","has_key","has_value","remove","pop",
+                             "keys","values","items","clear","length","len",
+                             "update","merge","is_empty","copy","to_pairs"}
             if node.member not in _dict_methods:
                 return None
         try:
@@ -2386,6 +2466,42 @@ def _get_attr(obj: Any, name: str, line: int, interp: Interpreter) -> Any:
     if isinstance(obj, _StubNamespace):
         return _StubMethod(obj.name, name)
 
+    # Primitive type methods: int, float, bool
+    if isinstance(obj, bool):
+        methods = {
+            "to_string": lambda: "true" if obj else "false",
+            "to_int":    lambda: int(obj),
+        }
+        if name in methods: return methods[name]
+
+    if isinstance(obj, int) and not isinstance(obj, bool):
+        methods = {
+            "to_string": lambda: str(obj),
+            "to_float":  lambda: float(obj),
+            "to_bool":   lambda: obj != 0,
+            "abs":       lambda: abs(obj),
+            "is_even":   lambda: obj % 2 == 0,
+            "is_odd":    lambda: obj % 2 != 0,
+            "clamp":     lambda lo, hi: max(lo, min(hi, obj)),
+        }
+        if name in methods: return methods[name]
+
+    if isinstance(obj, float):
+        import math as _math
+        methods = {
+            "to_string": lambda: str(obj) if not obj.is_integer() else f"{int(obj)}.0",
+            "to_int":    lambda: int(obj),
+            "to_bool":   lambda: obj != 0.0,
+            "abs":       lambda: abs(obj),
+            "floor":     lambda: int(_math.floor(obj)),
+            "ceil":      lambda: int(_math.ceil(obj)),
+            "round":     lambda n=0: round(obj, int(n)),
+            "is_nan":    lambda: _math.isnan(obj),
+            "is_inf":    lambda: _math.isinf(obj),
+            "clamp":     lambda lo, hi: max(lo, min(hi, obj)),
+        }
+        if name in methods: return methods[name]
+
     interp._error(f"Cannot access attribute '{name}' on {type(obj).__name__}", line)
 
 
@@ -2443,9 +2559,20 @@ def _list_method(lst, name, interp, line):
         return [x for x in lst
                 if _is_truthy(interp._call_function(fn, [x], [None], line)
                               if isinstance(fn, InScriptFunction) else fn(x))]
-    def reduce_fn(init, fn):
-        acc = init
-        for x in lst:
+    def reduce_fn(fn_or_init, fn=None):
+        # Support: reduce(fn) — no initial value, use first element
+        # Support: reduce(init, fn) — with initial value
+        if fn is None:
+            # reduce(fn) — first arg IS the function
+            fn = fn_or_init
+            if not lst:
+                return None
+            acc = lst[0]
+            items = lst[1:]
+        else:
+            acc = fn_or_init
+            items = lst
+        for x in items:
             acc = interp._call_function(fn, [acc, x], [None, None], line) \
                   if isinstance(fn, InScriptFunction) else fn(acc, x)
         return acc
@@ -2525,6 +2652,13 @@ def _list_method(lst, name, interp, line):
         "any": any_fn, "all": all_fn, "each": each_fn, "sum": sum_fn,
         "min_by": min_by, "max_by": max_by,
         "group_by": group_by_fn, "unique": unique_fn,
+        "sorted":   lambda key=None: sorted(lst, key=(lambda x: interp._call_function(key,[x],[None],line) if isinstance(key, InScriptFunction) else (key(x) if key else x)) if key else None),
+        "flatten":  lambda: [y for x in lst for y in (x if isinstance(x, list) else [x])],
+        "is_empty": lambda: len(lst) == 0,
+        "includes": lambda v: v in lst,
+        "chunk":    lambda n: [lst[i:i+int(n)] for i in range(0, len(lst), int(n))],
+        "take":     lambda n: lst[:int(n)],
+        "skip":     lambda n: lst[int(n):],
         "length": len(lst), "len": len(lst),   # as properties
     }
     if name in methods:
@@ -2557,21 +2691,37 @@ def _dict_method(d, name, interp, line):
     def get(k, default=None): return d.get(k, default)
     def set_(k, v): d[k] = v
     def has(k):     return k in d
+    def has_key(k): return k in d          # alias for has
+    def has_value(v): return v in d.values()
     def remove(k):
         if k in d: del d[k]
-    def keys():     return [k for k in d.keys() if not k.startswith("_")]
-    def values():   return [v for k,v in d.items() if not k.startswith("_")]
-    def items():    return [[k,v] for k,v in d.items() if not k.startswith("_")]
+    def pop_(k, default=None): return d.pop(k, default)
+    def keys():     return [k for k in d.keys() if not str(k).startswith("_")]
+    def values():   return [v for k,v in d.items() if not str(k).startswith("_")]
+    def items():    return [[k,v] for k,v in d.items() if not str(k).startswith("_")]
     def clear():    d.clear()
+    def update(other):
+        if isinstance(other, dict): d.update({k: v for k,v in other.items() if not str(k).startswith("_")})
+        return None
+    def merge(other):
+        result = {k: v for k,v in d.items() if not str(k).startswith("_")}
+        if isinstance(other, dict): result.update({k: v for k,v in other.items() if not str(k).startswith("_")})
+        return result
+    def is_empty(): return len([k for k in d.keys() if not str(k).startswith("_")]) == 0
+    def copy():     return {k: v for k,v in d.items()}
+    def to_pairs(): return [[k, v] for k,v in d.items() if not str(k).startswith("_")]
 
     methods = {
-        "get": get, "set": set_, "has": has, "remove": remove,
+        "get": get, "set": set_, "has": has, "has_key": has_key,
+        "has_value": has_value, "remove": remove, "pop": pop_,
         "keys": keys, "values": values, "items": items, "clear": clear,
+        "update": update, "merge": merge, "is_empty": is_empty,
+        "copy": copy, "to_pairs": to_pairs,
         "length": len(d), "len": len(d),
     }
     if name in methods:
         return methods[name]
-    interp._error(f"Dict has no method '{name}': available keys are {list(d.keys())}", line)
+    interp._error(f"Dict has no method '{name}'", line)
 
 
 def _string_method(s, name, interp, line):

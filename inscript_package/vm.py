@@ -108,28 +108,52 @@ def _ins_str(v):
     if v is True:    return "true"
     if v is False:   return "false"
     if isinstance(v, float):
-        if v == int(v) and abs(v)<1e15: return str(int(v))
+        import math as _m
+        if _m.isinf(v): return "Infinity" if v > 0 else "-Infinity"
+        if _m.isnan(v): return "NaN"
+        if v == int(v) and abs(v)<1e15: return f"{int(v)}.0"
         return str(v)
     if isinstance(v, VMInstance):
         desc = v._desc or {}
         ops  = desc.get('__operators__', {})
         fn   = ops.get('str')
         if fn is not None:
-            # Lazy-import VM to call the overload
             from vm import VM as _VM
-            _vm = _VM.__new__(_VM)
-            _vm._globals = {}
-            cl = VMClosure(fn, [])
-            cl._self = v
+            _vm = _VM.__new__(_VM); _vm._globals = {}
+            cl = VMClosure(fn, []); cl._self = v
             result = _vm._do_call(cl, [], v)
             return _ins_str(result)
         return repr(v)
-    if isinstance(v, VMEnumVariant):return f"{v.enum_name}.{v.name}"
-    if isinstance(v, VMClosure):    return f"<fn {v.proto.name}>"
-    if isinstance(v, list):  return '['+', '.join(_ins_str(x) for x in v)+']'
+    if isinstance(v, VMEnumVariant): return f"{v.enum_name}.{v.name}"
+    if isinstance(v, VMClosure):     return f"<fn {v.proto.name}>"
+    if isinstance(v, list):
+        return '['+', '.join(_ins_repr(x) for x in v)+']'
     if isinstance(v, dict):
-        return '{'+', '.join(f'{_ins_str(k)}: {_ins_str(val)}' for k,val in v.items())+'}'
+        # Result types
+        if '_ok' in v:  return f"Ok({_ins_str(v['_ok'])})"
+        if '_err' in v: return f"Err({_ins_repr(v['_err'])})"
+        # ADT enum
+        if '_variant' in v and '_enum' in v:
+            fields = {k: val for k, val in v.items() if not k.startswith('_')}
+            if fields:
+                fs = ', '.join(f"{k}: {_ins_str(val)}" for k,val in fields.items())
+                return f"{v['_variant']}({fs})"
+            return f"{v['_enum']}::{v['_variant']}"
+        # Plain dict — InScript double-quote style
+        pairs = ', '.join(
+            f'"{k}": {_ins_repr(val)}' if isinstance(k, str)
+            else f'{_ins_repr(k)}: {_ins_repr(val)}'
+            for k, val in v.items() if not str(k).startswith('_')
+        )
+        return '{' + pairs + '}'
     return str(v)
+
+def _ins_repr(v):
+    """Like _ins_str but wraps strings in quotes for nested display."""
+    if isinstance(v, str):
+        escaped = v.replace('\\', '\\\\').replace('"', '\\"')
+        return f'"{escaped}"'
+    return _ins_str(v)
 
 def _ins_len(v):
     if isinstance(v,(list,dict,str)): return len(v)
@@ -369,6 +393,59 @@ class VM:
         g['Error']  = lambda msg="": RuntimeError(str(msg))
         g['__import_module__'] = self._import_module
 
+        # ── Extended builtins matching interpreter ──────────────────────────
+        # string() / typeof()
+        g['string']    = _ins_str
+        g['stringify'] = _ins_str   # deprecated alias
+        g['typeof']    = _type_name
+        # Array helpers
+        g['push']      = lambda lst, val: (lst.append(val), lst)[1]
+        g['pop']       = lambda lst: lst.pop() if lst else None
+        g['fill']      = lambda n_or_lst, val: ([val]*int(n_or_lst) if isinstance(n_or_lst,int)
+                         else [val]*len(n_or_lst))
+        g['flatten']   = lambda lst: [y for x in lst for y in (x if isinstance(x,list) else [x])]
+        g['unique']    = lambda lst: list(dict.fromkeys(lst))
+        g['flatten_deep'] = lambda lst: [y for x in lst for y in (flatten_deep(x) if isinstance(x,list) else [x])]
+        g['sort']      = lambda lst, key=None: (lst.sort(key=key) or lst)
+        g['concat']    = lambda *lists: [x for lst in lists for x in lst]
+        # Dict helpers
+        g['entries']   = lambda d: ([[k,v] for k,v in d.items() if not str(k).startswith('_')]
+                         if isinstance(d,dict) else
+                         [[k,v] for k,v in d.fields.items() if not callable(v)] if hasattr(d,'fields') else [])
+        g['dict_items']= g['entries']  # deprecated alias
+        g['merge']     = lambda a,b: {**a,**b}
+        # Type checks
+        g['is_nil']    = lambda v: v is None
+        g['is_null']   = lambda v: v is None
+        g['is_int']    = lambda v: isinstance(v,int) and not isinstance(v,bool)
+        g['is_float']  = lambda v: isinstance(v,float)
+        g['is_string'] = lambda v: isinstance(v,str)
+        g['is_str']    = lambda v: isinstance(v,str)
+        g['is_bool']   = lambda v: isinstance(v,bool)
+        g['is_array']  = lambda v: isinstance(v,list)
+        g['is_dict']   = lambda v: isinstance(v,dict) and '_variant' not in v
+        g['is_fn']     = lambda v: callable(v)
+        # Assertions
+        g['assert']     = lambda cond, msg="Assertion failed": (None if cond else (_ for _ in ()).throw(RuntimeError(str(msg))))
+        g['panic']      = lambda msg="panic": (_ for _ in ()).throw(RuntimeError(str(msg)))
+        g['unreachable']= lambda msg="unreachable": (_ for _ in ()).throw(RuntimeError(str(msg)))
+        # Result types
+        g['Ok']        = lambda v=None: {'_ok': v}
+        g['Err']       = lambda v=None: {'_err': v}
+        # Math extras
+        g['PI']        = _m.pi; g['E']=_m.e; g['TAU']=_m.tau
+        g['INF']       = float('inf'); g['NAN']=float('nan')
+        g['clamp']     = lambda v,lo,hi: max(lo,min(hi,v))
+        g['map_range'] = lambda v,a1,b1,a2,b2: a2+(v-a1)/(b1-a1)*(b2-a2) if b1!=a1 else a2
+        g['lerp']      = lambda a,b,t: a+(b-a)*t
+        g['sign']      = lambda v: (1 if v>0 else -1 if v<0 else 0)
+        # String helpers
+        g['char_code']  = lambda s: ord(s[0]) if s else 0
+        g['from_code']  = lambda n: chr(int(n))
+        # Collection
+        g['zip']        = lambda *a: [list(x) for x in zip(*a)]
+        g['enumerate']  = lambda it,s=0: [[i,v] for i,v in enumerate(it,s)]
+
     def _import_module(self, name):
         from stdlib import load_module
         try: return VMModule(name, load_module(name))
@@ -533,6 +610,22 @@ class VM:
 
                 # ── logical ───────────────────────────────────────────────────
                 elif op==Op.NOT: W(a, not _truthy(R(b)))
+
+                # ── membership ────────────────────────────────────────────────
+                elif op==Op.CONTAINS:
+                    lv, rv = R(b), R(c)
+                    if isinstance(rv, str):   W(a, str(lv) in rv)
+                    elif isinstance(rv, dict): W(a, lv in rv)
+                    elif isinstance(rv, list): W(a, lv in rv)
+                    elif hasattr(rv, '__iter__'): W(a, lv in rv)
+                    else: W(a, False)
+                elif op==Op.NOT_CONTAINS:
+                    lv, rv = R(b), R(c)
+                    if isinstance(rv, str):   W(a, str(lv) not in rv)
+                    elif isinstance(rv, dict): W(a, lv not in rv)
+                    elif isinstance(rv, list): W(a, lv not in rv)
+                    elif hasattr(rv, '__iter__'): W(a, lv not in rv)
+                    else: W(a, True)
 
                 # ── string ────────────────────────────────────────────────────
                 elif op==Op.CONCAT: W(a, str(R(b))+str(R(c)))

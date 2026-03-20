@@ -24,6 +24,7 @@ class Op(IntEnum):
     MOD=auto(); POW=auto(); IDIV=auto(); NEG=auto()
     BAND=auto(); BOR=auto(); BXOR=auto(); BNOT=auto(); BLSHIFT=auto(); BRSHIFT=auto()
     EQ=auto(); NEQ=auto(); LT=auto(); LTE=auto(); GT=auto(); GTE=auto()
+    CONTAINS=auto(); NOT_CONTAINS=auto()
     NOT=auto()
     CONCAT=auto(); INTERP=auto()
     JUMP=auto(); JUMP_IF_FALSE=auto(); JUMP_IF_TRUE=auto(); JUMP_IF_NIL=auto()
@@ -244,6 +245,7 @@ class Compiler:
         elif isinstance(node, IfStmt):      self._if(node)
         elif isinstance(node, WhileStmt):   self._while(node)
         elif isinstance(node, ForInStmt):   self._for_in(node)
+        elif isinstance(node, DoWhileStmt): self._do_while(node)
 
         elif isinstance(node, ReturnStmt):
             if node.value: r = self._expr(node.value); self._e(Op.RETURN, r); self._free(r)
@@ -321,7 +323,45 @@ class Compiler:
         for s in (body.body if isinstance(body, BlockStmt) else [body]): self._stmt(s)
         self._scope.end_block()
         self._e(Op.JUMP, 0, ls - len(self._scope.proto.code) - 1)
-        self._patch_b(jx)
+        # jx points to after loop. Else handling:
+        # - when condition false → run else, then end
+        # - break → skip else, jump to end
+        # - natural exit (condition became false mid-loop is same as condition-false entry)
+        here_after_loop = len(self._scope.proto.code)
+        if getattr(node, 'else_branch', None):
+            # jx jumps here (to else block) on condition false
+            self._patch_b(jx)
+            # break patches need to skip the else — insert a skip jump that break goes to
+            # but that means break patches point here too, which would run else...
+            # CORRECT approach: break jumps OVER the else; jx falls INTO else
+            # We need two different targets. Use a skip-jump before else:
+            # Structure: ... | JUMP_back | [jx target=here] | JUMP_skip | else_block | [skip target] | end
+            # But break already patches to here_after_loop which is before JUMP_skip...
+            # Simplest: patch break to after else, jx to else start
+            # Compile else first to know its size, then patch
+            self._scope.begin_block(); self._stmt(node.else_branch); self._scope.end_block()
+            end_pos = len(self._scope.proto.code)
+            # Now patch break to end (past else)
+            for j in self._break_patches.pop(): self._scope.proto.code[j].b = end_pos-j-1
+        else:
+            self._patch_b(jx)
+            for j in self._break_patches.pop(): self._scope.proto.code[j].b = here_after_loop-j-1
+        for j in self._cont_patches.pop():  self._scope.proto.code[j].b = ls-j-1
+        self._loop_starts.pop()
+
+    # ── do-while ──────────────────────────────────────────────────────────────
+    def _do_while(self, node):
+        from ast_nodes import BlockStmt
+        ls = len(self._scope.proto.code)
+        self._loop_starts.append(ls)
+        self._break_patches.append([]); self._cont_patches.append([])
+        self._scope.begin_block()
+        body = node.body
+        for s in (body.body if isinstance(body, BlockStmt) else [body]): self._stmt(s)
+        self._scope.end_block()
+        cond = self._expr(node.condition)
+        # Jump back to start if condition true
+        self._e(Op.JUMP_IF_TRUE, cond, ls - len(self._scope.proto.code) - 1); self._free(cond)
         here = len(self._scope.proto.code)
         for j in self._break_patches.pop(): self._scope.proto.code[j].b = here-j-1
         for j in self._cont_patches.pop():  self._scope.proto.code[j].b = ls-j-1
@@ -339,7 +379,14 @@ class Compiler:
         jx   = self._e(Op.ITER_NEXT, vr, ir, 0)
         self._scope.begin_block()
         vn = node.var_name
-        if isinstance(vn, list):
+        extra_vars = getattr(node, '_extra_vars', [])
+        if extra_vars:
+            # Multi-var destructure: for k, v in entries(d)
+            all_vars = [vn] + extra_vars
+            for i, n in enumerate(all_vars):
+                lr = self._scope.add_local(n); ir2 = self._alloc()
+                self._e(Op.LOAD_INT, ir2, i); self._e(Op.GET_INDEX, lr, vr, ir2); self._free(ir2)
+        elif isinstance(vn, list):
             for i, n in enumerate(vn):
                 lr = self._scope.add_local(n); ir2 = self._alloc()
                 self._e(Op.LOAD_INT, ir2, i); self._e(Op.GET_INDEX, lr, vr, ir2); self._free(ir2)
@@ -349,12 +396,27 @@ class Compiler:
         for s in (body.body if isinstance(body, BlockStmt) else [body]): self._stmt(s)
         self._scope.end_block()
         self._e(Op.JUMP, 0, ls - len(self._scope.proto.code) - 1)
-        ep = len(self._scope.proto.code); self._patch_c(jx, ep-jx-1)
-        self._free(vr); self._free_to(t)
-        here = len(self._scope.proto.code)
-        for j in self._break_patches.pop(): self._scope.proto.code[j].b = here-j-1
-        for j in self._cont_patches.pop():  self._scope.proto.code[j].b = ls-j-1
-        self._loop_starts.pop()
+        # ep = where ITER_NEXT's 'done' jump should land
+        if getattr(node, 'else_branch', None):
+            # jx (ITER_NEXT done) → else block directly
+            # break → past else block
+            # Insert skip_jump for break BEFORE else, patch jx to AFTER skip_jump
+            skip_j = self._e(Op.JUMP, 0)    # break lands here → jumps past else
+            ep = len(self._scope.proto.code); self._patch_c(jx, ep-jx-1)  # jx → past skip_j (into else)
+            self._free(vr); self._free_to(t)
+            # Patch break to skip_j position (they jump over else)
+            for j in self._break_patches.pop(): self._scope.proto.code[j].b = (skip_j)-j-1
+            for j in self._cont_patches.pop():  self._scope.proto.code[j].b = ls-j-1
+            self._loop_starts.pop()
+            self._scope.begin_block(); self._stmt(node.else_branch); self._scope.end_block()
+            self._patch_b(skip_j)  # skip_j now jumps to here (past else)
+        else:
+            ep = len(self._scope.proto.code); self._patch_c(jx, ep-jx-1)
+            self._free(vr); self._free_to(t)
+            here = len(self._scope.proto.code)
+            for j in self._break_patches.pop(): self._scope.proto.code[j].b = here-j-1
+            for j in self._cont_patches.pop():  self._scope.proto.code[j].b = ls-j-1
+            self._loop_starts.pop()
 
     # ── fn decl ───────────────────────────────────────────────────────────────
     def _fn_decl(self, node):
@@ -495,7 +557,8 @@ class Compiler:
     _ARITH = {'+':Op.ADD,'-':Op.SUB,'*':Op.MUL,'/':Op.DIV,
               '%':Op.MOD,'**':Op.POW,'div':Op.IDIV,'//':Op.IDIV,'++':Op.CONCAT,
               '&':Op.BAND,'|':Op.BOR,'^':Op.BXOR,'<<':Op.BLSHIFT,'>>':Op.BRSHIFT}
-    _CMP   = {'==':Op.EQ,'!=':Op.NEQ,'<':Op.LT,'<=':Op.LTE,'>':Op.GT,'>=':Op.GTE}
+    _CMP   = {'==':Op.EQ,'!=':Op.NEQ,'<':Op.LT,'<=':Op.LTE,'>':Op.GT,'>=':Op.GTE,
+              'in':Op.CONTAINS,'not in':Op.NOT_CONTAINS}
 
     def _expr(self, node):
         dst = self._alloc()
