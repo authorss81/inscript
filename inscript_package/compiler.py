@@ -49,7 +49,7 @@ NIL_REG = 0xFFFF
 
 @dataclass
 class Instr:
-    op: Op; a: int = 0; b: int = 0; c: int = 0
+    op: Op; a: int = 0; b: int = 0; c: int = 0; line: int = 0
     def __repr__(self): return f"{self.op.name:<16} {self.a:5} {self.b:5} {self.c:5}"
 
 
@@ -172,7 +172,10 @@ class Compiler:
         self._cont_patches  = []
 
     # helpers
-    def _e(self, op, a=0, b=0, c=0): return self._scope.proto.emit(op, a, b, c)
+    def _e(self, op, a=0, b=0, c=0):
+        idx = self._scope.proto.emit(op, a, b, c)
+        self._scope.proto.code[idx].line = getattr(self, '_cur_line', 0)
+        return idx
     def _alloc(self): return self._scope.alloc()
     def _free(self, r): self._scope.free(r)
     def _free_to(self, t): self._scope.free_to(t)
@@ -221,6 +224,9 @@ class Compiler:
     # ── statements ────────────────────────────────────────────────────────────
     def _stmt(self, node):
         if node is None: return
+        # Track current source line for error reporting
+        if hasattr(node, 'line') and node.line:
+            self._cur_line = node.line
 
         if isinstance(node, ExprStmt):
             t = self._top(); r = self._expr(node.expr); self._free_to(t)

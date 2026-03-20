@@ -1099,6 +1099,8 @@ class Interpreter(Visitor):
                         variant_name = callee_node.name
                     elif isinstance(callee_node, NamespaceAccessExpr):
                         variant_name = callee_node.member
+                    elif isinstance(callee_node, GetAttrExpr):
+                        variant_name = callee_node.attr   # Shape.Circle → attr="Circle"
                     else:
                         variant_name = None
                     matched = variant_name == subject.get("_variant")
@@ -1109,6 +1111,9 @@ class Interpreter(Visitor):
                         for i, arg in enumerate(arm.pattern.args):
                             if isinstance(arg.value, IdentExpr) and i < len(field_vals):
                                 adt_bindings[arg.value.name] = field_vals[i][1]
+                            elif arg.name and arg.name in subject:
+                                # Named binding: case Circle(r: r) → bind r
+                                adt_bindings[arg.name] = subject[arg.name]
                 else:
                     # ── ADT namespace pattern: case Shape.Circle or case Direction.North
                     # The pattern node is a NamespaceAccessExpr or GetAttrExpr
@@ -1875,6 +1880,16 @@ class Interpreter(Visitor):
         # Native Python function
         if callable(callee) and not isinstance(callee, (InScriptFunction, type)):
             try:
+                # Build kwargs from named args for functions that support them (e.g. str.format)
+                named = {arg_names[i]: arg_vals[i]
+                         for i in range(len(arg_names)) if arg_names[i] is not None}
+                pos   = [arg_vals[i] for i in range(len(arg_names)) if arg_names[i] is None]
+                if named:
+                    try:
+                        return callee(*pos, **named)
+                    except TypeError:
+                        # Function doesn't accept kwargs (e.g. ADT constructors) — fall back to positional
+                        return callee(*arg_vals)
                 return callee(*arg_vals)
             except InScriptRuntimeError:
                 raise
@@ -1962,6 +1977,10 @@ class Interpreter(Visitor):
 
         # Register struct methods as bound functions
         inst = InScriptInstance(decl.name, fields)
+        # Store private field set for access control
+        priv_fields = {f.name for f in decl.fields if getattr(f, 'is_priv', False)}
+        if priv_fields:
+            inst._private_fields = priv_fields
         for method in decl.methods:
             bound = self._make_fn(
                 name    = method.name,
@@ -2099,6 +2118,9 @@ class Interpreter(Visitor):
             print(f"\033[33m  Warning: struct '{decl.name}' missing required field(s) {names} — initialised to nil\033[0m")
 
         inst = InScriptInstance(decl.name, fields)
+        priv_fields = {f.name for f in decl.fields if getattr(f, 'is_priv', False)}
+        if priv_fields:
+            inst._private_fields = priv_fields
         for method in decl.methods:
             bound = self._make_fn(method.name, method.params, method.body, self._env)
             inst.fields[method.name] = bound
@@ -2335,14 +2357,21 @@ class Interpreter(Visitor):
         return result
 
     def visit_DictComprehensionExpr(self, node) -> Any:
-        """{k: v for var in iterable if cond}"""
+        """{k: v for var in iterable if cond} or {k: v for k,v in entries(d) if cond}"""
         iterable = self.visit(node.iterable)
         if isinstance(iterable, InScriptRange):
             iterable = list(iterable)
+        extra_vars = getattr(node, '_extra_vars', [])
         result = {}
         for item in iterable:
             self._push("dict_comprehension")
-            self._env.define(node.var, item)
+            if extra_vars:
+                # Multi-var destructure: for k,v in entries(d)
+                all_vars = [node.var] + extra_vars
+                for i, vname in enumerate(all_vars):
+                    self._env.define(vname, item[i] if isinstance(item, list) and i < len(item) else None)
+            else:
+                self._env.define(node.var, item)
             try:
                 if node.condition is None or _is_truthy(self.visit(node.condition)):
                     k = self.visit(node.key_expr)
@@ -2383,12 +2412,34 @@ def _get_attr(obj: Any, name: str, line: int, interp: Interpreter) -> Any:
 
     # InScript instance (user struct)
     if isinstance(obj, InScriptInstance):
+        # Enforce priv field read access
+        priv = getattr(obj, '_private_fields', set())
+        if name in priv:
+            in_method = False
+            try:
+                self_val = interp._env.get('self', 0)
+                if self_val is obj:
+                    in_method = True
+            except Exception:
+                pass
+            if not in_method:
+                interp._error(
+                    f"Cannot read private field '{name}' of '{obj.struct_name}' "
+                    f"outside the struct", line)
         # Check property getters BEFORE direct field access
         # Built-in struct methods available on every instance
         if name == "copy":
-            import copy as _copy
+            import copy as _deepcopy_mod
             def _struct_copy():
-                return InScriptInstance(obj.struct_name, _copy.copy(obj.fields))
+                new_fields = {}
+                for k, v in obj.fields.items():
+                    if isinstance(v, InScriptFunction):
+                        new_fields[k] = v
+                    elif isinstance(v, (list, dict)):
+                        new_fields[k] = _deepcopy_mod.deepcopy(v)
+                    else:
+                        new_fields[k] = v
+                return InScriptInstance(obj.struct_name, new_fields)
             return _struct_copy
         if name == "to_dict":
             def _struct_to_dict():
@@ -2507,6 +2558,21 @@ def _get_attr(obj: Any, name: str, line: int, interp: Interpreter) -> Any:
 
 def _set_attr(obj: Any, name: str, val: Any, line: int, interp=None) -> None:
     if isinstance(obj, InScriptInstance):
+        # Enforce priv field access control
+        priv = getattr(obj, '_private_fields', set())
+        if name in priv and interp:
+            # Check if we're inside a method of this struct (self is bound)
+            in_method = False
+            try:
+                self_val = interp._env.get('self', 0)
+                if self_val is obj:
+                    in_method = True
+            except Exception:
+                pass
+            if not in_method:
+                interp._error(
+                    f"Cannot access private field '{name}' of '{obj.struct_name}' "
+                    f"from outside the struct", line)
         # Check property setters first
         if interp:
             try:
@@ -2545,7 +2611,13 @@ def _list_method(lst, name, interp, line):
     def remove(v):    lst.remove(v) if v in lst else None
     def contains(v):  return v in lst
     def reverse():    lst.reverse()
-    def sort():       lst.sort(key=lambda x: (str(type(x)), x) if not isinstance(x, (int,float)) else (0, x))
+    def sort(key=None):
+        if key is not None and isinstance(key, InScriptFunction):
+            lst.sort(key=lambda x: interp._call_function(key, [x], [None], line))
+        elif key is not None and callable(key):
+            lst.sort(key=key)
+        else:
+            lst.sort(key=lambda x: (str(type(x)), x) if not isinstance(x, (int,float,str)) else x)
     def clear():      lst.clear()
     def first():      return lst[0] if lst else None
     def last():       return lst[-1] if lst else None

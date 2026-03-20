@@ -111,7 +111,8 @@ def _ins_str(v):
         import math as _m
         if _m.isinf(v): return "Infinity" if v > 0 else "-Infinity"
         if _m.isnan(v): return "NaN"
-        if v == int(v) and abs(v)<1e15: return f"{int(v)}.0"
+        # Keep integer-valued floats as integers for display (3.0 → "3")
+        if v == int(v) and abs(v) < 1e15: return str(int(v))
         return str(v)
     if isinstance(v, VMInstance):
         desc = v._desc or {}
@@ -499,7 +500,7 @@ class VM:
                 elif op==Op.LOAD_GLOBAL:
                     _gn = names[b]
                     if _gn not in self._globals:
-                        raise InScriptRuntimeError(f"Undefined variable '{_gn}'", 0, 0, "")
+                        raise InScriptRuntimeError(f"Undefined variable '{_gn}'", ins.line, 0, "")
                     W(a, self._globals[_gn])
                 elif op==Op.STORE_GLOBAL: self._globals[names[a]] = R(b)
                 elif op==Op.LOAD_UPVAL: W(a, frame.closure.upvals[b].value)
@@ -524,7 +525,7 @@ class VM:
                     av,bv=R(b),R(c)
                     if isinstance(av,VMInstance): W(a,self._op_overload(av,'/',bv))
                     else:
-                        if bv==0: raise InScriptRuntimeError("division by zero",0,0,"")
+                        if bv==0: raise InScriptRuntimeError("division by zero",ins.line,0,"")
                         W(a, av/bv)
                 elif op==Op.MOD:
                     av,bv=R(b),R(c)

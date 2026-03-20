@@ -818,11 +818,11 @@ class Parser:
     def parse_struct_field(self) -> StructField:
         line, col = self._pos()
         # Accept optional access modifiers: pub, priv (stored but not enforced)
-        is_pub = False
+        is_pub = False; is_priv = False
         if self.check(TT.PUB):
             self.advance(); is_pub = True
         elif self.check(TT.IDENT) and self.current.value in ("priv", "private", "protected"):
-            self.advance()
+            self.advance(); is_priv = True
         name = self.expect_ident("Expected field name")
         self.expect(TT.COLON, "Expected ':' after field name")
 
@@ -852,7 +852,7 @@ class Parser:
             default = self.parse_expr()
         self.match(TT.SEMICOLON)
         return StructField(name=name, type_ann=type_ann, default=default,
-                           line=line, col=col)
+                           is_priv=is_priv, line=line, col=col)
 
     # ─────────────────────────────────────────────
     # SCENE DECLARATION
@@ -1776,6 +1776,10 @@ class Parser:
         if tok.type == TT.TRY:
             return self._parse_try_expr()
 
+        # match expr { ... } — match as expression (returns value of matched arm)
+        if tok.type == TT.MATCH:
+            return self.parse_match()
+
         # Identifier, keyword-ident, struct init, namespace access
         if tok.type == TT.IDENT:
             # comptime { ... } — evaluated immediately at runtime (dynamic interpreter)
@@ -2057,8 +2061,14 @@ class Parser:
                 if isinstance(key, StringLiteralExpr):
                     key = IdentExpr(name=key.value, line=key.line, col=key.col)
                 self.advance()  # consume 'for'
+                # Support multi-var: for k,v in entries(d)
                 var = self.current.value
-                self.advance()  # consume var name
+                self.advance()  # consume first var name
+                extra_vars = []
+                while self.check(TT.COMMA):
+                    self.advance()  # consume ','
+                    extra_vars.append(self.current.value)
+                    self.advance()
                 if not self.check(TT.IN):
                     self._error("Expected 'in' after loop variable in dict comprehension")
                 self.advance()  # consume 'in'
@@ -2069,9 +2079,12 @@ class Parser:
                     condition = self.parse_expr()
                 self.expect(TT.RBRACE, "Expected '}' to close dict comprehension")
                 from ast_nodes import DictComprehensionExpr
-                return DictComprehensionExpr(key_expr=key, val_expr=value,
+                node = DictComprehensionExpr(key_expr=key, val_expr=value,
                                              var=var, iterable=iterable,
                                              condition=condition, line=line, col=col)
+                if extra_vars:
+                    node._extra_vars = extra_vars
+                return node
 
             pairs.append((key, value))
             while self.match(TT.COMMA):

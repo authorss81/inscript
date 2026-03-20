@@ -260,6 +260,7 @@ class StructField(Node):
     name:     str
     type_ann: TypeAnnotation
     default:  Optional[Node] = None
+    is_priv:  bool = False   # pub/priv modifier
 
 @dataclass
 class StructDecl(Node):

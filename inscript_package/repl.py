@@ -39,7 +39,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 HISTORY_FILE = Path.home() / ".inscript" / "history"
 HISTORY_FILE.parent.mkdir(parents=True, exist_ok=True)
-VERSION = "1.0.8"
+VERSION = "1.0.9"
 
 # ── ANSI colours ──────────────────────────────────────────────────────────────
 def _c(code, text):
@@ -497,7 +497,7 @@ class EnhancedREPL:
 
         def walk(node):
             if node is None: return
-            # Check function declarations for missing returns
+            # Check function declarations for missing returns + async + duplicate names
             if isinstance(node, FunctionDecl):
                 ret = getattr(node, 'return_type', None)
                 if ret is not None and hasattr(ret, 'name') and ret.name not in ('void', 'nil', 'any', ''):
@@ -514,7 +514,18 @@ class EnhancedREPL:
                         f"use the 'thread' module for real concurrency\033[0m",
                         file=_sys.stderr
                     )
-            # Check call arg counts
+                # Check duplicate definition
+                try:
+                    existing = self._interp._env.get(node.name, 0)
+                    if isinstance(existing, InScriptFunction) and not existing.is_native:
+                        print(
+                            f"\033[33m[InScript] Warning: '{node.name}' redefines an existing "
+                            f"function (previous definition will be shadowed)\033[0m",
+                            file=_sys.stderr
+                        )
+                except Exception:
+                    pass
+            # Check call arg counts + type mismatches
             if isinstance(node, CallExpr) and isinstance(node.callee, IdentExpr):
                 fname = node.callee.name
                 try:
@@ -536,6 +547,21 @@ class EnhancedREPL:
                         elif n_args > n_total:
                             print(f"\033[33m[InScript] Warning: '{fname}' expects at most "
                                   f"{n_total} arg(s), got {n_args}\033[0m", file=_sys.stderr)
+                    # Type mismatch check: compare annotated param types with literal arg types
+                    _TYPE_MAP = {
+                        'IntLiteralExpr': 'int', 'FloatLiteralExpr': 'float',
+                        'StringLiteralExpr': 'string', 'BoolLiteralExpr': 'bool',
+                        'NullLiteralExpr': 'nil', 'ArrayLiteralExpr': 'array',
+                        'DictLiteralExpr': 'dict',
+                    }
+                    for i, (arg, param) in enumerate(zip(node.args, params)):
+                        ann = getattr(getattr(param, 'type_ann', None), 'name', None)
+                        if not ann or ann in ('any', '', None):
+                            continue
+                        arg_type = _TYPE_MAP.get(type(arg.value).__name__)
+                        if arg_type and arg_type != ann:
+                            print(f"\033[33m[InScript] Warning: '{fname}' arg {i+1} expects "
+                                  f"'{ann}' but got '{arg_type}'\033[0m", file=_sys.stderr)
             # Recurse
             for attr in vars(node).values():
                 if hasattr(attr, '__class__') and hasattr(attr, 'line'):
