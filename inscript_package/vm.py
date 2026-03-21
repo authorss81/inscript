@@ -29,9 +29,11 @@ class VMClosure:
     def __repr__(self): return f"<fn {self.proto.name}>"
 
 class VMInstance:
-    __slots__ = ('struct_name','fields','_desc')
+    __slots__ = ('struct_name','fields','_desc','_super_self','_priv_fields')
     def __init__(self, name, fields, desc):
         self.struct_name = name; self.fields = fields; self._desc = desc
+        self._super_self = None   # set when used as a super proxy
+        self._priv_fields = set() # set to frozenset of priv field names from __priv__
     def __repr__(self):
         items = ', '.join(f'{k}:{v!r}' for k, v in list(self.fields.items())[:4])
         return f"{self.struct_name}{{{items}}}"
@@ -112,7 +114,7 @@ def _ins_str(v):
         import math as _m
         if _m.isinf(v): return "Infinity" if v > 0 else "-Infinity"
         if _m.isnan(v): return "NaN"
-        # Keep integer-valued floats as integers for display (3.0 → "3")
+        # Integer-valued floats display without decimal for cleaner output (3.0 → "3")
         if v == int(v) and abs(v) < 1e15: return str(int(v))
         return str(v)
     if isinstance(v, VMInstance):
@@ -282,7 +284,12 @@ def _list_method(obj,name,vm):
             'remove':   lambda: obj.remove(a[0]) or None,
             'index':    lambda: obj.index(a[0]) if a[0] in obj else -1,
             'index_of': lambda: obj.index(a[0]) if a[0] in obj else -1,
-            'count':    lambda: obj.count(a[0]) if a else len(obj),
+            'count':    lambda: (
+                            len(obj) if not a
+                            else sum(1 for x in obj if vm.call(a[0],[x]))
+                            if isinstance(a[0], VMClosure)
+                            else obj.count(a[0])
+                        ),
             'sort':     lambda: (obj.sort(key=lambda x:vm.call(a[0],[x])) if a else obj.sort()) or None,
             'sorted':   lambda: sorted(obj, key=lambda x:vm.call(a[0],[x])) if a else sorted(obj),
             'reverse':  lambda: obj.reverse() or None,
@@ -356,7 +363,15 @@ def _str_method(obj,name,vm):
             'is_alpha':   lambda: obj.isalpha(),
             'is_numeric': lambda: obj.isnumeric(),
             'is_alnum':   lambda: obj.isalnum(),
-            'bytes':      lambda: list(obj.encode()),
+            'bytes':      lambda: list(obj.encode('utf-8')),
+            'encode':     lambda: list(obj.encode(a[0] if a else 'utf-8')),
+            'lines':      lambda: obj.splitlines(),
+            'title':      lambda: obj.title(),
+            'capitalize': lambda: obj.capitalize(),
+            'strip':      lambda: obj.strip(),
+            'lstrip':     lambda: obj.lstrip(),
+            'rstrip':     lambda: obj.rstrip(),
+            'center':     lambda: obj.center(int(a[0]), a[1][0] if len(a)>1 and a[1] else ' '),
         }.get(name)
         return m() if m else _NOTFOUND
     if name in ('length','len'): return len(obj)
@@ -364,15 +379,32 @@ def _str_method(obj,name,vm):
 
 def _dict_method(obj,name,vm):
     def b(*a):
+        _pub = lambda d: {k:v for k,v in d.items() if not str(k).startswith('_')}
         m = {
-            'get':     lambda: obj.get(a[0],a[1] if len(a)>1 else None),
-            'has':     lambda: a[0] in obj if a else False,
-            'set':     lambda: obj.update({a[0]:a[1]}) or None,
-            'delete':  lambda: obj.pop(a[0],None),
-            'keys':    lambda: list(obj.keys()),
-            'values':  lambda: list(obj.values()),
-            'entries': lambda: [[k,v] for k,v in obj.items()],
-            'merge':   lambda: {**obj,**(a[0] if a else {})},
+            'get':        lambda: obj.get(a[0],a[1] if len(a)>1 else None),
+            'has':        lambda: a[0] in obj if a else False,
+            'has_key':    lambda: a[0] in obj if a else False,
+            'has_value':  lambda: a[0] in obj.values() if a else False,
+            'set':        lambda: obj.update({a[0]:a[1]}) or None,
+            'delete':     lambda: obj.pop(a[0],None),
+            'remove':     lambda: obj.pop(a[0],None),
+            'pop':        lambda: obj.pop(a[0],a[1] if len(a)>1 else None),
+            'keys':       lambda: list(_pub(obj).keys()),
+            'values':     lambda: list(_pub(obj).values()),
+            'items':      lambda: [[k,v] for k,v in _pub(obj).items()],
+            'entries':    lambda: [[k,v] for k,v in _pub(obj).items()],
+            'merge':      lambda: {**obj,**(a[0] if a else {})},
+            'update':     lambda: obj.update(a[0] if a else {}) or None,
+            'copy':       lambda: dict(obj),
+            'clear':      lambda: obj.clear() or None,
+            'is_empty':   lambda: len(_pub(obj)) == 0,
+            'to_pairs':   lambda: [[k,v] for k,v in _pub(obj).items()],
+            'filter':     lambda: {k:v for k,v in _pub(obj).items() if vm.call(a[0],[k,v])},
+            'map_values': lambda: {k:vm.call(a[0],[v]) for k,v in _pub(obj).items()},
+            'map_keys':   lambda: {vm.call(a[0],[k]):v for k,v in _pub(obj).items()},
+            'each':       lambda: [vm.call(a[0],[k,v]) for k,v in _pub(obj).items()] and None,
+            'any_value':  lambda: any(vm.call(a[0],[v]) for v in _pub(obj).values()),
+            'all_values': lambda: all(vm.call(a[0],[v]) for v in _pub(obj).values()),
             'clear':   lambda: obj.clear() or None,
             'copy':    lambda: dict(obj),
         }.get(name)
@@ -535,9 +567,23 @@ class VM:
                 elif op==Op.LOAD_CONST: W(a, consts[b])
                 elif op==Op.LOAD_GLOBAL:
                     _gn = names[b]
-                    if _gn not in self._globals:
+                    # 'super' is resolved dynamically: find current self and its parent struct
+                    if _gn == 'super':
+                        self_obj = frame.regs[0] if frame.regs else None
+                        if isinstance(self_obj, VMInstance):
+                            desc = self_obj._desc or {}
+                            parent_name = desc.get('__parent__')
+                            parent_desc = self._globals.get(parent_name) if parent_name else None
+                            if parent_desc and isinstance(parent_desc, dict):
+                                # Create a proxy: VMInstance with parent's methods but same fields
+                                proxy = VMInstance(parent_name, self_obj.fields, parent_desc)
+                                proxy._super_self = self_obj  # track original for method binding
+                                W(a, proxy); continue
+                        W(a, None)
+                    elif _gn not in self._globals:
                         raise InScriptRuntimeError(f"Undefined variable '{_gn}'", ins.line, 0, "")
-                    W(a, self._globals[_gn])
+                    else:
+                        W(a, self._globals[_gn])
                 elif op==Op.STORE_GLOBAL: self._globals[names[a]] = R(b)
                 elif op==Op.LOAD_UPVAL: W(a, frame.closure.upvals[b].value)
                 elif op==Op.STORE_UPVAL:frame.closure.upvals[a].value = R(b)
@@ -612,7 +658,10 @@ class VM:
                 # ── comparison ────────────────────────────────────────────────
                 elif op==Op.EQ:
                     av,bv=R(b),R(c)
-                    if isinstance(av,VMInstance):
+                    # Range pattern: n == range → n in range (for match case 1..=5)
+                    if isinstance(bv, InScriptRange): W(a, av in bv)
+                    elif isinstance(av, InScriptRange): W(a, bv in av)
+                    elif isinstance(av,VMInstance):
                         r=self._op_overload(av,'==',bv)
                         W(a, _eq(av,bv) if r is _NOTFOUND else r)
                     else: W(a,_eq(av,bv))
@@ -671,7 +720,9 @@ class VM:
                     else: W(a, True)
 
                 # ── string ────────────────────────────────────────────────────
-                elif op==Op.CONCAT: W(a, str(R(b))+str(R(c)))
+                elif op==Op.CONCAT:
+                    lv, rv = R(b), R(c)
+                    W(a, lv + rv if isinstance(lv, list) and isinstance(rv, list) else str(lv)+str(rv))
                 elif op==Op.INTERP:
                     # a=dst, b=start_reg, c=count
                     W(a, ''.join(_ins_str(R(b+i)) for i in range(c)))
@@ -758,6 +809,9 @@ class VM:
                             if fn not in fields:
                                 fields[fn] = _eval_default(fdef, self)
                     inst = VMInstance(type_name, fields, desc if isinstance(desc,dict) else {})
+                    # Set private fields from descriptor
+                    if isinstance(desc, dict):
+                        inst._priv_fields = desc.get('__priv__', set())
                     # Run init method if present
                     if isinstance(desc,dict):
                         init_fn = desc.get('__methods__',{}).get('init') or desc.get('__methods__',{}).get('__init__')
@@ -780,11 +834,20 @@ class VM:
 
                 # ── exception ─────────────────────────────────────────────────
                 elif op==Op.THROW:
-                    exc = R(a)
-                    if not isinstance(exc, Exception): exc = RuntimeError(_ins_str(exc))
+                    thrown_val = R(a)
+                    # Preserve the thrown value for catch binding
+                    if isinstance(thrown_val, Exception):
+                        exc = thrown_val
+                        exc._thrown_value = getattr(exc, '_thrown_value', thrown_val)
+                    else:
+                        exc = InScriptRuntimeError(_ins_str(thrown_val), 0, 0, "")
+                        exc._thrown_value = thrown_val  # store original for catch
                     r = self._handle_exc(exc, frame)
                     if r is _RETHROW: raise exc
-                    ip, er, ev = r; W(er, ev); continue
+                    ip, er, ev = r
+                    # Give catch the original value, not the wrapped exception
+                    W(er, getattr(ev, '_thrown_value', ev) if isinstance(ev, Exception) else ev)
+                    continue
                 elif op==Op.PUSH_HANDLER:
                     frame.handlers.append((ip+a, b))  # (catch_ip, exc_reg)
                 elif op==Op.POP_HANDLER:
@@ -810,10 +873,12 @@ class VM:
             except Exception as e:
                 r = self._handle_exc(e, frame)
                 if r is _RETHROW:
-                    # Re-raise as-is if already an InScriptRuntimeError to avoid double-wrapping
                     if isinstance(e, InScriptRuntimeError): raise
                     raise InScriptRuntimeError(str(e),0,0,"")
-                ip, er, ev = r; W(er, ev); continue
+                ip, er, ev = r
+                # Use _thrown_value if set (preserves struct/non-string thrown values)
+                W(er, getattr(ev, '_thrown_value', ev) if isinstance(ev, Exception) else ev)
+                continue
 
         return None
 
@@ -850,7 +915,15 @@ class VM:
         if isinstance(obj, VMInstance):
             desc   = obj._desc or {}
             fields = obj.fields
-            if name in fields: return fields[name]
+            if name in fields:
+                priv = obj._priv_fields
+                if name in priv:
+                    # Allow if current executing method's self is this instance
+                    if getattr(self, '_current_self', None) is obj:
+                        pass  # inside a method on this instance — allowed
+                    else:
+                        raise InScriptRuntimeError(f"Cannot access private field '{name}'", 0, 0, "")
+                return fields[name]
             meths = desc.get('__methods__',{})
             getter_key = f'__get_{name}'
             if getter_key in meths:
@@ -887,6 +960,10 @@ class VM:
 
     def _set_field(self, obj, name, val):
         if isinstance(obj, VMInstance):
+            priv = obj._priv_fields
+            if name in priv:
+                if getattr(self, '_current_self', None) is not obj:
+                    raise InScriptRuntimeError(f"Cannot set private field '{name}'", 0, 0, "")
             desc = obj._desc or {}
             setter_key = f'__set_{name}'
             meths = desc.get('__methods__',{})
@@ -927,6 +1004,8 @@ class VM:
                 self_v = None
             if self_v is not None:
                 frame.regs[0] = self_v; r0 = 1
+            _prev_self = getattr(self, "_current_self", None)
+            self._current_self = self_v
             # Handle variadic *args param
             vararg = proto.vararg_param if proto.vararg_param else ""
             if vararg and vararg in proto.params:
@@ -953,7 +1032,10 @@ class VM:
                         while reg >= len(frame.regs): frame.regs.append(None)
                         if frame.regs[reg] is None and pname in proto.param_defaults:
                             frame.regs[reg] = _eval_default(proto.param_defaults[pname], self)
-            return self._exec(frame)
+            try:
+                return self._exec(frame)
+            finally:
+                self._current_self = _prev_self
 
         if isinstance(fn, dict):
             return self._construct(fn, args)
@@ -1077,6 +1159,7 @@ class VM:
                 for i,v in enumerate(args):
                     if i < len(params): fields[params[i]] = v
             inst = VMInstance(desc['__name__'], fields, desc)
+            inst._priv_fields = desc.get('__priv__', set())
             init = desc.get('__methods__',{}).get('init') or desc.get('__methods__',{}).get('__init__')
             if init:
                 cl = VMClosure(init,[]); cl._self = inst

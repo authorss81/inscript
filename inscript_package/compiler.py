@@ -304,7 +304,29 @@ class Compiler:
             inner = getattr(node,'decl',None) or getattr(node,'node',None)
             if inner: self._stmt(inner)
 
-        elif isinstance(node, DecoratedDecl): self._stmt(node.decl)
+        elif isinstance(node, DecoratedDecl):
+            # 1. Compile the target function/struct normally
+            self._stmt(node.target)
+            # 2. Get target name
+            from ast_nodes import FunctionDecl as _FD
+            if not isinstance(node.target, _FD):
+                return
+            fn_name = node.target.name
+            # 3. Apply decorators (outermost-last, so reversed)
+            for dec_name, dec_args in reversed(node.decorators):
+                # Layout: dec_r=fn, dec_r+1=arg (current fn), CALL -> dec_r
+                t = self._top()
+                dec_r = self._alloc()   # slot for decorator fn AND result
+                arg_r = self._alloc()   # slot for argument (must be dec_r+1)
+                self._e(Op.LOAD_GLOBAL, dec_r, self._name(dec_name))
+                self._e(Op.LOAD_GLOBAL, arg_r,  self._name(fn_name))
+                self._e(Op.CALL, dec_r, 1, dec_r)   # call decorator(fn), result back to dec_r
+                self._e(Op.STORE_GLOBAL, self._name(fn_name), dec_r)
+                # Also update the local variable if g is registered as a local
+                lr = self._scope.resolve_local(fn_name)
+                if lr is not None:
+                    self._e(Op.MOVE, lr, dec_r)
+                self._free_to(t)
         elif isinstance(node, LabeledStmt):   self._stmt(node.stmt)
         elif isinstance(node, (WaitStmt, MixinDecl)): pass
 
@@ -486,10 +508,12 @@ class Compiler:
             # Unary minus stored as '-u' to distinguish from binary '-'
             key = '-u' if (op_d.op_symbol == '-' and op_d.is_unary) else op_d.op_symbol
             operators[key] = p
+        priv_fields = {sf.name for sf in node.fields if getattr(sf,'is_priv',False)}
         desc = {'__type__':'struct_decl','__name__':node.name,
                 '__fields__':{sf.name:sf.default for sf in node.fields},
                 '__methods__':methods,'__operators__':operators,
-                '__parent__':node.parent_name,'__interfaces__':node.interfaces,'__node__':node}
+                '__parent__':node.parent_name,'__interfaces__':node.interfaces,'__node__':node,
+                '__priv__':priv_fields}
         # Evaluate static field defaults and store in __static__
         if getattr(node, 'static_fields', None):
             static_vals = {}
@@ -561,11 +585,18 @@ class Compiler:
         pi    = self._e(Op.PUSH_HANDLER, 0, exc_r)
         self._scope.begin_block(); self._stmt(node.body); self._scope.end_block()
         self._e(Op.POP_HANDLER)
+        # Emit finally code on the normal path (before jump over catch)
+        if node.finally_body:
+            self._scope.begin_block(); self._stmt(node.finally_body); self._scope.end_block()
         je = self._e(Op.JUMP, 0)
         self._patch_a(pi)
         if node.catch_var:
             lr = self._scope.add_local(node.catch_var); self._e(Op.MOVE, lr, exc_r)
-        self._scope.begin_block(); self._stmt(node.handler); self._scope.end_block()
+        if node.handler:
+            self._scope.begin_block(); self._stmt(node.handler); self._scope.end_block()
+        # Emit finally code on the catch path too
+        if node.finally_body:
+            self._scope.begin_block(); self._stmt(node.finally_body); self._scope.end_block()
         self._patch_b(je); self._free(exc_r)
 
     # ── match ─────────────────────────────────────────────────────────────────

@@ -10,18 +10,26 @@ build/
 .eggs/
 *.egg
 
+# InScript compiled output
+*.insb
+*.ibc
+*.inscache
+
 # IDE
 .vscode/settings.json
 .idea/
 *.swp
 *.swo
 .DS_Store
-
-# InScript compiled
-*.insb
-*.inscache
+Thumbs.db
 
 # Test artifacts
 .pytest_cache/
 htmlcov/
 .coverage
+coverage.xml
+
+# Environment
+.env
+venv/
+.venv/

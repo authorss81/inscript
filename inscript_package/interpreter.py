@@ -161,14 +161,20 @@ class Interpreter(Visitor):
         interp = self
         def _assert(cond, msg="Assertion failed"):
             if not _is_truthy(cond):
-                raise InScriptRuntimeError(f"AssertionError: {_inscript_str(msg)}", 0, code="E0050")
+                err = InScriptRuntimeError(f"AssertionError: {_inscript_str(msg)}", 0, code="E0050")
+                err.thrown_value = msg  # catch e gets the message string
+                raise err
             return None
 
         def _panic(msg="panic"):
-            raise InScriptRuntimeError(f"Panic: {_inscript_str(msg)}", 0, code="E0051")
+            err = InScriptRuntimeError(f"Panic: {_inscript_str(msg)}", 0, code="E0051")
+            err.thrown_value = msg
+            raise err
 
         def _unreachable(msg="unreachable code reached"):
-            raise InScriptRuntimeError(f"Unreachable: {_inscript_str(msg)}", 0, code="E0052")
+            err = InScriptRuntimeError(f"Unreachable: {_inscript_str(msg)}", 0, code="E0052")
+            err.thrown_value = msg
+            raise err
 
         # ── Math ─────────────────────────────────────────────────────────────
         def _clamp(v, lo, hi): return max(lo, min(hi, v))
@@ -299,7 +305,7 @@ class Interpreter(Visitor):
             "unique":     lambda lst: list(dict.fromkeys(lst)),
             "first":      lambda lst, fn=None: next((x for x in lst if (self._call_fn(fn,[x]) if fn else x)), None),
             "last":       lambda lst, fn=None: next((x for x in reversed(lst) if (self._call_fn(fn,[x]) if fn else x)), None),
-            "count":      lambda lst, fn=None: sum(1 for x in lst if (self._call_fn(fn,[x]) if fn else x)),
+            "count":      lambda lst, fn_or_val=None: _arr_count(lst, fn_or_val, self),
             "chunk":      lambda lst, n: [lst[i:i+n] for i in range(0,len(lst),n)],
             "take":       lambda lst, n: lst[:n],
             "skip":       lambda lst, n: lst[n:],
@@ -485,15 +491,8 @@ class Interpreter(Visitor):
         return value
 
     def visit_FunctionDecl(self, node: FunctionDecl) -> Any:
-        # DESIGN-01: async fn is purely synchronous — warn once per function
-        if getattr(node, 'is_async', False) and not getattr(self, '_async_warned', False):
-            import sys as _sys
-            print(
-                f"\033[33m[InScript] Warning: 'async fn {node.name}' executes synchronously. "
-                f"InScript has no event loop — use the 'thread' module for real concurrency.\033[0m",
-                file=_sys.stderr
-            )
-            self._async_warned = True  # warn once per interpreter session
+        # DESIGN-01: async fn is purely synchronous — REPL's static analysis pass handles the warning
+        # The interpreter only warns when running standalone (no REPL), tracked per-session
         fn = self._make_fn(
             name    = node.name,
             params  = node.params,
@@ -1146,8 +1145,11 @@ class Interpreter(Visitor):
                                     adt_bindings[k] = v
                     else:
                         pattern_val = self.visit(arm.pattern)
+                        # Range pattern: case 1..=10 { ... }
+                        if isinstance(pattern_val, InScriptRange):
+                            matched = subject in pattern_val
                         # ADT variant matching via evaluated dict
-                        if (isinstance(subject, dict) and "_variant" in subject
+                        elif (isinstance(subject, dict) and "_variant" in subject
                                 and isinstance(pattern_val, dict) and "_variant" in pattern_val):
                             matched = subject["_variant"] == pattern_val["_variant"]
                             if matched:
@@ -1160,11 +1162,14 @@ class Interpreter(Visitor):
             if not matched:
                 continue
 
-            # Evaluate optional guard in a scope where binding is defined
+            # Evaluate optional guard — ADT bindings must be available for guards like `case Circle(r) if r>3`
             if arm.guard or arm.binding:
                 self._push("match_guard")
                 if arm.binding:
                     self._env.define(arm.binding, subject)
+                # Inject ADT bindings into scope so guard expressions can reference them
+                for bname, bval in adt_bindings.items():
+                    self._env.define(bname, bval)
                 if arm.guard:
                     guard_val = _is_truthy(self.visit(arm.guard))
                     self._pop()
@@ -2429,6 +2434,15 @@ class Interpreter(Visitor):
 # Handle Vec2/Vec3/Color/Rect fields + InScriptInstance fields + method calls
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _arr_count(lst, fn_or_val, interp):
+    """arr.count(val) or arr.count(fn) — counts matching elements"""
+    if fn_or_val is None:
+        return len(lst)
+    if hasattr(fn_or_val, 'params') or hasattr(fn_or_val, 'body') or hasattr(fn_or_val, '_bound_self'):
+        return sum(1 for x in lst if interp._call_fn(fn_or_val, [x]))
+    return lst.count(fn_or_val)
+
+
 def _get_attr(obj: Any, name: str, line: int, interp: Interpreter) -> Any:
     # StructDecl used as namespace for static method access: M.sq(5)
     if isinstance(obj, StructDecl):
@@ -2763,10 +2777,14 @@ def _list_method(lst, name, interp, line):
     def zip_fn(other):
         return [[a, b] for a, b in zip(lst, other)]
 
-    def count_fn(fn=None):
-        if fn is None: return len(lst)
-        return sum(1 for x in lst if _is_truthy(
-            interp._call_function(fn, [x], [None], line) if isinstance(fn, InScriptFunction) else fn(x)))
+    def count_fn(fn_or_val=None):
+        if fn_or_val is None: return len(lst)
+        # If it's an InScript function, use it as a predicate
+        if isinstance(fn_or_val, InScriptFunction) or (callable(fn_or_val) and not isinstance(fn_or_val, (int, float, str, bool, list, dict))):
+            return sum(1 for x in lst if _is_truthy(
+                interp._call_function(fn_or_val, [x], [None], line) if isinstance(fn_or_val, InScriptFunction) else fn_or_val(x)))
+        # Otherwise count literal occurrences
+        return lst.count(fn_or_val)
 
     def any_fn(fn=None):
         if fn is None: return any(_is_truthy(x) for x in lst)
