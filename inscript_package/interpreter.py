@@ -1493,7 +1493,12 @@ class Interpreter(Visitor):
         if op == "-":  return left - right
         if op == "*":  return left * right
         if op == "/":
-            if right == 0: self._error("Division by zero", node.line)
+            if right == 0:
+                if isinstance(left, float) or isinstance(right, float):
+                    import math as _math
+                    if left == 0: return float('nan')
+                    return _math.copysign(float('inf'), left * (1 if right >= 0 else -1))
+                self._error("Division by zero", node.line)
             return left / right
         if op == "//": 
             if right == 0: self._error("Division by zero", node.line)
@@ -1518,6 +1523,7 @@ class Interpreter(Visitor):
                         f"— too large to compute. Use float({left}) ** {right} for an approximate result.",
                         node.line)
             return left ** right
+        if op == "++": return str(left) + str(right)  # string concat
         if op == "==": return left == right
         if op == "!=": return left != right
         if op == "<":  return left <  right
@@ -1848,14 +1854,18 @@ class Interpreter(Visitor):
         self._error(f"Unknown namespace '{node.namespace}'", node.line)
 
     def visit_CallExpr(self, node: CallExpr) -> Any:
-        # Resolve 'self' before evaluating callee so method calls bind the instance
+        # Resolve 'self' before evaluating callee so method calls bind the instance.
+        # IMPORTANT: Evaluate node.callee.obj ONCE and cache it to avoid double side-effects
+        # (e.g. b.add(3).add(4) would call add(3) twice without this)
         self_val = None
         if isinstance(node.callee, GetAttrExpr):
             obj = self.visit(node.callee.obj)
             if isinstance(obj, InScriptInstance):
                 self_val = obj
-
-        callee = self.visit(node.callee)
+            # Get the method directly from obj to avoid re-evaluating node.callee.obj
+            callee = _get_attr(obj, node.callee.attr, node.callee.line, self)
+        else:
+            callee = self.visit(node.callee)
 
         # If the function was returned with a bound self (from _get_attr), use it
         if isinstance(callee, InScriptFunction) and hasattr(callee, '_bound_self'):
@@ -2639,7 +2649,7 @@ def _list_method(lst, name, interp, line):
             # reduce(fn) — first arg IS the function
             fn = fn_or_init
             if not lst:
-                return None
+                interp._error("reduce() on empty array with no initial value", line)
             acc = lst[0]
             items = lst[1:]
         else:
@@ -2907,9 +2917,9 @@ def _inscript_str(val) -> str:
         return f"{val.start}{op}{val.end}"
     if isinstance(val, dict):
         if "_ok" in val:
-            return f"Ok({_inscript_str(val['_ok'])})"
+            return f"Ok({_inscript_repr(val['_ok'])})"
         if "_err" in val:
-            return f"Err({_inscript_str(val['_err'])})"
+            return f"Err({_inscript_repr(val['_err'])})"
         if "_variant" in val and "_enum" in val:
             fields = {k: v for k, v in val.items() if not k.startswith("_")}
             if "_value" not in val and not fields:

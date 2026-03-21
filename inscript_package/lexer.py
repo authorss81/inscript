@@ -91,6 +91,7 @@ class TT(Enum):
     # ── Assignment ────────────────────────────────
     ASSIGN      = auto()
     PLUS_EQ     = auto()
+    PLUSPLUS    = auto()   # ++ string concat operator
     MINUS_EQ    = auto()
     STAR_EQ     = auto()
     SLASH_EQ    = auto()
@@ -500,6 +501,7 @@ class Lexer:
 
         if   ch == "+":
             if self.match("="): emit(TT.PLUS_EQ,   "+=")
+            elif self.match("+"): emit(TT.PLUSPLUS, "++")
             else:               emit(TT.PLUS,        "+")
         elif ch == "-":
             if self.match(">"): emit(TT.ARROW,      "->")

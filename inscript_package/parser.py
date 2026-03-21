@@ -1472,7 +1472,7 @@ class Parser:
     def parse_addition(self) -> Node:
         line, col = self._pos()
         left = self.parse_multiplication()
-        while self.check(TT.PLUS, TT.MINUS):
+        while self.check(TT.PLUS, TT.MINUS, TT.PLUSPLUS):
             op    = self.advance().value
             right = self.parse_multiplication()
             left  = BinaryExpr(left=left, op=op, right=right,
