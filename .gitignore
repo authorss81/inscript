@@ -1,23 +1,18 @@
 ﻿# Python
 __pycache__/
-*.pyc
-*.pyo
+*.py[cod]
 *.ibc
+
+# Old release artifacts outside inscript_package/
+final/
+*.zip
+*.tar.gz
 
 # Node / VS Code build artifacts
 node_modules/
 out/
 *.vsix
 
-# Old release artifacts (outside inscript_package/)
-final/
-*.zip
-*.tar.gz
-
 # OS
 .DS_Store
 Thumbs.db
-
-# IDE
-.idea/
-*.swp
