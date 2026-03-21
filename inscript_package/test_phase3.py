@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 test_phase3.py — Phase 3: Error Quality test suite
 Tests: 3.1 did-you-mean, 3.2 point-to-def, 3.3 Python-leak guard,

@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 test_phase6.py — Phase 6: Bytecode VM Tests
 ============================================

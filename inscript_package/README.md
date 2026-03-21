@@ -1,444 +1,135 @@
-<div align="center">
+# -*- coding: utf-8 -*-
+# InScript — Game-Focused Scripting Language
 
-# 🎮 InScript
+> **v1.0.12** · 839 tests passing · 59 stdlib modules · Python 3.10+
+> **Pre-stable** — first stable release targets **v1.1.0 Q2 2026**
 
-**A modern scripting language built for game development.**
-
-[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-501%20passing-brightgreen.svg)](#testing)
-[![Version](https://img.shields.io/badge/version-1.0.4-blue.svg)](#)
-
-</div>
-
----
-
-InScript is a statically-typed scripting language designed for games. It brings Rust-style safety — pattern matching, ADT enums, Result types, generics — with Python-like readability, and runs out of the box with a single Python install.
-
-```inscript
-struct Ship {
-    pos: Vec2
-    hp:  int = 100
-
-    fn take_damage(amount: int) { self.hp -= amount }
-    fn alive() -> bool          { return self.hp > 0 }
-}
-
-struct PlayerShip extends Ship {
-    shots: int = 0
-    fn fire() -> string {
-        self.shots += 1
-        return f"💥 Shot #{self.shots}!"
-    }
-}
-
-enum Pickup { Health(amount: int)  Shield(duration: float) }
-
-fn apply(p: Pickup, ship: Ship) {
-    match p {
-        case Health(n)   { ship.hp = min(ship.hp + n, 100) }
-        case Shield(dur) { print(f"Shield active for {dur}s") }
-        case _           { }
-    }
-}
-```
+InScript is a statically-typed scripting language designed as a readable, safe GDScript alternative. It ships with 59 built-in modules for 2D games — physics, audio, ECS, pathfinding, networking — with no external engine required.
 
 ---
 
 ## Quick Start
 
 ```bash
-# No install needed — just Python 3.10+
-git clone https://github.com/authorss81/inscript.git
+pip install pygame pygls
+
+git clone https://github.com/authorss81/inscript
 cd inscript/inscript_package
 
-# Run a script
-python inscript.py mygame.ins
-
-# Launch the interactive REPL
-python inscript.py --repl
-
-# Run with a pygame game window (requires: pip install pygame)
-python inscript.py mygame.ins --game
-
-# Web playground in browser
-python repl.py --web
+python inscript.py --repl               # Start REPL
+python inscript.py examples/platformer.ins   # Run a game
+python test_comprehensive.py            # 335/335 tests
 ```
 
 ---
 
-## Running Games
-
-InScript has two ways to run code:
-
-| Mode | Command | Use for |
-|------|---------|---------|
-| **Script** | `python inscript.py file.ins` | Logic, tools, scripts |
-| **Game window** | `python inscript.py file.ins --game` | pygame-backed games with draw/input |
-| **REPL** | `python inscript.py --repl` | Exploring the language interactively |
-| **Web playground** | `python repl.py --web` | Browser-based editor at `localhost:8080` |
-
-> **Note:** You cannot run a pygame game inside the REPL. The REPL is for language features — variables, functions, structs, math, imports. For a game with a window, use `--game`.
-
-Game window options:
-```bash
-python inscript.py mygame.ins --game --width 1280 --height 720 --fps 60
-```
-
----
-
-## Interactive REPL
-
-The REPL lets you try any InScript expression instantly — no file needed.
-
-```
->>> 2 ** 32
-  → 4294967296
-
->>> let scores = [95, 87, 72, 100]
->>> filter(scores, fn(x) { return x >= 90 })
-  → [95, 100]
-
->>> import "math" as M
->>> M.PI * 5.0 ** 2
-  → 78.53981633974483
-```
-
-Multiline input — end a line with `\` to continue:
-
-```
->>> fn greet(name: string) -> string {\
-...   return f"Hello, {name}!"
-... }
->>> greet("Alice")
-  → Hello, Alice!
-```
-
-### REPL Commands
-
-```
-.help            Show all commands
-.vars            List all variables in scope
-.fns             List user-defined functions
-.types           List struct / enum types
-.type <expr>     Show type of an expression
-.inspect <expr>  Deep field and method inspection
-.doc <module>    Show stdlib module exports
-.time <expr>     Benchmark (10 runs)
-.bench <expr>    Statistical benchmark (100 runs)
-.bytecode        Compact bytecode listing
-.asm             Full annotated assembly
-.vm              Toggle VM / interpreter mode
-.history [n]     Show last n commands
-.modules         List importable stdlib modules
-.save <file>     Save session to .ins file
-.load <file>     Load and run a .ins file
-.export [file]   Export session as Markdown
-.clear           Reset session variables
-.reset           Full reset
-exit / quit      Leave REPL
-```
-
-See [REPL_Tutorial.md](REPL_Tutorial.md) for the full guide.
-
----
-
-## Feature Overview
-
-### Language Core
-
-| Feature | Notes |
-|---|---|
-| `let` / `const` with type annotations | Full type inference |
-| Functions, closures, lambdas | First-class |
-| **Generic functions** `fn id<T>(x: T) -> T` | Type-erased |
-| Default parameters | ✅ |
-| Multiple return values | Tuple destructuring |
-| Variadic args `fn sum(...nums)` | ✅ |
-| **Structs** with methods, fields, defaults | Full OOP |
-| **Static fields** `static PI: float = 3.14` | ✅ |
-| **Static methods** `static fn` | ✅ |
-| **Struct inheritance** `extends` | Method dispatch + fields |
-| **Interfaces / Traits** | `interface` + `implements` |
-| **Mixins** | Horizontal code reuse |
-| **Properties** `get` / `set` | Computed + validated fields |
-| **Abstract methods** `abstract fn` | Enforced at instantiation |
-| **Operator overloading** `operator +` | All arithmetic + comparison |
-| **Generic structs** `struct Stack<T>` | Multi-param supported |
-| **ADT Enums** with data fields | `Circle(radius: float)` |
-| **Pattern matching** + guards | `case v if v < 10` |
-| **Destructuring** | `let [a,b] = arr` / `let (x,y) = pair` |
-| **Array comprehensions** | `[x*x for x in 0..10]` |
-| **Generators** | `fn*` + `yield` + `gen()` or `for v in gen()` |
-| **Decorators** `@name` | Function wrapping |
-| **Error propagation** `?` | `Ok(v)` / `Err(e)` / `result?` |
-| **Comptime evaluation** | `const N = comptime { 1024 * 4 }` |
-
-### Operators
-
-| Feature | Example |
-|---|---|
-| Ternary | `x > 0 ? "pos" : "neg"` |
-| Null coalescing | `value ?? "default"` |
-| Optional chaining | `obj?.field?.method()` |
-| Pipe operator | `x \|> double \|> clamp` |
-| Floor division | `7 // 2  → 3` |
-| Bitwise | `&`, `\|`, `^`, `~`, `<<`, `>>` |
-| Compound assigns | `+=`, `-=`, `*=`, `/=`, `**=`, `&=`, `\|=`, `^=` |
-| F-strings | `f"Score: {player.hp * 1.5}"` |
-| String repeat | `"ha" * 3  → "hahaha"` |
-| Array spread | `[1, ...other, 4]` |
-| Labeled break | `outer: for … { break outer }` |
-
-### Standard Library (18 Modules)
+## Language Sample
 
 ```inscript
-import "math"    // sin, cos, sqrt, floor, ceil, PI, E, INF, NAN …
-import "string"  // split, join, trim, upper, lower, pad_left …
-import "array"   // sort, filter, map, reduce, find, chunk, flatten …
-import "json"    // encode, decode
-import "io"      // read_file, write_file, read_lines, append_file
-import "random"  // int(lo,hi), float(), float(lo,hi), choice, shuffle …
-import "time"    // now, fps, delta, format_duration
-import "color"   // rgb(r,g,b) [0-1], rgb255(r,g,b) [0-255], from_hex …
-import "tween"   // linear, ease_in, ease_out, bounce, spring …
-import "grid"    // Grid, get, set, neighbors, pathfind, flood_fill
-import "events"  // on, emit, off, once — InScript callbacks supported ✅
-import "debug"   // assert, assert_eq, log, warn, inspect, trace
-import "regex"   // test(text,pat), match(text,pat), find_all, sub …
-import "path"    // join, basename, stem, ext, exists, glob, mkdir
-import "csv"     // parse, parse_file, to_string, from_dicts
-import "uuid"    // v4, v1, nil, short, is_valid
-import "http"    // get, post
-import "crypto"  // sha256, md5, hmac_sign, b64_encode …
-```
+// ADT enums + pattern matching as expression
+enum Shape { Circle(r: float)  Rect(w: float, h: float) }
 
-### Built-in Game Types
-
-```inscript
-let pos = Vec2(3.0, 4.0)
-let vel = Vec3(0.0, -9.8, 0.0)
-let red = Color(1.0, 0.0, 0.0)        // 0.0–1.0 scale
-let box = Rect(0.0, 0.0, 800.0, 600.0)
-```
-
----
-
-## Language Tour
-
-### Variables & Types
-
-```inscript
-let x: int   = 42
-let name     = "Ada"                   // inferred: string
-const MAX    = comptime { 1024 * 4 }   // = 4096
-
-let scores: [int]      = [95, 87, 72]
-let config: {str: int} = {"lives": 3, "level": 1}
-```
-
-### Structs
-
-```inscript
-struct Entity {
-    pos:   Vec2
-    speed: float = 120.0
-    static MAX_SPEED: float = 400.0    // static field
-
-    abstract fn update(dt: float)
-}
-
-struct Enemy extends Entity {
-    hp: int = 50
-
-    fn update(dt: float) {
-        self.pos += Vec2(0.0, self.speed * dt)
+fn area(s: Shape) -> float {
+    return match s {
+        case Shape.Circle(r)   { 3.14159 * r * r }
+        case Shape.Rect(w, h)  { w * h }
+        case _ { 0.0 }
     }
 }
 
-print(Entity.MAX_SPEED)    // 400.0
-```
+// Result type + try-catch as expression
+fn divide(a: float, b: float) -> Result {
+    if b == 0.0 { return Err("div by zero") }
+    return Ok(a / b)
+}
+let safe = try { divide(10.0, 0.0) } catch e { Err(e) }
 
-### Pattern Matching
-
-```inscript
-enum GameEvent {
-    Collision(a: string, b: string)
-    Pickup(item: string, value: int)
-    LevelComplete(time: float, stars: int)
+// Generators
+fn* fibonacci() {
+    let a=0; let b=1
+    while true { yield a; [a,b] = [b, a+b] }
 }
 
-fn handle(event: GameEvent) {
-    match event {
-        case Collision(a, b)           { print(f"{a} hit {b}") }
-        case Pickup(item, v) if v > 50 { print(f"Rare: {item}!") }
-        case Pickup(item, v)           { print(f"Got {item}") }
-        case LevelComplete(t, 3)       { print(f"Perfect! {t}s") }
-        case _                         { }
-    }
-}
-```
-
-### Error Handling
-
-```inscript
-fn load_level(path: string) -> Result {
-    let raw  = read_file(path)?
-    let data = json.decode(raw)?
-    return Ok(data)
-}
-
-match load_level("level1.json") {
-    case Ok(data)  { print(f"Loaded: {data["name"]}") }
-    case Err(msg)  { print(f"Failed: {msg}") }
-}
-```
-
-### Generators
-
-```inscript
-fn* wave_spawner(count: int) {
-    let i = 0
-    while i < count {
-        yield Enemy{ pos: Vec2(random.int(0, 800), -20) }
-        i += 1
-    }
-}
-
-// Use in a for loop
-for enemy in wave_spawner(5) {
-    scene.add(enemy)
-}
-
-// Or step manually
-let gen = wave_spawner(5)
-let e = gen()          // advances one step
-```
-
-### Events
-
-```inscript
-import "events" as E
-
-E.on("player_hit", fn(damage) {
-    print(f"Took {damage} damage")
-})
-
-E.emit("player_hit", 25)   // → "Took 25 damage"
-```
-
-### Regex
-
-```inscript
-import "regex" as R
-
-// All functions take (text, pattern) — text first
-R.test("hello world", "\\w+")          // true
-R.find_all("a1 b22 c333", "\\d+")     // ["1", "22", "333"]
-R.sub("foobar", "o+", "0")            // "f0bar"
+// 59 game modules
+import "physics2d" as P
+import "pathfind"  as Nav
+let path = Nav.astar(grid, start, goal)
+let body = P.step(player, dt)
 ```
 
 ---
 
-## CLI Reference
+## What Works (v1.0.12)
 
-```bash
-python inscript.py <file.ins>              # Run a file
-python inscript.py <file.ins> --game       # Run with pygame window
-python inscript.py --repl                  # Interactive REPL
-python inscript.py --check <file.ins>      # Type-check without running
-python inscript.py --tokens <file.ins>     # Print lexer tokens
-python inscript.py --ast <file.ins>        # Print AST
-python inscript.py --version               # Print version
+- Core language: types, operators, control flow, destructuring
+- OOP: structs, single/multi-inheritance, interfaces, operator overloading, `priv`/`pub`
+- Pattern matching: guards, ADTs, match-as-expression, Ok/Err
+- Generators (`fn*` / `yield`) in both interpreter and VM
+- Error handling: try/catch/finally, typed catch, Result, assert/panic
+- Closures, decorators `@name`, pipe operator `|>`, optional chaining `?.`
+- Bytecode VM (register-based, 60+ opcodes) with full feature parity
+- 59 stdlib modules — all tested and documented
+- Enhanced REPL: 30+ commands, `.doc module`, `.vm`, `.tutorial`
+- Static analyzer: type mismatches, missing returns, arg counts, exhaustive match
+- LSP server + VS Code extension (syntax highlighting, completions, diagnostics)
+- Windows, macOS, Linux — UTF-8 clean
 
-# Game window
-python inscript.py game.ins --game --width 1280 --height 720 --fps 60
+## Missing (v1.1 targets)
 
-# Package manager
-python inscript.py --install <pkg>
-python inscript.py --remove  <pkg>
-python inscript.py --packages
+- `inscript fmt` formatter
+- Step-through debugger in VS Code
+- `pip install inscript-lang` (PyPI not live yet)
+- Live docs site (docs.inscript.dev returns 404)
+- Web playground
+
+---
+
+## Test Suites
+
+```
+python test_phase5.py          # 270 core language
+python test_phase6.py          # 145 bytecode VM
+python test_phase7.py          # 32  operator overloading
+python test_audit.py           # 54  audit regressions
+python test_comprehensive.py   # 335 full feature coverage
+# Total: 836+ tests — all passing
 ```
 
 ---
 
-## Project Structure
+## Stdlib (59 modules)
 
-```
-inscript_package/
-├── inscript.py          ← CLI entry point
-├── lexer.py             ← Tokenizer
-├── parser.py            ← Recursive-descent parser → AST
-├── ast_nodes.py         ← All AST node dataclasses
-├── interpreter.py       ← Tree-walk interpreter
-├── compiler.py          ← Bytecode compiler
-├── vm.py                ← Register-based bytecode VM
-├── analyzer.py          ← Static semantic analyzer
-├── environment.py       ← Scope and variable resolution
-├── errors.py            ← Error signals
-├── stdlib.py            ← 18 standard library modules
-├── stdlib_values.py     ← Runtime types (Vec2, Color, Range …)
-├── repl.py              ← Interactive REPL + web playground
-└── REPL_Tutorial.md     ← Full REPL guide
-```
+math, string, array, json, io, random, datetime, collections, regex,
+crypto, uuid, path, fs, http, database, physics2d, tilemap, camera2d,
+input, audio, particle, ecs, fsm, pathfind, events, net_game, save,
+localize, vec, tween, color, image, atlas, animation, shader, signal,
+pool, grid, bench, thread, debug, process, log, compress, url,
+base64, yaml, toml, csv, xml, ssl, hash, net, argparse, iter,
+template, format, time + more.
+
+In the REPL: `.doc math` shows live documentation for any module.
 
 ---
 
-## Testing
+## Roadmap
 
-```bash
-python test_phase5.py    # 270 tests  — language core, stdlib, REPL
-python test_phase6.py    # 145 tests  — bytecode compiler + VM
-python test_phase7.py    #  32 tests  — operator overloading
-python test_audit.py     #  54 tests  — regression suite
-```
+| Version | Target | Highlights |
+|---------|--------|------------|
+| v1.0.12 | Mar 2026 | int.to_hex/bin, range props, Queue API, UTF-8 clean |
+| v1.1.0 | Q2 2026 | formatter, debugger, PyPI, docs, playground |
+| v1.2.0 | Q3 2026 | union types, generic enforcement, null-safe |
+| v1.3.0 | Q4 2026 | C extension 5-15x speed, standalone binary |
+| v2.0.0 | 2027 | WASM, package registry, InScript Studio IDE |
 
-**Total: 501 tests, 0 failing.**
-
----
-
-## What's New in v1.0.5
-
-### Bug fixes
-
-| Fix | Description |
-|-----|-------------|
-| **`.doc` for all modules** | `.doc audio`, `.doc ecs`, `.doc physics2d` etc. now work — reads from live `stdlib._MODULES` instead of a hardcoded whitelist |
-| **DESIGN-08 dict display** | `print({"k": "v"})` now shows `{"k": "v"}` (InScript style) not `{'k': 'v'}` (Python repr) |
-| **DESIGN-13 f-string format specs** | `f"{x:.2f}"`, `f"{n:06d}"`, `f"{s:>10}"` all work — full Python `format()` spec support |
-| **DESIGN-14 dict comprehensions** | `{k: v*2 for k in arr if cond}` — new `DictComprehensionExpr` AST node |
-| **DESIGN-12 `do-while`** | `do { body } while cond` — body always runs at least once |
-| **Struct `.copy()`** | `let b = a.copy()` — deep-copies fields, mutations don't affect original |
-| **Struct `.to_dict()` + `.has()`** | New built-in methods on every struct instance |
-| **DESIGN-06 `null` deprecation** | Using `null` now prints a one-time warning: use `nil` instead |
-| **DESIGN-15 `sort()` semantics** | `sort(a)` now sorts in-place and returns `a`; `sorted(a)` returns new copy |
-| **Banner box alignment** | Fixed floating `║` on Windows terminals — uses `unicodedata` for accurate column width |
-
-### Thin module expansions
-
-`ecs`, `fsm`, `camera2d`, and `particle` now expose their full functional API (was: just the constructor):
-- **ecs** — 11 exports: `World`, `spawn`, `get`, `query`, `query_sorted`, `mark_dead`, `remove_dead`, `entity_count`, `alive_count`, …
-- **fsm** — 9 exports: `Machine`, `add_state`, `add_transition`, `trigger`, `update`, `current`, `in_state`, …
-- **camera2d** — 13 exports: `Camera2D`, `update`, `follow`, `shake`, `begin`/`end`, `world_to_screen`, `bounds`, …
-- **particle** — 16 exports: `Emitter`, `start`, `stop`, `update`, `burst`, `color_start`, `color_end`, `gravity`, …
-
-### New stdlib modules (59 total, +3)
-
-| Module | Description |
-|--------|-------------|
-| **`signal`** | Typed pub/sub signal channels — `Signal`, `connect`, `emit`, `once`, `disconnect`, `clear` |
-| **`vec`** | Pure 2D/3D vector math — `v2`, `v3`, `add`, `sub`, `dot`, `cross`, `norm`, `lerp`, `reflect`, `from_angle`, … |
-| **`pool`** | Object pool for game performance — `Pool`, `acquire`, `release`, `release_all`, `active_count` |
-## License
-
-MIT — see [LICENSE](LICENSE)
+See [ROADMAP.md](ROADMAP.md) for full detail.
 
 ---
 
-<div align="center">
+## Honest Assessment
 
-**InScript v1.0.5** · Built with Python 3.10+
+InScript is **public beta** — the language is complete for 2D game scripting.
+Gap to v1.1 "first stable": ~2-3 months of tooling work. Total cost: ~$9/yr (domain).
 
-[REPL Tutorial](REPL_Tutorial.md) · [Language Audit](InScript_Language_Audit.md)
+---
 
-</div>
+MIT License · [GitHub](https://github.com/authorss81/inscript) · [Audit](InScript_Language_Audit.md) · [Roadmap](ROADMAP.md)

@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # inscript/ast_nodes.py
 # Phase 2: Abstract Syntax Tree Node Definitions
 #

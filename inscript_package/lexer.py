@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # inscript/lexer.py  — Phase 1 (revised)
 # Tokenizer for the InScript programming language.
 

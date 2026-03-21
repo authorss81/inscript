@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # inscript/errors.py — Phase 3: Error Quality
 #
 # Changes from Phase 1:

@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # inscript/environment.py  — Variable scope environment
 # Each function call and block gets its own Environment chained to its parent.
 

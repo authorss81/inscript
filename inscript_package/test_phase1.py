@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 test_phase1.py — Phase 1 Foundation Repair test suite
 Tests:

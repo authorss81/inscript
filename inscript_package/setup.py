@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 InScript — setup.py (legacy fallback; pyproject.toml is canonical)
 Run:  pip install .

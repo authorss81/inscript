@@ -17,6 +17,22 @@
 
 ## CHANGELOG — v1.0.2 → v1.0.9
 
+### v1.0.12 (March 2026) — Integration + ergonomics release
+
+| Fix | Description |
+|-----|-------------|
+| **Windows UTF-8** | Added `# -*- coding: utf-8 -*-` to all 31 .py files with non-ASCII — fixes charmap UnicodeDecodeError on Windows. All 839 tests now pass on Windows. |
+| **`range.start`/`end`/`len`** | Range objects now expose `.start`, `.end`, `.step`, `.len`, `.inclusive`, `.to_array()`, `.includes(n)`, `.contains(n)` properties |
+| **`static const` fields** | Parser now accepts `static const NAME: TYPE = VALUE` on structs |
+| **Queue API** | `collections.Queue` now has `.enqueue()`/`.dequeue()`/`.len()` as aliases for `.push()`/`.pop()`/`.size()` |
+| **Python object `hasattr` fallback** | `_get_attr` now falls through to Python `hasattr`/`getattr` — all stdlib objects (Queue, Set, Deque, etc.) expose their methods naturally without needing special cases |
+| **`int(str, base)`** | `int("ff", 16)`, `int("1010", 2)`, `int("777", 8)` now work. Auto-detects `0x`/`0b`/`0o` prefixes with single argument |
+| **`int.to_hex()`/`to_bin()`/`to_oct()`** | Integer method: `(255).to_hex()` → `"ff"`, `(10).to_bin()` → `"1010"` |
+| **`int.factorial()`/`gcd()`/`bit_count()`/`pow()`** | Additional integer methods |
+| **Variadic `fn(*args)` in lambda** | Parser now accepts `*` in `parse_lambda_param()` — `fn(*a){return a}` and `fn(*args){...}` work as expressions |
+| **Website rewrite** | `index.html` completely rewritten: correct version (was v0.5.0), correct GitHub URL (was wrong org), accurate features, honest status section |
+| **README rewrite** | Full rewrite with accurate feature table, honest "what's missing" section, correct install instructions |
+
 ### v1.0.11 (March 2026) — Comprehensive audit release
 
 Triggered by a ruthless full feature test (335-test comprehensive suite). All features
@@ -1134,7 +1150,7 @@ All BUG-01 through BUG-30 are now fixed. Current open issues in priority order:
 
 ---
 
-## XIII. SCORES v4.0 — Updated v1.0.11 (March 2026)
+## XIII. SCORES v4.0 — Updated v1.0.12 (March 2026)
 
 | Category | v1.0.1 | v1.0.7 | Direction | Key reason |
 |----------|--------|--------|-----------|------------|
@@ -1176,7 +1192,7 @@ All BUG-01 through BUG-30 are now fixed. Current open issues in priority order:
 
 ---
 
-*Audit updated March 2026 — v1.0.11.*  
+*Audit updated March 2026 — v1.0.12.*  
 *All findings verified by direct execution against both interpreter and VM.*  
 *501 tests passing. 59 stdlib modules. 30/30 catalogued bugs fixed.*
 
@@ -1628,7 +1644,7 @@ These four things give 80% of the IDE value for 10% of the effort.
 
 *Audit updated March 2026 — v1.0.7.*  
 *All code findings verified by direct execution against both interpreter and VM.*  
-*501 tests + 335 comprehensive tests passing. 59 stdlib modules. 100+ bugs fixed. Score: 8.0/10.*
+*836+ tests passing. 59 stdlib modules. 110+ bugs fixed. Score: 8.1/10.*
 
 ---
 

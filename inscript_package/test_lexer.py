@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # inscript/test_lexer.py
 # Comprehensive tests for the InScript Lexer (Phase 1)
 # Run with: python test_lexer.py

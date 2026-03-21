@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 test_phase7.py — Phase 7: Operator Overloading Tests
 =====================================================

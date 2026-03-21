@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # inscript/test_stdlib.py  — Phase 5: Standard Library Tests
 import sys, os
 sys.path.insert(0, os.path.dirname(__file__))

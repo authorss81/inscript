@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # inscript/vm.py  — Phase 6.2: Register-based Virtual Machine
 #
 # Executes FnProto bytecode produced by compiler.py.

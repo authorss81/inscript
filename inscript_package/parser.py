@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # inscript/parser.py
 # Phase 2: Recursive Descent Parser
 #
@@ -634,12 +635,18 @@ class Parser:
             # static fn foo() { ... }  OR  static PI: float = 3.14
             if self.check(TT.IDENT) and self.current.value == "static":
                 self.advance()  # consume 'static'
+                # Allow optional 'const' after 'static': static const PI = 3.14
+                is_const = False
+                if self.check(TT.CONST):
+                    self.advance(); is_const = True
                 if self.check(TT.FN):
                     m = self.parse_function_decl(is_method=False)
                     static_methods.append(m)
                 else:
-                    # static field:  NAME : TYPE = DEFAULT
+                    # static field:  NAME : TYPE = DEFAULT  (or static const NAME...)
                     sf = self.parse_struct_field()
+                    if is_const:
+                        sf.is_const = True
                     static_fields.append(sf)
             # get name() -> T { ... }
             elif self.check(TT.IDENT) and self.current.value == "get":
@@ -2144,11 +2151,18 @@ class Parser:
 
     def parse_lambda_param(self) -> Param:
         line, col = self._pos()
+        # Support variadic: fn(*args) in anonymous functions
+        variadic = False
+        if self.check(TT.STAR):
+            self.advance(); variadic = True
         name     = self.expect_ident("Expected parameter name in lambda")
         type_ann = None
         if self.match(TT.COLON):
             type_ann = self.parse_type_annotation()
-        return Param(name=name, type_ann=type_ann, line=line, col=col)
+        p = Param(name=name, type_ann=type_ann, line=line, col=col)
+        if variadic:
+            p.variadic = True
+        return p
 
 
     def parse_select(self) -> "SelectStmt":

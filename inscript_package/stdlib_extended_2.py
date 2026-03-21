@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # inscript/stdlib_extended_2.py
 # General-purpose stdlib extension — Part 2 of 2
 #

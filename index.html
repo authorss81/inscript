@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<!-- -*- coding: utf-8 -*- -->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>InScript — Game-Focused Scripting Language</title>
+<style>
+:root {
+  --bg:#0d1117; --surface:#161b22; --surface2:#21262d;
+  --border:#30363d; --text:#e6edf3; --text2:#8b949e;
+  --primary:#58a6ff; --accent:#f78166; --green:#3fb950;
+  --yellow:#d29922; --purple:#bc8cff; --orange:#ffa657;
+  --radius:8px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+     background:var(--bg);color:var(--text);line-height:1.6}
+a{color:var(--primary);text-decoration:none}
+a:hover{text-decoration:underline}
+
+/* Nav */
+nav{background:var(--surface);border-bottom:1px solid var(--border);
+    position:sticky;top:0;z-index:100;padding:0 2rem;display:flex;
+    align-items:center;gap:2rem;height:56px}
+.nav-logo{font-weight:700;font-size:1.1rem;color:var(--text);
+          display:flex;align-items:center;gap:8px}
+.nav-logo em{color:var(--primary);font-style:normal}
+nav ul{display:flex;list-style:none;gap:1.5rem}
+nav a{color:var(--text2);font-size:.9rem}
+nav a:hover{color:var(--text);text-decoration:none}
+.nav-right{margin-left:auto;display:flex;gap:1rem;align-items:center}
+.nav-badge{background:var(--green);color:#000;font-size:.72rem;
+           padding:2px 8px;border-radius:12px;font-weight:700}
+
+/* Hero */
+.hero{padding:5rem 2rem 3.5rem;text-align:center;max-width:860px;margin:0 auto}
+.hero h1{font-size:3rem;font-weight:800;line-height:1.15;margin-bottom:1.2rem}
+.hero h1 em{color:var(--primary);font-style:normal}
+.hero p{font-size:1.15rem;color:var(--text2);max-width:620px;margin:0 auto 2.5rem}
+.hero-btns{display:flex;gap:1rem;justify-content:center;flex-wrap:wrap;margin-bottom:2rem}
+.btn{display:inline-flex;align-items:center;gap:8px;padding:11px 22px;
+     border-radius:var(--radius);font-weight:600;font-size:.92rem;
+     cursor:pointer;border:none;transition:opacity .15s}
+.btn:hover{opacity:.85;text-decoration:none}
+.btn-primary{background:var(--primary);color:#000}
+.btn-outline{background:transparent;color:var(--text);border:1px solid var(--border)}
+
+/* Stats strip */
+.stats{display:flex;gap:2rem;justify-content:center;flex-wrap:wrap;
+       margin:0 auto 3rem;max-width:700px}
+.stat{text-align:center}
+.stat-n{font-size:1.8rem;font-weight:800;color:var(--primary)}
+.stat-l{font-size:.78rem;color:var(--text2);margin-top:2px}
+
+/* Badges */
+.badges{display:flex;gap:8px;justify-content:center;margin-bottom:2.5rem;flex-wrap:wrap}
+.badge{background:var(--surface);border:1px solid var(--border);padding:4px 12px;
+       border-radius:20px;font-size:.78rem;color:var(--text2)}
+.badge.green{border-color:var(--green);color:var(--green)}
+.badge.blue{border-color:var(--primary);color:var(--primary)}
+.badge.yellow{border-color:var(--yellow);color:var(--yellow)}
+
+/* Code window */
+.code-window{background:var(--surface);border:1px solid var(--border);
+             border-radius:var(--radius);overflow:hidden;text-align:left;
+             margin:0 auto}
+.code-title{background:var(--surface2);padding:9px 16px;font-size:.78rem;
+            color:var(--text2);border-bottom:1px solid var(--border);
+            display:flex;align-items:center;gap:8px}
+.dot{width:11px;height:11px;border-radius:50%}
+.dot.r{background:#f56565}.dot.y{background:#ecc94b}.dot.g{background:#48bb78}
+pre{padding:1.4rem;overflow-x:auto;font-size:.86rem;line-height:1.75;
+    font-family:"Cascadia Code","Fira Code","SF Mono",monospace}
+.kw{color:var(--purple)}.ty{color:var(--orange)}.fn{color:var(--primary)}
+.st{color:var(--green)}.nu{color:var(--accent)}.cm{color:var(--text2)}
+.op{color:var(--accent)}
+
+/* Section */
+.section{padding:4rem 2rem;max-width:1100px;margin:0 auto}
+.sec-title{font-size:1.75rem;font-weight:700;margin-bottom:.4rem}
+.sec-sub{color:var(--text2);margin-bottom:2.5rem;font-size:.98rem}
+
+/* Features grid */
+.features{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:1.2rem}
+.fcard{background:var(--surface);border:1px solid var(--border);
+       border-radius:var(--radius);padding:1.4rem;transition:border-color .2s}
+.fcard:hover{border-color:var(--primary)}
+.fcard-icon{font-size:1.7rem;margin-bottom:.65rem}
+.fcard h3{font-size:.95rem;font-weight:600;margin-bottom:.35rem}
+.fcard p{font-size:.85rem;color:var(--text2)}
+.fcard .tag{display:inline-block;margin-top:.6rem;font-size:.7rem;
+            padding:2px 8px;border-radius:10px;font-weight:600}
+.tag.done{background:rgba(63,185,80,.15);color:var(--green)}
+.tag.v11{background:rgba(88,166,255,.15);color:var(--primary)}
+.tag.v12{background:rgba(188,140,255,.15);color:var(--purple)}
+
+/* Two-col code */
+.code-grid{display:grid;grid-template-columns:1fr 1fr;gap:1.4rem}
+@media(max-width:720px){.code-grid{grid-template-columns:1fr}}
+
+/* Stdlib table */
+.stdlib-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:.8rem}
+.smod{background:var(--surface);border:1px solid var(--border);
+      border-radius:var(--radius);padding:.9rem 1rem;font-size:.82rem}
+.smod-name{font-weight:600;margin-bottom:.3rem;color:var(--primary)}
+.smod p{color:var(--text2)}
+
+/* Pipeline */
+.pipeline{display:flex;align-items:center;justify-content:center;
+          flex-wrap:wrap;gap:0;margin:2rem 0}
+.pb{background:var(--surface);border:1px solid var(--border);
+    border-radius:var(--radius);padding:9px 16px;font-size:.83rem;
+    font-weight:600;text-align:center}
+.pb sub{font-size:.7rem;color:var(--text2);font-weight:400;display:block}
+.pb.hi{border-color:var(--primary);color:var(--primary)}
+.pa{color:var(--text2);padding:0 8px;font-size:1.1rem}
+
+/* Roadmap */
+.roadmap{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:1rem}
+.rphase{background:var(--surface);border:1px solid var(--border);
+        border-radius:var(--radius);padding:1rem;font-size:.84rem}
+.rphase.done{border-color:var(--green)}
+.rphase.done .rstat{color:var(--green)}
+.rphase.next{border-color:var(--primary)}
+.rphase.next .rstat{color:var(--primary)}
+.rphase.plan{opacity:.7}
+.rphase.plan .rstat{color:var(--text2)}
+.rnum{color:var(--text2);font-size:.72rem;margin-bottom:3px}
+.rphase h4{font-size:.88rem;margin-bottom:4px}
+.rstat{font-size:.76rem;font-weight:700}
+
+/* Install */
+.ibox{background:var(--surface);border:1px solid var(--border);
+      border-radius:var(--radius);max-width:640px}
+
+/* Warning banner */
+.banner{background:rgba(210,153,34,.1);border:1px solid rgba(210,153,34,.4);
+        border-radius:var(--radius);padding:.9rem 1.2rem;font-size:.88rem;
+        color:var(--yellow);margin-bottom:1.5rem;display:flex;gap:.6rem;align-items:flex-start}
+
+/* Footer */
+footer{background:var(--surface);border-top:1px solid var(--border);
+       padding:2.5rem 2rem;text-align:center;color:var(--text2);font-size:.88rem}
+.fl{display:flex;gap:2rem;justify-content:center;margin-bottom:.8rem;flex-wrap:wrap}
+
+@media(max-width:600px){
+  .hero h1{font-size:2.1rem}
+  nav ul{display:none}
+  .stats{gap:1.2rem}
+}
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <div class="nav-logo">🎮 <em>InScript</em></div>
+  <ul>
+    <li><a href="#features">Features</a></li>
+    <li><a href="#syntax">Syntax</a></li>
+    <li><a href="#stdlib">Stdlib</a></li>
+    <li><a href="#install">Install</a></li>
+    <li><a href="#roadmap">Roadmap</a></li>
+  </ul>
+  <div class="nav-right">
+    <span class="nav-badge">v1.0.12</span>
+    <a href="https://github.com/authorss81/inscript" style="color:var(--text2)">GitHub ↗</a>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="badges">
+    <span class="badge green">✅ 839 Tests Passing</span>
+    <span class="badge blue">59 Stdlib Modules</span>
+    <span class="badge">Python 3.10+</span>
+    <span class="badge yellow">⚠️ Pre-stable — v1.1 targets Q2 2026</span>
+  </div>
+
+  <h1>The <em>game-first</em><br>scripting language</h1>
+  <p>InScript is a statically-typed scripting language with built-in game modules — physics, audio, ECS, pathfinding, networking — designed as a readable, safe GDScript alternative.</p>
+  <div class="hero-btns">
+    <a class="btn btn-primary" href="#install">⚡ Get Started</a>
+    <a class="btn btn-outline"  href="#syntax">📖 Syntax Tour</a>
+    <a class="btn btn-outline"  href="https://github.com/authorss81/inscript">⭐ GitHub</a>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><div class="stat-n">839</div><div class="stat-l">Tests Passing</div></div>
+    <div class="stat"><div class="stat-n">59</div><div class="stat-l">Stdlib Modules</div></div>
+    <div class="stat"><div class="stat-n">100+</div><div class="stat-l">Bugs Fixed</div></div>
+    <div class="stat"><div class="stat-n">8.0</div><div class="stat-l">Audit Score / 10</div></div>
+  </div>
+</section>
+
+<!-- HERO CODE -->
+<div style="max-width:820px;margin:0 auto 2rem;padding:0 2rem">
+<div class="code-window">
+  <div class="code-title">
+    <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+    &nbsp; platformer.ins — real example shipped with InScript
+  </div>
+  <pre><span class="cm">// Physics, input, collision — all from the standard library</span>
+<span class="kw">import</span> <span class="st">"physics2d"</span> <span class="kw">as</span> P
+<span class="kw">import</span> <span class="st">"input"</span>    <span class="kw">as</span> I
+<span class="kw">import</span> <span class="st">"camera2d"</span> <span class="kw">as</span> Cam
+
+<span class="kw">struct</span> <span class="ty">Player</span> {
+    pos: <span class="ty">Vec2</span>  vel: <span class="ty">Vec2</span>  health: <span class="ty">int</span> <span class="op">=</span> <span class="nu">3</span>
+
+    <span class="kw">fn</span> <span class="fn">update</span>(dt: <span class="ty">float</span>) {
+        <span class="kw">let</span> move <span class="op">=</span> I.axis_x() <span class="op">*</span> <span class="nu">180.0</span>
+        self.vel.x <span class="op">=</span> move
+        <span class="kw">if</span> I.just_pressed(<span class="st">"jump"</span>) <span class="op">&amp;&amp;</span> self.on_ground() {
+            self.vel.y <span class="op">=</span> <span class="op">-</span><span class="nu">400.0</span>
+        }
+        self.pos <span class="op">+=</span> P.step(self, dt)
+        Cam.follow(self.pos)
+    }
+}
+
+<span class="cm">// Result type for safe error handling</span>
+<span class="kw">fn</span> <span class="fn">load_level</span>(path: <span class="ty">string</span>) <span class="op">-></span> <span class="ty">Result</span> {
+    <span class="kw">let</span> data <span class="op">=</span> <span class="kw">try</span> { read_file(path) } <span class="kw">catch</span> e { <span class="kw">return</span> Err(e) }
+    <span class="kw">return</span> Ok(parse_tilemap(data))
+}</pre>
+</div>
+</div>
+
+<!-- FEATURES -->
+<section class="section" id="features">
+  <div class="sec-title">What InScript gives you</div>
+  <div class="sec-sub">A complete scripting language for 2D games — honest about what exists today.</div>
+
+  <div class="features">
+    <div class="fcard">
+      <div class="fcard-icon">🧱</div>
+      <h3>Structs + Inheritance</h3>
+      <p>Full OOP with single/multi-inheritance, interfaces, mixins, operator overloading, <code>priv</code>/<code>pub</code> fields, and <code>static</code> members.</p>
+      <span class="tag done">✅ Complete</span>
+    </div>
+    <div class="fcard">
+      <div class="fcard-icon">🎯</div>
+      <h3>Pattern Matching</h3>
+      <p>Match on values, ADT enum variants, Result <code>Ok</code>/<code>Err</code>, with guards, binding, and match-as-expression.</p>
+      <span class="tag done">✅ Complete</span>
+    </div>
+    <div class="fcard">
+      <div class="fcard-icon">⚡</div>
+      <h3>Bytecode VM</h3>
+      <p>Register-based VM with 60+ opcodes, closures, generators, and source-mapped error reporting. VM and interpreter are feature-identical.</p>
+      <span class="tag done">✅ Complete</span>
+    </div>
+    <div class="fcard">
+      <div class="fcard-icon">🔒</div>
+      <h3>Type System</h3>
+      <p>Optional type annotations, inference, typed function parameters, and a static analyzer that warns on type mismatches, missing returns, and exhaustive matches.</p>
+      <span class="tag done">✅ Complete</span>
+    </div>
+    <div class="fcard">
+      <div class="fcard-icon">🌿</div>
+      <h3>Generators</h3>
+      <p>First-class generators via <code>fn*</code> / <code>yield</code>. Works in both the tree-walk interpreter and the bytecode VM path.</p>
+      <span class="tag done">✅ Complete</span>
+    </div>
+    <div class="fcard">
+      <div class="fcard-icon">🎮</div>
+      <h3>2D Game Stdlib</h3>
+      <p>Physics, input, camera, audio, tilemap, particles, pathfinding (A*), ECS, FSM, networking — 59 modules total, all accessible via <code>import</code>.</p>
+      <span class="tag done">✅ Complete</span>
+    </div>
+    <div class="fcard">
+      <div class="fcard-icon">🖥️</div>
+      <h3>Enhanced REPL</h3>
+      <p>30+ commands including <code>.doc module</code> live docs, <code>.vm</code> mode toggle, <code>.bytecode</code> disassembly, and a built-in tutorial.</p>
+      <span class="tag done">✅ Complete</span>
+    </div>
+    <div class="fcard">
+      <div class="fcard-icon">📝</div>
+      <h3>LSP + VS Code</h3>
+      <p>Language Server Protocol server (pygls-based) with completions, hover, and diagnostics. VS Code extension with syntax highlighting and snippets.</p>
+      <span class="tag done">✅ Complete</span>
+    </div>
+    <div class="fcard">
+      <div class="fcard-icon">🔧</div>
+      <h3>Formatter + Debugger</h3>
+      <p>Code formatter (<code>inscript fmt</code>) and DAP debugger for VS Code step-through debugging are the top priorities for v1.1.</p>
+      <span class="tag v11">🔜 v1.1</span>
+    </div>
+    <div class="fcard">
+      <div class="fcard-icon">🌐</div>
+      <h3>Web Playground</h3>
+      <p>Browser-based InScript playground using Pyodide. Write and run InScript directly in your browser with no install needed.</p>
+      <span class="tag v11">🔜 v1.1</span>
+    </div>
+    <div class="fcard">
+      <div class="fcard-icon">🔷</div>
+      <h3>Union Types</h3>
+      <p>First-class union types (<code>type Shape = Circle | Rect</code>), enforced generics, and null-safe types (<code>int?</code>) planned for v1.2.</p>
+      <span class="tag v12">v1.2</span>
+    </div>
+    <div class="fcard">
+      <div class="fcard-icon">🚀</div>
+      <h3>C Extension (Speed)</h3>
+      <p>Native C extension for hot paths targeting 5–15× speedup over the current Python-based VM. Current fib(20) ≈ 200ms, target ≈ 15ms.</p>
+      <span class="tag v12">v1.3</span>
+    </div>
+  </div>
+</section>
+
+<!-- PIPELINE -->
+<section class="section">
+  <div class="sec-title">How it works</div>
+  <div class="sec-sub">Source → AST → Bytecode VM or tree-walk interpreter.</div>
+  <div class="pipeline">
+    <div class="pb"><sub>input</sub>.ins source</div>
+    <div class="pa">→</div>
+    <div class="pb">Lexer<sub>tokens</sub></div>
+    <div class="pa">→</div>
+    <div class="pb">Parser<sub>AST</sub></div>
+    <div class="pa">→</div>
+    <div class="pb">Analyzer<sub>warnings</sub></div>
+    <div class="pa">→</div>
+    <div class="pb hi">Bytecode<br>Compiler<sub>60+ opcodes</sub></div>
+    <div class="pa">→</div>
+    <div class="pb hi">Register VM<sub>.ibc files</sub></div>
+  </div>
+  <p style="text-align:center;color:var(--text2);font-size:.88rem">
+    The VM and tree-walk interpreter are feature-identical — switch modes with <code>.vm</code> in the REPL.
+  </p>
+</section>
+
+<!-- SYNTAX TOUR -->
+<section class="section" id="syntax">
+  <div class="sec-title">Syntax Tour</div>
+  <div class="sec-sub">Inspired by Rust + Swift, designed for readability.</div>
+
+  <div class="code-grid" style="margin-bottom:1.4rem">
+    <div class="code-window">
+      <div class="code-title"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>&nbsp; Variables &amp; Types</div>
+      <pre><span class="kw">let</span> x: <span class="ty">int</span>   <span class="op">=</span> <span class="nu">42</span>
+<span class="kw">let</span> name     <span class="op">=</span> <span class="st">"Ada"</span>   <span class="cm">// inferred</span>
+<span class="kw">const</span> PI     <span class="op">=</span> <span class="nu">3.14159</span>
+
+<span class="cm">// Destructuring</span>
+<span class="kw">let</span> [a, b, c] <span class="op">=</span> [<span class="nu">1</span>, <span class="nu">2</span>, <span class="nu">3</span>]
+
+<span class="cm">// Null coalescing + optional chain</span>
+<span class="kw">let</span> name <span class="op">=</span> user<span class="op">?.</span>profile<span class="op">?.</span>name <span class="op">??</span> <span class="st">"Guest"</span>
+
+<span class="cm">// Pipe operator</span>
+<span class="nu">5</span> <span class="op">|></span> double <span class="op">|></span> add_one  <span class="cm">// = 11</span></pre>
+    </div>
+    <div class="code-window">
+      <div class="code-title"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>&nbsp; Functions &amp; Closures</div>
+      <pre><span class="kw">fn</span> <span class="fn">greet</span>(name: <span class="ty">string</span> <span class="op">=</span> <span class="st">"World"</span>) <span class="op">-></span> <span class="ty">string</span> {
+    <span class="kw">return</span> <span class="st">f"Hello {name}!"</span>
+}
+
+<span class="cm">// Named args, variadics</span>
+<span class="kw">fn</span> <span class="fn">sum</span>(<span class="op">*</span>args) { <span class="kw">return</span> args.reduce(<span class="kw">fn</span>(a,b){<span class="kw">return</span> a<span class="op">+</span>b}) }
+
+<span class="cm">// Closures capture by reference</span>
+<span class="kw">fn</span> <span class="fn">counter</span>() {
+    <span class="kw">let</span> n <span class="op">=</span> <span class="nu">0</span>
+    <span class="kw">return</span> <span class="kw">fn</span>() { n <span class="op">+=</span> <span class="nu">1</span>; <span class="kw">return</span> n }
+}</pre>
+    </div>
+    <div class="code-window">
+      <div class="code-title"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>&nbsp; Structs + OOP</div>
+      <pre><span class="kw">struct</span> <span class="ty">Animal</span> {
+    name: <span class="ty">string</span>
+    <span class="kw">priv</span> energy: <span class="ty">float</span> <span class="op">=</span> <span class="nu">100.0</span>
+    <span class="kw">fn</span> <span class="fn">speak</span>() { print(self.name) }
+}
+
+<span class="kw">struct</span> <span class="ty">Dog</span> <span class="kw">extends</span> <span class="ty">Animal</span> {
+    <span class="kw">fn</span> <span class="fn">speak</span>() {
+        super.speak()
+        print(<span class="st">"Woof!"</span>)
+    }
+    <span class="kw">fn</span> <span class="op">+</span>(other) { <span class="cm">// operator overload</span>
+        <span class="kw">return</span> <span class="ty">Dog</span>{ name: self.name <span class="op">++</span> <span class="st">"&"</span> <span class="op">++</span> other.name }
+    }
+}</pre>
+    </div>
+    <div class="code-window">
+      <div class="code-title"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>&nbsp; Error Handling</div>
+      <pre><span class="cm">// Result type — no exceptions by default</span>
+<span class="kw">fn</span> <span class="fn">divide</span>(a: <span class="ty">float</span>, b: <span class="ty">float</span>) <span class="op">-></span> <span class="ty">Result</span> {
+    <span class="kw">if</span> b <span class="op">==</span> <span class="nu">0.0</span> { <span class="kw">return</span> Err(<span class="st">"div by zero"</span>) }
+    <span class="kw">return</span> Ok(a <span class="op">/</span> b)
+}
+
+<span class="cm">// try-catch as expression</span>
+<span class="kw">let</span> safe <span class="op">=</span> <span class="kw">try</span> { risky_fn() } <span class="kw">catch</span> e { <span class="nu">0</span> }
+
+<span class="cm">// Typed catch, finally</span>
+<span class="kw">try</span> { load() }
+<span class="kw">catch</span> e: <span class="ty">string</span> { log(e) }
+<span class="kw">finally</span>          { cleanup() }</pre>
+    </div>
+    <div class="code-window">
+      <div class="code-title"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>&nbsp; Pattern Matching</div>
+      <pre><span class="kw">enum</span> <span class="ty">Shape</span> { Circle(r: <span class="ty">float</span>)  Rect(w: <span class="ty">float</span>, h: <span class="ty">float</span>) }
+
+<span class="kw">let</span> area <span class="op">=</span> <span class="kw">match</span> shape {
+    <span class="kw">case</span> <span class="ty">Shape</span>.Circle(r) { <span class="nu">3.14159</span> <span class="op">*</span> r <span class="op">*</span> r }
+    <span class="kw">case</span> <span class="ty">Shape</span>.Rect(w, h) { w <span class="op">*</span> h }
+    <span class="kw">case</span> _ { <span class="nu">0.0</span> }
+}
+
+<span class="cm">// Match guards</span>
+<span class="kw">match</span> score {
+    <span class="kw">case</span> n <span class="kw">if</span> n <span class="op">>=</span> <span class="nu">90</span> { print(<span class="st">"A"</span>) }
+    <span class="kw">case</span> n <span class="kw">if</span> n <span class="op">>=</span> <span class="nu">70</span> { print(<span class="st">"B"</span>) }
+    <span class="kw">case</span> _ { print(<span class="st">"C"</span>) }
+}</pre>
+    </div>
+    <div class="code-window">
+      <div class="code-title"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>&nbsp; Generators + Collections</div>
+      <pre><span class="cm">// Generator function</span>
+<span class="kw">fn</span><span class="op">*</span> <span class="fn">fibonacci</span>() {
+    <span class="kw">let</span> a<span class="op">=</span><span class="nu">0</span>; <span class="kw">let</span> b<span class="op">=</span><span class="nu">1</span>
+    <span class="kw">while</span> <span class="kw">true</span> { <span class="kw">yield</span> a; [a,b] <span class="op">=</span> [b, a<span class="op">+</span>b] }
+}
+
+<span class="cm">// Array + dict comprehensions</span>
+<span class="kw">let</span> evens <span class="op">=</span> [x <span class="kw">for</span> x <span class="kw">in</span> <span class="nu">1</span>..<span class="op">=</span><span class="nu">20</span> <span class="kw">if</span> x<span class="op">%</span><span class="nu">2</span><span class="op">==</span><span class="nu">0</span>]
+<span class="kw">let</span> inv  <span class="op">=</span> {v: k <span class="kw">for</span> k,v <span class="kw">in</span> entries(myDict)}
+
+<span class="cm">// Rich array methods</span>
+scores.filter(<span class="kw">fn</span>(x){<span class="kw">return</span> x<span class="op">></span><span class="nu">60</span>})
+      .sorted()
+      .take(<span class="nu">10</span>)</pre>
+    </div>
+  </div>
+</section>
+
+<!-- STDLIB -->
+<section class="section" id="stdlib">
+  <div class="sec-title">59 Standard Library Modules</div>
+  <div class="sec-sub">All accessible via <code>import "module" as M</code>. All have <code>.doc module</code> documentation in the REPL.</div>
+
+  <div class="stdlib-grid">
+    <div class="smod"><div class="smod-name">math</div><p>sin/cos/tan, log, sqrt, floor/ceil, INF, NAN, constants</p></div>
+    <div class="smod"><div class="smod-name">string</div><p>split, join, regex replace, case, pad, format, template</p></div>
+    <div class="smod"><div class="smod-name">array</div><p>map/filter/reduce, sort, flatten, chunk, zip, group_by</p></div>
+    <div class="smod"><div class="smod-name">json</div><p>encode/decode with pretty-print and error reporting</p></div>
+    <div class="smod"><div class="smod-name">io</div><p>read/write files, append, exists, list_dir, watch</p></div>
+    <div class="smod"><div class="smod-name">random</div><p>int/float/choice/shuffle, seed, weighted random</p></div>
+    <div class="smod"><div class="smod-name">datetime</div><p>now, format, parse, diff, timezones, Duration type</p></div>
+    <div class="smod"><div class="smod-name">collections</div><p>Set, Queue, Deque, PriorityQueue, RingBuffer, counter</p></div>
+    <div class="smod"><div class="smod-name">regex</div><p>match, find_all, replace, named groups, compile</p></div>
+    <div class="smod"><div class="smod-name">crypto</div><p>sha256, sha512, hmac, md5, bcrypt, random_bytes</p></div>
+    <div class="smod"><div class="smod-name">uuid</div><p>v4, v1, short IDs, namespace UUIDs, validation</p></div>
+    <div class="smod"><div class="smod-name">path</div><p>join, split, exists, dirname, basename, glob</p></div>
+    <div class="smod"><div class="smod-name">fs</div><p>mkdir, rm, copy, move, permissions, stat</p></div>
+    <div class="smod"><div class="smod-name">http</div><p>get/post/put/delete, headers, JSON body, timeout</p></div>
+    <div class="smod"><div class="smod-name">database</div><p>SQLite: connect, query, insert, transaction, ORM-style</p></div>
+    <div class="smod"><div class="smod-name">physics2d</div><p>AABB, circle, step, resolve, raycasting, gravity</p></div>
+    <div class="smod"><div class="smod-name">tilemap</div><p>load, render, collision layer, pathfinding grid</p></div>
+    <div class="smod"><div class="smod-name">camera2d</div><p>follow, shake, zoom, pan, parallax, bounds</p></div>
+    <div class="smod"><div class="smod-name">input</div><p>key_down/up/pressed, mouse, gamepad, axis mapping</p></div>
+    <div class="smod"><div class="smod-name">audio</div><p>play/stop, volume, music, spatial audio, effects</p></div>
+    <div class="smod"><div class="smod-name">particle</div><p>emitter, burst, gradient color, physics-driven</p></div>
+    <div class="smod"><div class="smod-name">ecs</div><p>World, spawn/despawn, component query, system schedule</p></div>
+    <div class="smod"><div class="smod-name">fsm</div><p>StateMachine, transitions, enter/exit hooks, history</p></div>
+    <div class="smod"><div class="smod-name">pathfind</div><p>A* on grid, diagonal, weighted tiles, smooth path</p></div>
+    <div class="smod"><div class="smod-name">events</div><p>emit/on/off, once, wildcards, async events</p></div>
+    <div class="smod"><div class="smod-name">net_game</div><p>GameServer/Client, UDP, sync vars, lobby, lag comp</p></div>
+    <div class="smod"><div class="smod-name">save</div><p>save/load game state, slots, versioning, encryption</p></div>
+    <div class="smod"><div class="smod-name">localize</div><p>i18n strings, plurals, date/number formatting, RTL</p></div>
+    <div class="smod"><div class="smod-name">vec</div><p>v2/v3/v4, dot, cross, normalize, lerp, mat4 planned</p></div>
+    <div class="smod"><div class="smod-name">tween</div><p>linear, ease-in/out, spring, chain, parallel tweens</p></div>
+    <div class="smod" style="grid-column:span 1"><div class="smod-name">+ 29 more</div><p>iter, template, format, color, image, atlas, animation, signal, pool, grid, bench, thread, debug, process, log, compress, url, base64, yaml, toml, csv, xml, ssl, hash, net, argparse, shader, input, scene</p></div>
+  </div>
+</section>
+
+<!-- INSTALL -->
+<section class="section" id="install">
+  <div class="sec-title">Install</div>
+  <div class="sec-sub">Requires Python 3.10+ and pygame 2.x. No other dependencies.</div>
+
+  <div class="banner">
+    ⚠️ <span><strong>Pre-stable:</strong> InScript v1.0.12 is feature-complete for 2D game scripting but missing a formatter, debugger, and published docs site. <code>pip install inscript-lang</code> is not yet live — install from source below. First stable release targets Q2 2026.</span>
+  </div>
+
+  <div class="ibox">
+    <div class="code-window" style="border-radius:var(--radius);margin:0">
+      <div class="code-title"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>&nbsp; Install from source</div>
+      <pre><span class="cm"># Requirements: Python 3.10+, pygame 2.x</span>
+pip install pygame pygls
+
+<span class="cm"># Clone and run</span>
+git clone https://github.com/authorss81/inscript
+cd inscript/inscript_package
+
+<span class="cm"># Start the REPL</span>
+python inscript.py --repl
+
+<span class="cm"># Run a game example</span>
+python inscript.py examples/platformer.ins
+
+<span class="cm"># Check version</span>
+python inscript.py --version   <span class="cm"># InScript 1.0.12</span>
+
+<span class="cm"># Run all tests</span>
+python test_comprehensive.py   <span class="cm"># 335/335 ✅</span></pre>
+    </div>
+  </div>
+
+  <div style="margin-top:1.5rem;max-width:640px">
+    <div class="code-window">
+      <div class="code-title"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>&nbsp; REPL quick start</div>
+      <pre><span class="cm">> python inscript.py --repl</span>
+
+<span class="cm">InScript v1.0.12 — type .help for commands</span>
+
+<span class="op">>></span> <span class="kw">let</span> x <span class="op">=</span> [<span class="nu">1</span>,<span class="nu">2</span>,<span class="nu">3</span>,<span class="nu">4</span>,<span class="nu">5</span>].filter(<span class="kw">fn</span>(n){<span class="kw">return</span> n<span class="op">%</span><span class="nu">2</span><span class="op">==</span><span class="nu">0</span>})
+<span class="op">>></span> print(x)
+[2, 4]
+
+<span class="op">>></span> .doc math         <span class="cm">// live docs for any module</span>
+<span class="op">>></span> .vm               <span class="cm">// switch to bytecode VM</span>
+<span class="op">>></span> .bytecode         <span class="cm">// show disassembly</span>
+<span class="op">>></span> .tutorial         <span class="cm">// interactive tutorial</span></pre>
+    </div>
+  </div>
+</section>
+
+<!-- ROADMAP -->
+<section class="section" id="roadmap">
+  <div class="sec-title">Roadmap</div>
+  <div class="sec-sub">Honest milestone tracking. No phantom features.</div>
+  <div class="roadmap">
+    <div class="rphase done">
+      <div class="rnum">v1.0.0–v1.0.12</div>
+      <h4>Core Language Complete</h4>
+      <div class="rstat">✅ Released March 2026</div>
+    </div>
+    <div class="rphase done">
+      <div class="rnum">Included</div>
+      <h4>59 Stdlib Modules</h4>
+      <div class="rstat">✅ All working</div>
+    </div>
+    <div class="rphase done">
+      <div class="rnum">Included</div>
+      <h4>Bytecode VM</h4>
+      <div class="rstat">✅ Feature parity</div>
+    </div>
+    <div class="rphase done">
+      <div class="rnum">Included</div>
+      <h4>LSP + VS Code Ext</h4>
+      <div class="rstat">✅ Published</div>
+    </div>
+    <div class="rphase done">
+      <div class="rnum">Included</div>
+      <h4>839 Tests Passing</h4>
+      <div class="rstat">✅ All green</div>
+    </div>
+    <div class="rphase next">
+      <div class="rnum">v1.1.0 — Q2 2026</div>
+      <h4>Developer-Ready Stable</h4>
+      <div class="rstat">🔜 Next milestone</div>
+    </div>
+    <div class="rphase next">
+      <div class="rnum">v1.1 includes</div>
+      <h4>Formatter + Debugger</h4>
+      <div class="rstat">🔜 inscript fmt + DAP</div>
+    </div>
+    <div class="rphase next">
+      <div class="rnum">v1.1 includes</div>
+      <h4>PyPI + Docs Site</h4>
+      <div class="rstat">🔜 pip install inscript</div>
+    </div>
+    <div class="rphase next">
+      <div class="rnum">v1.1 includes</div>
+      <h4>Web Playground</h4>
+      <div class="rstat">🔜 Pyodide-powered</div>
+    </div>
+    <div class="rphase plan">
+      <div class="rnum">v1.2.0 — Q3 2026</div>
+      <h4>Union Types + Generics</h4>
+      <div class="rstat">📋 Planned</div>
+    </div>
+    <div class="rphase plan">
+      <div class="rnum">v1.3.0 — Q4 2026</div>
+      <h4>C Extension 5–15×</h4>
+      <div class="rstat">📋 Planned</div>
+    </div>
+    <div class="rphase plan">
+      <div class="rnum">v2.0.0 — 2027</div>
+      <h4>WASM + Package Hub</h4>
+      <div class="rstat">📋 Long term</div>
+    </div>
+  </div>
+  <p style="margin-top:1.5rem;color:var(--text2);font-size:.88rem">
+    Full details: <a href="https://github.com/authorss81/inscript/blob/main/inscript_package/ROADMAP.md">ROADMAP.md</a>
+  </p>
+</section>
+
+<!-- HONEST STATUS -->
+<section class="section">
+  <div class="sec-title">Honest Status</div>
+  <div class="sec-sub">We think every language should tell you exactly where it stands.</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.4rem;max-width:820px">
+    <div class="fcard" style="border-color:var(--green)">
+      <h3 style="color:var(--green);margin-bottom:.6rem">✅ What works today</h3>
+      <p style="line-height:1.9;font-size:.85rem">
+        • Full language (types, OOP, closures, generators, matching)<br>
+        • 59 stdlib modules, all tested<br>
+        • Bytecode VM with full feature parity<br>
+        • LSP + VS Code extension<br>
+        • Enhanced REPL with 30+ commands<br>
+        • 839 tests passing (270+145+32+54+335+3)<br>
+        • 6 game examples shipping with the repo<br>
+        • Windows, macOS, Linux
+      </p>
+    </div>
+    <div class="fcard" style="border-color:var(--yellow)">
+      <h3 style="color:var(--yellow);margin-bottom:.6rem">⚠️ What's missing</h3>
+      <p style="line-height:1.9;font-size:.85rem">
+        • <code>inscript fmt</code> code formatter<br>
+        • Debugger (step-through in VS Code)<br>
+        • <code>pip install inscript</code> not live yet<br>
+        • Docs site URLs still 404<br>
+        • No web playground yet<br>
+        • async/await is synchronous only<br>
+        • Generics are annotation-only (not enforced)<br>
+        • ~40× slower than Python (C ext planned v1.3)
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="fl">
+    <a href="https://github.com/authorss81/inscript">GitHub</a>
+    <a href="https://github.com/authorss81/inscript/blob/main/inscript_package/ROADMAP.md">Roadmap</a>
+    <a href="https://github.com/authorss81/inscript/blob/main/inscript_package/InScript_Language_Audit.md">Audit</a>
+    <a href="https://github.com/authorss81/inscript/blob/main/inscript_package/REPL_Tutorial.md">Tutorial</a>
+    <a href="https://github.com/authorss81/inscript/blob/main/inscript_package/ARCHITECTURE.md">Architecture</a>
+  </div>
+  <p>InScript v1.0.12 · MIT License · Built with ❤️ for game developers</p>
+  <p style="margin-top:.4rem;font-size:.78rem">Pre-stable · First stable release: v1.1.0 (Q2 2026)</p>
+</footer>
+
+</body>
+</html>

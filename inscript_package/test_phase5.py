@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 test_phase5.py — Phase 4 (ssl) + Phase 5 Game-Specific Stdlib Test Suite
 Tests all 17 new modules: ssl, image, atlas, animation, physics2d, tilemap,

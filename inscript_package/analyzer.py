@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # inscript/analyzer.py  — Phase 3: Semantic Analyzer + Type Checker
 #
 # Walks the AST and validates:

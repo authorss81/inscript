@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # inscript/interpreter.py  — Phase 4: Tree-Walking Interpreter
 #
 # Walks the AST and executes every node.
@@ -182,12 +183,21 @@ class Interpreter(Visitor):
         def _random_int(lo, hi): return random.randint(int(lo), int(hi))
 
         # ── Type conversions ─────────────────────────────────────────────────
-        def _to_int(v):
+        def _to_int(v, base=None):
+            if base is not None:
+                base = int(base)
+                if isinstance(v, str):
+                    try: return int(v, base)
+                    except ValueError: self._error(f"Cannot convert '{v}' to int with base {base}")
+                self._error(f"Cannot convert {type(v).__name__} to int with base")
             if isinstance(v, bool): return int(v)
             if isinstance(v, (int, float)): return int(v)
             if isinstance(v, str):
                 try: return int(v)
-                except ValueError: self._error(f"Cannot convert '{v}' to int")
+                except ValueError:
+                    # Auto-detect 0x, 0b, 0o prefixes
+                    try: return int(v, 0)
+                    except ValueError: self._error(f"Cannot convert '{v}' to int")
             self._error(f"Cannot convert {type(v).__name__} to int")
 
         def _to_float(v):
@@ -2421,6 +2431,22 @@ def _get_attr(obj: Any, name: str, line: int, interp: Interpreter) -> Any:
             return obj._static_ns[name]
         interp._error(f"Struct '{obj.name}' has no static method '{name}'", line)
 
+    # InScriptRange properties: r.start, r.end, r.step, r.len, r.includes(n)
+    if isinstance(obj, InScriptRange):
+        props = {
+            'start':    obj.start,
+            'end':      obj.end,
+            'step':     obj.step,
+            'inclusive': obj.inclusive,
+            'len':      len(obj),
+            'length':   len(obj),
+            'includes': lambda n: n in obj,
+            'contains': lambda n: n in obj,
+            'to_array': lambda: list(obj),
+        }
+        if name in props: return props[name]
+        interp._error(f"Range has no property '{name}'. Available: start, end, step, len, includes, to_array", line)
+
     # InScript instance (user struct)
     if isinstance(obj, InScriptInstance):
         # Enforce priv field read access
@@ -2537,6 +2563,7 @@ def _get_attr(obj: Any, name: str, line: int, interp: Interpreter) -> Any:
         if name in methods: return methods[name]
 
     if isinstance(obj, int) and not isinstance(obj, bool):
+        import math as _imath
         methods = {
             "to_string": lambda: str(obj),
             "to_float":  lambda: float(obj),
@@ -2545,6 +2572,13 @@ def _get_attr(obj: Any, name: str, line: int, interp: Interpreter) -> Any:
             "is_even":   lambda: obj % 2 == 0,
             "is_odd":    lambda: obj % 2 != 0,
             "clamp":     lambda lo, hi: max(lo, min(hi, obj)),
+            "to_hex":    lambda: format(obj, 'x'),
+            "to_bin":    lambda: format(obj, 'b'),
+            "to_oct":    lambda: format(obj, 'o'),
+            "pow":       lambda exp, mod=None: pow(obj, int(exp), int(mod)) if mod is not None else pow(obj, int(exp)),
+            "gcd":       lambda n: _imath.gcd(obj, int(n)),
+            "bit_count": lambda: bin(obj).count('1'),
+            "factorial": lambda: _imath.factorial(obj),
         }
         if name in methods: return methods[name]
 
@@ -2563,6 +2597,13 @@ def _get_attr(obj: Any, name: str, line: int, interp: Interpreter) -> Any:
             "clamp":     lambda lo, hi: max(lo, min(hi, obj)),
         }
         if name in methods: return methods[name]
+
+    # Generic Python object fallback — allows stdlib objects (Queue, Set, etc.) to expose methods
+    if hasattr(obj, name):
+        attr = getattr(obj, name)
+        if callable(attr):
+            return attr
+        return attr  # plain attribute (e.g. obj.size would be a value)
 
     interp._error(f"Cannot access attribute '{name}' on {type(obj).__name__}", line)
 

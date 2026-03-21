@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # inscript/compiler.py  — Phase 6.1: Bytecode Compiler
 #
 # Walks the InScript AST and emits register-based bytecode for the VM.

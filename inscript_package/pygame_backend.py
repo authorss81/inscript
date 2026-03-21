@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 pygame_backend.py — Phase 2: Complete pygame rendering backend for InScript
 =============================================================================

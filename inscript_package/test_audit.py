@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 test_audit.py — Phase Completeness Audit
 Systematically verifies every roadmap checklist item for Phases 1, 2, 3.

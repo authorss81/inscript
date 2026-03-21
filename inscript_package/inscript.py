@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 # inscript.py  — InScript Language Entry Point
 #
 # Usage:

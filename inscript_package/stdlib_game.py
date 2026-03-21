@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # stdlib_game.py — Phase 4 remainder + Phase 5: Game-Specific Standard Library
 #
 # Modules in this file:

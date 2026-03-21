@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # inscript/test_parser.py
 # Comprehensive tests for the InScript Parser (Phase 2)
 # Run with: python test_parser.py

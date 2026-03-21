@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # inscript/stdlib.py  — Phase 5: Standard Library
 #
 # Registers all built-in modules that InScript programs can import:

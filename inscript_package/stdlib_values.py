@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # inscript/stdlib_values.py
 # Runtime representations of InScript's built-in game types.
 # These are plain Python objects the interpreter works with at runtime.

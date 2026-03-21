@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # inscript/stdlib_extended.py
 # General-purpose stdlib extension — Part 1 of 2
 #
@@ -82,15 +83,23 @@ class _Queue:
         self._data = _col.deque()
     def push(self, v):
         self._data.append(v); return None
+    def enqueue(self, v):          # alias — more intuitive name
+        self._data.append(v); return None
     def pop(self):
         if not self._data:
             raise Exception("[collections] Queue.pop: queue is empty")
+        return self._data.popleft()
+    def dequeue(self):             # alias — more intuitive name
+        if not self._data:
+            raise Exception("[collections] Queue.dequeue: queue is empty")
         return self._data.popleft()
     def peek(self):
         if not self._data:
             raise Exception("[collections] Queue.peek: queue is empty")
         return self._data[0]
     def size(self):
+        return len(self._data)
+    def len(self):                 # alias
         return len(self._data)
     def is_empty(self):
         return len(self._data) == 0

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """v1.2 feature tests — stdlib modules, select statement, LSP, package manager."""
 import sys, os, io, contextlib
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

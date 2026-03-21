@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 test_comprehensive.py — InScript Comprehensive Feature Test Suite
 =================================================================
