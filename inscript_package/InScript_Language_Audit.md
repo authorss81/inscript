@@ -17,6 +17,45 @@
 
 ## CHANGELOG — v1.0.2 → v1.0.9
 
+### v1.0.16 (March 2026) — VM decorator, priv enforcement, _current_self tracking
+
+| Fix | Description |
+|-----|-------------|
+| **VM `VMInstance.__slots__`** | Added `_priv_fields` initialized to `set()` in `__init__`. Missing slot caused ALL struct field access to fail after priv was added. |
+| **VM `priv` field enforcement** | `_get_field` and `_set_field` check `_priv_fields`. Use `_current_self` tracking to allow internal method access while blocking external. |
+| **VM `_current_self` tracking** | `_do_call` stores currently-executing method's `self` on VM instance; restored via `try/finally` to support nested calls correctly. |
+| **VM `@decorator fn g()`** | Compiler emits `LOAD_GLOBAL dec`, `LOAD_GLOBAL g`, `CALL`, `STORE_GLOBAL g` **and** `MOVE lr` to update the local variable binding — without this, `g` referenced the stale pre-wrap closure. |
+| **`assert`/`panic` thrown value** | `thrown_value = msg` set so `catch e{print(e)}` gets the message string, not `"AssertionError: msg"`. |
+| **`arr.count(val)` vs `count(fn)`** | `count_fn` in `_list_method` dispatches: literal values → `lst.count(val)`, function predicates → filtered sum. |
+| **`match` range patterns** | `case 1..=5` works in interpreter (RangeExpr check in `visit_MatchStmt`) and VM (`EQ` opcode checks `in range`). |
+| **VM `try-finally`** | Compiler emits `finally_body` on both normal and exception code paths. |
+| **VM `super.method()`** | `LOAD_GLOBAL 'super'` creates proxy VMInstance with parent desc; `_super_self` slot added. |
+
+### v1.0.15 (March 2026) — Pattern matching, super, try-finally, count overload
+
+| Fix | Description |
+|-----|-------------|
+| **`arr.count(value)`** | `count_fn` in `_list_method` now handles literal value counts vs predicate. `[1,2,2].count(2)` → `2` |
+| **`match` range patterns** | `case 1..=5` and `case 6..=10` now work in interpreter (RangeExpr check added to `visit_MatchStmt`) |
+| **VM `match` range patterns** | `EQ` opcode now checks `in range` when right operand is `InScriptRange` |
+| **`match` guard + ADT binding** | `case Circle(r) if r>3.0` now works — ADT bindings injected into guard scope |
+| **VM `try-finally`** | Compiler `_try_catch` now emits `finally_body` on both normal and exception paths |
+| **VM `super` call** | `LOAD_GLOBAL 'super'` creates a proxy VMInstance with parent desc; `VMInstance.__slots__` extended |
+| **VM `arr.count(fn)`** | `_list_method` count lambda now calls `vm.call` for VMClosure predicates |
+| **Async double-warning** | Removed duplicate async warning from `visit_FunctionDecl`; REPL walk handles it once per fn |
+
+### v1.0.14 (March 2026) — VM completeness + dict/string methods
+
+| Fix | Description |
+|-----|-------------|
+| **VM `arr ++ arr`** | `CONCAT` opcode now checks for list operands and concatenates them |
+| **VM `throw struct` catch** | `_thrown_value` attribute preserves actual thrown value; catch variable gets the struct, not stringified message |
+| **VM `dict.filter(fn)`** | Added to `_dict_method` in vm.py; also `map_values`, `map_keys`, `each`, `any_value`, `all_values` |
+| **VM `dict.has_key/has_value/remove/pop/copy/is_empty/to_pairs`** | Full dict method parity with interpreter |
+| **VM `str.lines()`** | Added to `_str_method`; also `bytes`, `title`, `capitalize`, `encode`, `center`, `strip/lstrip/rstrip` |
+| **VM outer exception handler** | Uses `_thrown_value` when writing catch register |
+| **Interpreter `dict.each(fn)`** | Added functional iteration over dict k,v pairs |
+
 ### v1.0.13 (March 2026) — VM parity + language ergonomics release
 
 | Category | Fix |
@@ -1172,7 +1211,7 @@ All BUG-01 through BUG-30 are now fixed. Current open issues in priority order:
 
 ---
 
-## XIII. SCORES v4.0 — Updated v1.0.12 (March 2026)
+## XIII. SCORES v4.0 — Updated v1.0.16 (March 2026)
 
 | Category | v1.0.1 | v1.0.7 | Direction | Key reason |
 |----------|--------|--------|-----------|------------|
@@ -1214,7 +1253,7 @@ All BUG-01 through BUG-30 are now fixed. Current open issues in priority order:
 
 ---
 
-*Audit updated March 2026 — v1.0.13.*  
+*Audit updated March 2026 — v1.0.16.*  
 *All findings verified by direct execution against both interpreter and VM.*  
 *501 tests passing. 59 stdlib modules. 30/30 catalogued bugs fixed.*
 
@@ -1666,7 +1705,7 @@ These four things give 80% of the IDE value for 10% of the effort.
 
 *Audit updated March 2026 — v1.0.7.*  
 *All code findings verified by direct execution against both interpreter and VM.*  
-*839+ tests passing. 59 stdlib modules. 110+ bugs fixed. Score: 8.1/10.*
+*839 tests passing (145+32+54+335+270+3). 59 stdlib modules. 110+ bugs fixed. Score: 8.1/10.*
 
 ---
 

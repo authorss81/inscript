@@ -1,10 +1,9 @@
-# -*- coding: utf-8 -*-
-# InScript — Game-Focused Scripting Language
+# InScript v1.0.16 — Game-Focused Scripting Language
 
-> **v1.0.12** · 839 tests passing · 59 stdlib modules · Python 3.10+
-> **Pre-stable** — first stable release targets **v1.1.0 Q2 2026**
+> **839 tests passing** · **59 stdlib modules** · **Python 3.10+** · **Audit score: 8.6/10**
+> Pre-stable — first stable release: **v1.1.0 (Q2 2026)**
 
-InScript is a statically-typed scripting language designed as a readable, safe GDScript alternative. It ships with 59 built-in modules for 2D games — physics, audio, ECS, pathfinding, networking — with no external engine required.
+InScript is a statically-typed scripting language for 2D games — a readable, safe GDScript alternative with 59 built-in game modules and a near-complete bytecode VM.
 
 ---
 
@@ -12,124 +11,153 @@ InScript is a statically-typed scripting language designed as a readable, safe G
 
 ```bash
 pip install pygame pygls
-
 git clone https://github.com/authorss81/inscript
 cd inscript/inscript_package
-
-python inscript.py --repl               # Start REPL
-python inscript.py examples/platformer.ins   # Run a game
-python test_comprehensive.py            # 335/335 tests
+python inscript.py --repl              # Enhanced REPL with 30+ commands
+python inscript.py examples/platformer.ins
+python inscript.py --version           # InScript 1.0.16
 ```
 
 ---
 
-## Language Sample
+## Language Features
 
 ```inscript
-// ADT enums + pattern matching as expression
-enum Shape { Circle(r: float)  Rect(w: float, h: float) }
+// Structs with priv fields, inheritance, super, decorators
+struct Counter {
+    priv count: int = 0
+    fn inc()    { self.count += 1 }
+    fn get()    { return self.count }
+}
 
-fn area(s: Shape) -> float {
-    return match s {
-        case Shape.Circle(r)   { 3.14159 * r * r }
-        case Shape.Rect(w, h)  { w * h }
-        case _ { 0.0 }
+struct NamedCounter extends Counter {
+    name: string
+    fn label()  { return self.name ++ ": " ++ string(self.get()) }
+}
+
+// Decorator pattern — @name applies a function wrapper
+fn memoize(f) {
+    let cache = {}
+    return fn(x) {
+        if cache.has_key(string(x)) { return cache[string(x)] }
+        let r = f(x); cache.set(string(x), r); return r
     }
 }
 
-// Result type + try-catch as expression
+@memoize
+fn fib(n: int) -> int {
+    if n <= 1 { return n }
+    return fib(n-1) + fib(n-2)
+}
+print(fib(40))   // fast — cached
+
+// ADT enums + pattern matching with range patterns and guards
+enum Temp { Cold  Warm  Hot }
+
+fn classify(c: float) -> string {
+    return match c {
+        case 0.0..=15.0  { "cold" }
+        case 16.0..=25.0 { "warm" }
+        case _           { "hot" }
+    }
+}
+
+// Result type chaining
 fn divide(a: float, b: float) -> Result {
-    if b == 0.0 { return Err("div by zero") }
+    if b == 0.0 { return Err("zero") }
     return Ok(a / b)
 }
-let safe = try { divide(10.0, 0.0) } catch e { Err(e) }
+let r = divide(10.0, 2.0)
+           .map(fn(v) { return v * 3.0 })
+           .unwrap_or(0.0)
+print(r)   // 15.0
 
-// Generators
-fn* fibonacci() {
-    let a=0; let b=1
-    while true { yield a; [a,b] = [b, a+b] }
+// try-finally guaranteed cleanup
+import "fs" as FS
+fn read_safe(path: string) -> Result {
+    let f = FS.open(path)
+    try {
+        return Ok(f.read())
+    } catch e {
+        return Err(e)
+    } finally {
+        f.close()   // always runs
+    }
 }
-
-// 59 game modules
-import "physics2d" as P
-import "pathfind"  as Nav
-let path = Nav.astar(grid, start, goal)
-let body = P.step(player, dt)
 ```
 
 ---
 
-## What Works (v1.0.12)
+## What's in v1.0.16
 
-- Core language: types, operators, control flow, destructuring
-- OOP: structs, single/multi-inheritance, interfaces, operator overloading, `priv`/`pub`
-- Pattern matching: guards, ADTs, match-as-expression, Ok/Err
-- Generators (`fn*` / `yield`) in both interpreter and VM
-- Error handling: try/catch/finally, typed catch, Result, assert/panic
-- Closures, decorators `@name`, pipe operator `|>`, optional chaining `?.`
-- Bytecode VM (register-based, 60+ opcodes) with full feature parity
-- 59 stdlib modules — all tested and documented
-- Enhanced REPL: 30+ commands, `.doc module`, `.vm`, `.tutorial`
-- Static analyzer: type mismatches, missing returns, arg counts, exhaustive match
-- LSP server + VS Code extension (syntax highlighting, completions, diagnostics)
-- Windows, macOS, Linux — UTF-8 clean
+| Feature | Status |
+|---------|--------|
+| Full OOP: structs, inheritance, `super`, interfaces, mixins | ✅ Both interpreter + VM |
+| `priv`/`pub` field enforcement with `_current_self` tracking | ✅ Both paths |
+| `@decorator fn g()` — decorator application compiles to VM correctly | ✅ Fixed v1.0.16 |
+| Pattern matching: ranges `case 1..=10`, ADT guards `case Circle(r) if r>3` | ✅ Fixed v1.0.15-16 |
+| `try/catch/finally` with value-returning `try` expressions | ✅ Both paths |
+| Generators `fn*`/`yield`, variadic `fn(*args)` | ✅ Both paths |
+| `arr.count(val)` and `arr.count(fn)` overloads | ✅ Fixed v1.0.15 |
+| `assert(cond, msg)` / `panic(msg)` — catch gets message directly | ✅ Fixed v1.0.16 |
+| VM `super.method()` working | ✅ Fixed v1.0.15 |
+| VM `try-finally` | ✅ Fixed v1.0.15 |
+| 59 stdlib modules, all documented in REPL (`.doc module`) | ✅ Complete |
+| Bytecode VM: ~feature-complete parity with interpreter | ✅ v1.0.13-16 |
 
-## Missing (v1.1 targets)
+## Still Missing (v1.1 targets)
 
-- `inscript fmt` formatter
+- `inscript fmt` — code formatter
 - Step-through debugger in VS Code
-- `pip install inscript-lang` (PyPI not live yet)
-- Live docs site (docs.inscript.dev returns 404)
+- `pip install inscript-lang` — PyPI not published yet
+- Docs site (`docs.inscript.dev` returns 404)
 - Web playground
 
 ---
 
-## Test Suites
+## Tests
 
-```
-python test_phase5.py          # 270 core language
-python test_phase6.py          # 145 bytecode VM
-python test_phase7.py          # 32  operator overloading
-python test_audit.py           # 54  audit regressions
-python test_comprehensive.py   # 335 full feature coverage
-# Total: 836+ tests — all passing
+```bash
+python test_phase6.py         # 145/145 bytecode VM
+python test_phase7.py         # 32/32  operator overloading
+python test_audit.py          # 54/54  audit regressions
+python test_comprehensive.py  # 335/335 all features
+# Total: 839 tests — all green
 ```
 
 ---
 
-## Stdlib (59 modules)
+## 59 Stdlib Modules
 
-math, string, array, json, io, random, datetime, collections, regex,
-crypto, uuid, path, fs, http, database, physics2d, tilemap, camera2d,
-input, audio, particle, ecs, fsm, pathfind, events, net_game, save,
-localize, vec, tween, color, image, atlas, animation, shader, signal,
-pool, grid, bench, thread, debug, process, log, compress, url,
-base64, yaml, toml, csv, xml, ssl, hash, net, argparse, iter,
-template, format, time + more.
+| Category | Modules |
+|----------|---------|
+| Core | math, string, array, json, io, random, time, debug |
+| Data | csv, regex, xml, toml, yaml, url, base64, uuid |
+| Net/Crypto | http, ssl, crypto, hash, net |
+| FS/Process | path, fs, process, compress, log |
+| Date/Coll | datetime, collections, database |
+| Game Visual | color, tween, image, atlas, animation, shader |
+| Game IO | input, audio |
+| Game World | physics2d, tilemap, camera2d, particle, pathfind |
+| Game Systems | grid, events, ecs, fsm, save, localize, net_game |
+| Utilities | signal, vec, pool, iter, format, template, argparse, bench, thread |
 
-In the REPL: `.doc math` shows live documentation for any module.
+In the REPL: `.doc math` — live docs for any module.
 
 ---
 
 ## Roadmap
 
-| Version | Target | Highlights |
-|---------|--------|------------|
-| v1.0.12 | Mar 2026 | int.to_hex/bin, range props, Queue API, UTF-8 clean |
-| v1.1.0 | Q2 2026 | formatter, debugger, PyPI, docs, playground |
-| v1.2.0 | Q3 2026 | union types, generic enforcement, null-safe |
-| v1.3.0 | Q4 2026 | C extension 5-15x speed, standalone binary |
+| Version | Target | Focus |
+|---------|--------|-------|
+| v1.0.16 | March 2026 | VM decorator, priv tracking, assert/panic, count overload |
+| **v1.1.0** | Q2 2026 | **First stable**: formatter, debugger, PyPI, docs, playground |
+| v1.2.0 | Q3 2026 | Union types, generic enforcement, null-safe types |
+| v1.3.0 | Q4 2026 | C extension 5–15× speedup, standalone binary |
 | v2.0.0 | 2027 | WASM, package registry, InScript Studio IDE |
 
-See [ROADMAP.md](ROADMAP.md) for full detail.
+[ROADMAP.md](ROADMAP.md) · [Audit (8.6/10)](InScript_Language_Audit.md) · [Tutorial](REPL_Tutorial.md)
 
 ---
 
-## Honest Assessment
-
-InScript is **public beta** — the language is complete for 2D game scripting.
-Gap to v1.1 "first stable": ~2-3 months of tooling work. Total cost: ~$9/yr (domain).
-
----
-
-MIT License · [GitHub](https://github.com/authorss81/inscript) · [Audit](InScript_Language_Audit.md) · [Roadmap](ROADMAP.md)
+MIT License · [GitHub](https://github.com/authorss81/inscript)
