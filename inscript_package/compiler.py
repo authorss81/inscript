@@ -69,7 +69,8 @@ class FnProto:
     n_upvals: int                 = 0
     source_name: str              = "<script>"
     is_method: bool               = False
-    param_defaults: dict          = field(default_factory=dict)  # BUG-23: name→AST default node
+    param_defaults: dict          = field(default_factory=dict)  # name→AST default node
+    vararg_param: str             = ""   # name of *args param, or "" if none
 
     def const_idx(self, v) -> int:
         for i, c in enumerate(self.consts):
@@ -450,10 +451,13 @@ class Compiler:
 
     def _compile_fn(self, name, params, body, is_method=False):
         proto  = FnProto(name, [p.name for p in params], source_name=self._src, is_method=is_method)
-        # BUG-23 fix: store default AST nodes so VM can fill missing args
+        # Store default AST nodes so VM can fill missing args
         for p in params:
             if p.default is not None:
                 proto.param_defaults[p.name] = p.default
+            # Track variadic *args param
+            if getattr(p, 'is_variadic', False) or getattr(p, 'variadic', False):
+                proto.vararg_param = p.name
         parent = self._scope; self._scope = _Scope(proto, parent=parent)
         if is_method: self._scope.add_local('self')
         for p in params: self._scope.add_local(p.name)
@@ -486,6 +490,27 @@ class Compiler:
                 '__fields__':{sf.name:sf.default for sf in node.fields},
                 '__methods__':methods,'__operators__':operators,
                 '__parent__':node.parent_name,'__interfaces__':node.interfaces,'__node__':node}
+        # Evaluate static field defaults and store in __static__
+        if getattr(node, 'static_fields', None):
+            static_vals = {}
+            for sf in node.static_fields:
+                if sf.default is not None:
+                    # Evaluate simple literal defaults inline
+                    from ast_nodes import IntLiteralExpr, FloatLiteralExpr, StringLiteralExpr, BoolLiteralExpr
+                    if isinstance(sf.default, IntLiteralExpr):   static_vals[sf.name] = sf.default.value
+                    elif isinstance(sf.default, FloatLiteralExpr): static_vals[sf.name] = sf.default.value
+                    elif isinstance(sf.default, StringLiteralExpr): static_vals[sf.name] = sf.default.value
+                    elif isinstance(sf.default, BoolLiteralExpr): static_vals[sf.name] = sf.default.value
+                    else: static_vals[sf.name] = None
+                else:
+                    static_vals[sf.name] = None
+            desc['__static__'] = static_vals
+        if getattr(node, 'static_methods', None):
+            static_m = {}
+            for sm in node.static_methods:
+                p = self._compile_fn(f"{node.name}.{sm.name}", sm.params, sm.body, is_method=False)
+                self._scope.proto.protos.append(p); static_m[sm.name] = p
+            desc['__static_methods__'] = static_m
         dst = self._alloc()
         self._e(Op.LOAD_CONST, dst, self._const(desc))
         self._e(Op.STORE_GLOBAL, self._name(node.name), dst); self._free(dst)

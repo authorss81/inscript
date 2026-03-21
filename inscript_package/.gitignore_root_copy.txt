@@ -1,0 +1,48 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+dist/
+build/
+.eggs/
+*.ibc
+
+# Node / VS Code extension build artifacts
+node_modules/
+out/
+*.vsix
+.vscode-test/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Old release artifacts (outside inscript_package/)
+final/
+*.zip
+*.tar.gz
+*.whl
+
+# IDE
+.idea/
+*.swp
+*~
+
+# Env
+.env
+venv/
+.venv/
+
+# Test artifacts
+.pytest_cache/
+coverage/
+*.coverage
+htmlcov/
+
+# Docs build
+_site/
+site/

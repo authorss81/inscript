@@ -1242,7 +1242,8 @@ class Interpreter(Visitor):
                 result = self.visit(stmt)
             return result
         except InScriptRuntimeError as e:
-            err_val = e.message if hasattr(e, 'message') else str(e)
+            err_val = getattr(e, "thrown_value", None)
+            if err_val is None: err_val = e.message if hasattr(e, "message") else str(e)
             self._push("try_expr")
             if node.catch_var:
                 self._env.define(node.catch_var, err_val)
@@ -1269,7 +1270,8 @@ class Interpreter(Visitor):
         try:
             self.visit(node.body)
         except InScriptRuntimeError as e:
-            err_val = str(e.message)
+            err_val = getattr(e, "thrown_value", None)
+            if err_val is None: err_val = str(e.message) if hasattr(e, "message") else str(e)
             # Multi-catch: try each clause in order; match by type name if specified
             clauses = node.catch_clauses or ([{
                 "var": node.catch_var, "type": node.catch_type, "handler": node.handler
@@ -1533,7 +1535,10 @@ class Interpreter(Visitor):
                         f"— too large to compute. Use float({left}) ** {right} for an approximate result.",
                         node.line)
             return left ** right
-        if op == "++": return str(left) + str(right)  # string concat
+        if op == "++":
+            if isinstance(left, list) and isinstance(right, list):
+                return left + right   # array concat: [1,2] ++ [3,4]
+            return str(left) + str(right)   # string concat: "a" ++ "b"
         if op == "==": return left == right
         if op == "!=": return left != right
         if op == "<":  return left <  right
@@ -2519,8 +2524,26 @@ def _get_attr(obj: Any, name: str, line: int, interp: Interpreter) -> Any:
     if isinstance(obj, list):
         return _list_method(obj, name, interp, line)
 
-    # Dicts
+    # Dicts — intercept Result type first
     if isinstance(obj, dict):
+        if "_ok" in obj or "_err" in obj:
+            is_ok = "_ok"  in obj
+            val   = obj.get("_ok") if is_ok else obj.get("_err")
+            res_methods = {
+                "is_ok":      lambda: is_ok,
+                "is_err":     lambda: not is_ok,
+                "unwrap":     lambda: val if is_ok else interp._error(
+                                  f"Called unwrap() on Err: {_inscript_str(val)}", line),
+                "unwrap_or":  lambda default=None: val if is_ok else default,
+                "unwrap_err": lambda: val if not is_ok else interp._error(
+                                  "Called unwrap_err() on Ok", line),
+                "map":        lambda fn: {"_ok": interp._call_fn(fn, [val])} if is_ok else obj,
+                "map_err":    lambda fn: obj if is_ok else {"_err": interp._call_fn(fn, [val])},
+                "and_then":   lambda fn: interp._call_fn(fn, [val]) if is_ok else obj,
+                "or_else":    lambda fn: obj if is_ok else interp._call_fn(fn, [val]),
+                "value":      lambda: val,
+            }
+            if name in res_methods: return res_methods[name]
         return _dict_method(obj, name, interp, line)
 
     # Strings
@@ -2591,12 +2614,33 @@ def _get_attr(obj: Any, name: str, line: int, interp: Interpreter) -> Any:
             "abs":       lambda: abs(obj),
             "floor":     lambda: int(_math.floor(obj)),
             "ceil":      lambda: int(_math.ceil(obj)),
-            "round":     lambda n=0: round(obj, int(n)),
+            "round":     lambda n=None: (int(round(obj)) if n is None else round(obj, int(n))),
             "is_nan":    lambda: _math.isnan(obj),
             "is_inf":    lambda: _math.isinf(obj),
             "clamp":     lambda lo, hi: max(lo, min(hi, obj)),
         }
         if name in methods: return methods[name]
+
+    # Result type methods: Ok/Err instances
+    if isinstance(obj, dict) and ("_ok" in obj or "_err" in obj):
+        import math as _rm
+        is_ok  = "_ok"  in obj
+        is_err = "_err" in obj
+        val    = obj.get("_ok") if is_ok else obj.get("_err")
+        methods_res = {
+            "is_ok":       lambda: is_ok,
+            "is_err":      lambda: is_err,
+            "unwrap":      lambda: val if is_ok else interp._error(f"Called unwrap() on Err: {_inscript_str(val)}", line),
+            "unwrap_or":   lambda default: val if is_ok else default,
+            "unwrap_err":  lambda: val if is_err else interp._error("Called unwrap_err() on Ok", line),
+            "map":         lambda fn: {"_ok": interp.call(fn, [val])} if is_ok else obj,
+            "map_err":     lambda fn: obj if is_ok else {"_err": interp.call(fn, [val])},
+            "and_then":    lambda fn: interp.call(fn, [val]) if is_ok else obj,
+            "or_else":     lambda fn: obj if is_ok else interp.call(fn, [val]),
+            "ok_or_else":  lambda: val if is_ok else None,
+            "value":       lambda: val,
+        }
+        if name in methods_res: return methods_res[name]
 
     # Generic Python object fallback — allows stdlib objects (Queue, Set, etc.) to expose methods
     if hasattr(obj, name):
@@ -2841,6 +2885,21 @@ def _dict_method(d, name, interp, line):
         "keys": keys, "values": values, "items": items, "clear": clear,
         "update": update, "merge": merge, "is_empty": is_empty,
         "copy": copy, "to_pairs": to_pairs,
+        # Functional dict methods
+        "filter":       lambda fn: {k: v for k, v in d.items()
+                                    if not str(k).startswith("_") and interp._call_fn(fn, [k, v])},
+        "map_values":   lambda fn: {k: interp._call_fn(fn, [v])
+                                    for k, v in d.items() if not str(k).startswith("_")},
+        "map_keys":     lambda fn: {interp._call_fn(fn, [k]): v
+                                    for k, v in d.items() if not str(k).startswith("_")},
+        "any_value":    lambda fn: any(interp._call_fn(fn, [v]) for k, v in d.items()
+                                       if not str(k).startswith("_")),
+        "all_values":   lambda fn: all(interp._call_fn(fn, [v]) for k, v in d.items()
+                                       if not str(k).startswith("_")),
+        "count_values": lambda fn=None: (sum(1 for v in d.values() if interp._call_fn(fn, [v]))
+                                         if fn else len([k for k in d if not str(k).startswith("_")])),
+        "each":         lambda fn: [interp._call_fn(fn, [k, v]) for k, v in d.items()
+                                    if not str(k).startswith("_")] and None,
         "length": len(d), "len": len(d),
     }
     if name in methods:
@@ -2874,10 +2933,19 @@ def _string_method(s, name, interp, line):
         "is_numeric":  lambda: s.isnumeric(),
         "is_alpha":    lambda: s.isalpha(),
         "is_alnum":    lambda: s.isalnum(),
-        "to_upper":    lambda: s.upper(),   # alias
-        "to_lower":    lambda: s.lower(),   # alias
+        "to_upper":    lambda: s.upper(),
+        "to_lower":    lambda: s.lower(),
         "substr":      lambda start, end=None: s[int(start):] if end is None else s[int(start):int(end)],
         "char_at":     lambda i: s[int(i)] if 0 <= int(i) < len(s) else None,
+        "bytes":       lambda: list(s.encode("utf-8")),
+        "encode":      lambda enc="utf-8": list(s.encode(enc)),
+        "lines":       lambda: s.splitlines(),
+        "title":       lambda: s.title(),
+        "capitalize":  lambda: s.capitalize(),
+        "strip":       lambda: s.strip(),
+        "lstrip":      lambda: s.lstrip(),
+        "rstrip":      lambda: s.rstrip(),
+        "center":      lambda w, c=" ": s.center(int(w), c[0] if c else " "),
         "length": len(s), "len": len(s),
     }
     if name in methods:

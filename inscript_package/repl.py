@@ -40,7 +40,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 HISTORY_FILE = Path.home() / ".inscript" / "history"
 HISTORY_FILE.parent.mkdir(parents=True, exist_ok=True)
-VERSION = "1.0.12"
+VERSION = "1.0.13"
 
 # ── ANSI colours ──────────────────────────────────────────────────────────────
 def _c(code, text):

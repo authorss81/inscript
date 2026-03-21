@@ -18,6 +18,9 @@ Install pygame first:  pip install pygame
 
 import sys, os, math
 
+# Suppress "Hello from the pygame community" banner
+os.environ.setdefault('PYGAME_HIDE_SUPPORT_PROMPT', '1')
+
 try:
     import pygame
     import pygame.freetype

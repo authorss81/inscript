@@ -24,6 +24,7 @@
 #     audio        — full audio system (wraps pygame.mixer; graceful fallback)
 
 from __future__ import annotations
+import os as _os_pygame; _os_pygame.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
 from stdlib import register_module
 
 import functools as _functools

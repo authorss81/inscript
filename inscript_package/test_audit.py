@@ -235,7 +235,7 @@ def t_pygame_backend_exists():
 test("2.1 pygame_backend.py exists", t_pygame_backend_exists)
 
 def t_pygame_backend_namespaces():
-    with open(os.path.join(_here, "pygame_backend.py")) as f:
+    with open(os.path.join(_here, "pygame_backend.py"), encoding="utf-8") as f:
         pb = f.read()
     for ns in ["ScreenNamespace", "DrawNamespace", "InputNamespace",
                 "AudioNamespace", "FontNamespace", "Math2DNamespace",
@@ -244,7 +244,7 @@ def t_pygame_backend_namespaces():
 test("2.1 pygame_backend: all 8 namespaces present", t_pygame_backend_namespaces)
 
 def t_pygame_draw_methods():
-    with open(os.path.join(_here, "pygame_backend.py")) as f:
+    with open(os.path.join(_here, "pygame_backend.py"), encoding="utf-8") as f:
         pb = f.read()
     for m in ["def rect", "def circle", "def line", "def text",
               "def sprite", "def sprite_ex", "def polygon", "def ellipse"]:
@@ -252,7 +252,7 @@ def t_pygame_draw_methods():
 test("2.1 draw namespace: rect/circle/line/text/sprite/polygon/ellipse", t_pygame_draw_methods)
 
 def t_pygame_input_methods():
-    with open(os.path.join(_here, "pygame_backend.py")) as f:
+    with open(os.path.join(_here, "pygame_backend.py"), encoding="utf-8") as f:
         pb = f.read()
     for m in ["def key_down", "def key_pressed", "def key_released",
               "def mouse_x", "def mouse_y", "def mouse_down"]:
@@ -260,7 +260,7 @@ def t_pygame_input_methods():
 test("2.1 input namespace: key_down/pressed/released/mouse_x/y/down", t_pygame_input_methods)
 
 def t_pygame_audio_methods():
-    with open(os.path.join(_here, "pygame_backend.py")) as f:
+    with open(os.path.join(_here, "pygame_backend.py"), encoding="utf-8") as f:
         pb = f.read()
     for m in ["def play", "def stop", "def set_volume",
               "def play_music", "def stop_music"]:
@@ -268,7 +268,7 @@ def t_pygame_audio_methods():
 test("2.1 audio namespace: play/stop/set_volume/play_music/stop_music", t_pygame_audio_methods)
 
 def t_pygame_color_constants():
-    with open(os.path.join(_here, "pygame_backend.py")) as f:
+    with open(os.path.join(_here, "pygame_backend.py"), encoding="utf-8") as f:
         pb = f.read()
     for c in ["WHITE", "BLACK", "RED", "GREEN", "BLUE", "GOLD",
               "YELLOW", "CYAN", "ORANGE", "GRAY"]:
@@ -276,7 +276,7 @@ def t_pygame_color_constants():
 test("2.1 Color namespace: WHITE/BLACK/RED/GREEN/BLUE/GOLD/etc", t_pygame_color_constants)
 
 def t_pygame_game_clock():
-    with open(os.path.join(_here, "pygame_backend.py")) as f:
+    with open(os.path.join(_here, "pygame_backend.py"), encoding="utf-8") as f:
         pb = f.read()
     assert "class GameClock" in pb
     assert "def dt" in pb or "self._dt" in pb
@@ -285,7 +285,7 @@ def t_pygame_game_clock():
 test("2.1 GameClock: dt/elapsed/frame_count/every()/sin_wave()", t_pygame_game_clock)
 
 def t_pygame_hooks():
-    with open(os.path.join(_here, "pygame_backend.py")) as f:
+    with open(os.path.join(_here, "pygame_backend.py"), encoding="utf-8") as f:
         pb = f.read()
     assert "on_start" in pb
     assert "on_update" in pb
@@ -294,14 +294,14 @@ def t_pygame_hooks():
 test("2.1 Scene hooks: on_start/on_update/on_draw/on_exit", t_pygame_hooks)
 
 def t_pygame_image_cache():
-    with open(os.path.join(_here, "pygame_backend.py")) as f:
+    with open(os.path.join(_here, "pygame_backend.py"), encoding="utf-8") as f:
         pb = f.read()
     assert "_image_cache" in pb
     assert "_sounds" in pb
 test("2.1 Asset caching: image cache + sound cache", t_pygame_image_cache)
 
 def t_game_flag_in_cli():
-    with open(os.path.join(_here, "inscript.py")) as f:
+    with open(os.path.join(_here, "inscript.py"), encoding="utf-8") as f:
         cli = f.read()
     assert "--game" in cli
     assert "--width" in cli

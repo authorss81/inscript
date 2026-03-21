@@ -837,8 +837,9 @@ prior = ["test_lexer.py","test_parser.py","test_interpreter.py",
 for tfile in prior:
     res = subprocess.run(
         [sys.executable, tfile],
-        capture_output=True, text=True,
-        cwd=os.path.dirname(__file__) or "."
+        capture_output=True, text=True, encoding='utf-8', errors='replace',
+        cwd=os.path.dirname(__file__) or ".",
+        env={**__import__('os').environ, 'PYTHONIOENCODING': 'utf-8', 'PYTHONUTF8': '1'}
     )
     passed = res.returncode == 0
     ok(f"{tfile} still passes", passed,

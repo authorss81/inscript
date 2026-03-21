@@ -10,6 +10,7 @@
 #   python inscript.py --tokens mygame.ins     # print tokens
 #   python inscript.py --version               # print version
 
+import os as _os_env; _os_env.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
 import sys, os, argparse
 
 # Make sure local modules are found regardless of cwd

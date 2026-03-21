@@ -561,8 +561,14 @@ class VM:
                     av,bv=R(b),R(c)
                     if isinstance(av,VMInstance): W(a,self._op_overload(av,'/',bv))
                     else:
-                        if bv==0: raise InScriptRuntimeError("division by zero",ins.line,0,"")
-                        W(a, av/bv)
+                        if bv==0:
+                            if isinstance(av,float) or isinstance(bv,float):
+                                import math as _dmath
+                                W(a, float('nan') if av==0 else _dmath.copysign(float('inf'), av))
+                            else:
+                                raise InScriptRuntimeError("division by zero",ins.line,0,"")
+                        else:
+                            W(a, av/bv)
                 elif op==Op.MOD:
                     av,bv=R(b),R(c)
                     W(a, self._op_overload(av,'%',bv) if isinstance(av,VMInstance) else av%bv)
@@ -830,7 +836,16 @@ class VM:
                     return VMEnumVariant(obj['__name__'], name, variants[name])
                 return None
             if obj['__type__'] == 'struct_decl':
-                # Struct used as constructor — return the descriptor itself
+                # Static field/method access: M.PI, M.sq(5), M.MAX
+                static_fields = obj.get('__static__', {})
+                if name in static_fields:
+                    return static_fields[name]
+                static_methods = obj.get('__static_methods__', {})
+                if name in static_methods:
+                    cl = VMClosure(static_methods[name], [])
+                    cl._self = None   # static: no self, prevents _do_call placing struct as reg[0]
+                    return cl
+                # Fallback: return the descriptor (used as constructor)
                 return obj
         if isinstance(obj, VMInstance):
             desc   = obj._desc or {}
@@ -901,20 +916,43 @@ class VM:
             if isinstance(proto, dict): return self._construct(proto, args)
             frame = Frame(fn, proto.n_locals)
             r0 = 0
-            self_v = fn._self if fn._self is not _UNSET else (self_val if self_val is not _UNSET else None)
-            if proto.is_method or self_v is not None:
+            # Only inject self if: the fn has an explicit _self bound OR
+            # (self_val is provided AND the proto is a method)
+            # Static methods (is_method=False, _self=_UNSET) must NOT receive self_val
+            if fn._self is not _UNSET:
+                self_v = fn._self
+            elif proto.is_method and self_val is not _UNSET:
+                self_v = self_val
+            else:
+                self_v = None
+            if self_v is not None:
                 frame.regs[0] = self_v; r0 = 1
-            for i, v in enumerate(args):
-                idx = r0+i
-                while idx >= len(frame.regs): frame.regs.append(None)
-                frame.regs[idx] = v
-            # BUG-23 fix: fill in default values for missing parameters
-            if proto.param_defaults:
-                for pi, pname in enumerate(proto.params):
-                    reg = r0 + pi
-                    while reg >= len(frame.regs): frame.regs.append(None)
-                    if frame.regs[reg] is None and pname in proto.param_defaults:
-                        frame.regs[reg] = _eval_default(proto.param_defaults[pname], self)
+            # Handle variadic *args param
+            vararg = proto.vararg_param if proto.vararg_param else ""
+            if vararg and vararg in proto.params:
+                vi = proto.params.index(vararg)
+                # Place non-variadic positional args first
+                for i in range(vi):
+                    idx = r0 + i
+                    while idx >= len(frame.regs): frame.regs.append(None)
+                    frame.regs[idx] = args[i] if i < len(args) else None
+                # Pack remaining args into the variadic list
+                vararg_list = list(args[vi:])
+                vidx = r0 + vi
+                while vidx >= len(frame.regs): frame.regs.append(None)
+                frame.regs[vidx] = vararg_list
+            else:
+                for i, v in enumerate(args):
+                    idx = r0 + i
+                    while idx >= len(frame.regs): frame.regs.append(None)
+                    frame.regs[idx] = v
+                # Fill in default values for missing parameters
+                if proto.param_defaults:
+                    for pi, pname in enumerate(proto.params):
+                        reg = r0 + pi
+                        while reg >= len(frame.regs): frame.regs.append(None)
+                        if frame.regs[reg] is None and pname in proto.param_defaults:
+                            frame.regs[reg] = _eval_default(proto.param_defaults[pname], self)
             return self._exec(frame)
 
         if isinstance(fn, dict):
@@ -946,7 +984,6 @@ class VM:
     def _do_method(self, obj, mname, args):
         m = self._get_field(obj, mname)
         if m is None:
-            # built-in method fallback
             if isinstance(obj, list):
                 r = _list_method(obj, mname, self)(*args)
                 return r if r is not _NOTFOUND else None
@@ -954,30 +991,69 @@ class VM:
                 r = _str_method(obj, mname, self)(*args)
                 return r if r is not _NOTFOUND else None
             if isinstance(obj, dict):
+                # Result type methods
+                if '_ok' in obj or '_err' in obj:
+                    is_ok = '_ok' in obj
+                    val   = obj.get('_ok') if is_ok else obj.get('_err')
+                    res_m = {
+                        'is_ok':     lambda: is_ok,
+                        'is_err':    lambda: not is_ok,
+                        'unwrap':    lambda: val if is_ok else (_ for _ in ()).throw(None),
+                        'unwrap_or': lambda: val if is_ok else (args[0] if args else None),
+                        'value':     lambda: val,
+                        'map':       lambda: {'_ok': self.call(args[0],[val])} if is_ok else obj,
+                    }
+                    if mname in res_m:
+                        try: return res_m[mname]()
+                        except: raise InScriptRuntimeError(f"unwrap() called on Err({_ins_str(val)})",0,0,"")
                 r = _dict_method(obj, mname, self)(*args)
                 return r if r is not _NOTFOUND else None
+            # int methods
+            if isinstance(obj, bool):
+                bm = {'to_string': lambda: 'true' if obj else 'false', 'to_int': lambda: int(obj)}
+                if mname in bm: return bm[mname]()
+            if isinstance(obj, int) and not isinstance(obj, bool):
+                import math as _m
+                im = {
+                    'to_string': lambda: str(obj), 'to_float': lambda: float(obj),
+                    'abs': lambda: abs(obj), 'is_even': lambda: obj%2==0,
+                    'is_odd': lambda: obj%2!=0,
+                    'to_hex': lambda: format(obj,'x'), 'to_bin': lambda: format(obj,'b'),
+                    'to_oct': lambda: format(obj,'o'),
+                    'pow': lambda: pow(obj, int(args[0])) if args else obj,
+                    'gcd': lambda: _m.gcd(obj, int(args[0])) if args else obj,
+                    'bit_count': lambda: bin(obj).count('1'),
+                    'factorial': lambda: _m.factorial(obj),
+                    'clamp': lambda: max(args[0], min(args[1], obj)) if len(args)>=2 else obj,
+                }
+                if mname in im: return im[mname]()
+            if isinstance(obj, float):
+                import math as _m
+                fm = {
+                    'to_string': lambda: str(obj) if not obj.is_integer() else f"{int(obj)}.0",
+                    'to_int': lambda: int(obj), 'abs': lambda: abs(obj),
+                    'floor': lambda: int(_m.floor(obj)), 'ceil': lambda: int(_m.ceil(obj)),
+                    'round': lambda: round(obj, int(args[0])) if args else round(obj),
+                    'is_nan': lambda: _m.isnan(obj), 'is_inf': lambda: _m.isinf(obj),
+                    'sqrt': lambda: _m.sqrt(obj),
+                    'clamp': lambda: max(args[0], min(args[1], obj)) if len(args)>=2 else obj,
+                }
+                if mname in fm: return fm[mname]()
             if isinstance(obj, VMInstance):
-                # Built-in struct instance methods
                 import copy as _copy_mod
                 if mname == 'copy':
-                    new_fields = {}
+                    nf = {}
                     for k, v in obj.fields.items():
-                        if isinstance(v, VMClosure):
-                            new_fields[k] = v
-                        elif isinstance(v, (list, dict)):
-                            new_fields[k] = _copy_mod.deepcopy(v)
-                        else:
-                            new_fields[k] = v
-                    new_inst = VMInstance(obj.struct_name, new_fields, obj._desc)
-                    return new_inst
+                        nf[k] = _copy_mod.deepcopy(v) if isinstance(v,(list,dict)) else v
+                    return VMInstance(obj.struct_name, nf, obj._desc)
                 if mname == 'to_dict':
-                    return {k: v for k, v in obj.fields.items()
-                            if not isinstance(v, VMClosure)}
-                if mname == 'has':
-                    return args[0] in obj.fields if args else False
-                # Primitive type methods on struct fields (int/float)
-                if mname in ('to_string',):
-                    return _ins_str(obj)
+                    return {k: v for k,v in obj.fields.items() if not isinstance(v,VMClosure)}
+                if mname == 'has': return args[0] in obj.fields if args else False
+            # Generic Python object fallback (stdlib objects: Queue, Set, etc.)
+            if hasattr(obj, mname):
+                attr = getattr(obj, mname)
+                if callable(attr): return attr(*args)
+                return attr
             raise InScriptRuntimeError(f"no method '{mname}' on {_type_name(obj)}", 0, 0, "")
         if callable(m) and not isinstance(m, (VMClosure,)):
             return m(*args)
