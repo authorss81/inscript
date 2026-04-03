@@ -204,12 +204,35 @@ class Parser:
         if tok.type == TT.IDENT and tok.value == "mixin":
             return self.parse_mixin_decl()
 
+        # --- Type alias: type Name = ExistingType ---
+        if tok.type == TT.IDENT and tok.value == "type":
+            return self.parse_type_alias()
+
         # --- Expression statement ---
         return self.parse_stmt()
 
     # ─────────────────────────────────────────────
     # IMPORT
     # ─────────────────────────────────────────────
+
+    def parse_type_alias(self):
+        """type ID = ExistingType — type alias declaration (annotation only)."""
+        line, col = self.current.line, self.current.col
+        self.advance()  # consume 'type'
+        name = self.expect(TT.IDENT, "Expected alias name after 'type'").value
+        self.expect(TT.ASSIGN, "Expected '=' in type alias")
+        # Consume the type expression (could be int, string, ident, etc.)
+        target_tok = self.current
+        target_name = target_tok.value or target_tok.type.name
+        self.advance()
+        # Handle qualified names like MyModule.MyType
+        while self.check(TT.DOT):
+            self.advance()
+            target_name += "." + (self.current.value or "")
+            self.advance()
+        # Return a simple VarDecl so the interpreter stores name in env as a type tag
+        from ast_nodes import TypeAliasDecl
+        return TypeAliasDecl(name=name, target=target_name, line=line, col=col)
 
     def parse_import(self) -> ImportDecl:
         """
@@ -450,10 +473,19 @@ class Parser:
                 ann = TypeAnnotation(name="Array", is_array=True,
                                      generics=[ann], line=line, col=col)
 
-        # Nullable: `int?`
-        if self.current.type == TT.NOT and self.current.value == "!":
-            pass  # '!' is NOT, not nullable marker
-        # We use a future `?` token for nullable — skip for now
+        # Nullable suffix: `int?`
+        if self.current.type == TT.QUESTION:
+            self.advance()  # consume '?'
+            ann = TypeAnnotation(name="Optional", is_nullable=True,
+                                 generics=[ann], line=line, col=col)
+
+        # Union type: `int|string`
+        if self.current.type == TT.BIT_OR:
+            union_types = [ann]
+            while self.current.type == TT.BIT_OR:
+                self.advance()  # consume '|'
+                union_types.append(self.parse_type_annotation())
+            ann = TypeAnnotation(name="Union", generics=union_types, line=line, col=col)
 
         return ann
 

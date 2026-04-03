@@ -1471,6 +1471,11 @@ class _Pool:
 def _thread_spawn(fn, args=None, daemon=True):
     return _Thread(fn, args=args, daemon=daemon)
 
+def _thread_run(fn, args=None):
+    """Spawn a thread and wait for its result — synchronous convenience wrapper."""
+    t = _Thread(fn, args=args, daemon=True)
+    return t.join(timeout=30)
+
 def _thread_spawn_many(n, fn):
     return [_Thread(fn, args=[i]) for i in range(int(n))]
 
@@ -1492,6 +1497,7 @@ def _thread_count():
 
 register_module("thread", _wrapmod({
     "spawn":       _thread_spawn,
+    "run":         _thread_run,
     "spawn_many":  _thread_spawn_many,
     "join_all":    _thread_join_all,
     "sleep":       _thread_sleep,

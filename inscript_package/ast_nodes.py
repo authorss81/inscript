@@ -46,6 +46,7 @@ class TypeAnnotation(Node):
     generics:  List["TypeAnnotation"] = field(default_factory=list)
     is_array:  bool = False
     is_dict:   bool = False
+    is_nullable: bool = False
     key_type:  Optional["TypeAnnotation"] = None
     nullable:  bool = False
 
@@ -690,6 +691,12 @@ class DecoratedDecl(Node):
     """@decorator(args) fn foo() { } — decorator wrapping a declaration."""
     decorators: list   # [(name_str, [arg_node, ...]), ...]
     target: "Node"     # FnDecl, StructDecl, or any other declaration
+
+@dataclass
+class TypeAliasDecl(Node):
+    """type ID = ExistingType — type alias (annotation only at runtime)."""
+    name:   str
+    target: str
 
 @dataclass
 class SelectStmt(Node):

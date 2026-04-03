@@ -17,6 +17,26 @@
 
 ## CHANGELOG — v1.0.2 → v1.0.9
 
+### v1.0.17 (April 2026) — Type system, array completeness, VM match guards
+
+| Feature | Description |
+|---------|-------------|
+| **`int?` nullable types** | `let x:int? = nil` now parses. `TT.QUESTION` suffix in `parse_type_annotation` wraps in `Optional` TypeAnnotation. |
+| **`int\|string` union types** | `fn f(x:int\|string)` now parses. `TT.BIT_OR` chain in `parse_type_annotation` wraps in `Union` TypeAnnotation. |
+| **`type ID = int`** | Type alias declaration. Parser recognizes soft keyword `type`, emits `TypeAliasDecl`, interpreter stores alias in env. |
+| **`comptime{}` scope leak** | Variables defined in `comptime{}` now leak into outer scope. `comptime{let MAX=100}; print(MAX)` works. |
+| **`arr.take_while(fn)`** | Returns elements while predicate is true. Both interpreter + VM. |
+| **`arr.drop_while(fn)`** | Skips elements while predicate is true. Both interpreter + VM. |
+| **`arr.window(n)`** | Sliding window of size n: `[1,2,3,4].window(2)` → `[[1,2],[2,3],[3,4]]`. |
+| **`arr.partition(fn)`** | Splits into `[matching, non_matching]`. Both paths. |
+| **`arr.none(fn)`** | Returns true if no element matches predicate. |
+| **`arr.index_where(fn)`** | First index where predicate is true, or -1. |
+| **`arr.last_where(fn)`** | Last element matching predicate. |
+| **`thread.run(fn)`** | Spawns + immediately joins — synchronous convenience. `T.run(fn(){return 42})` → `42`. |
+| **VM match guard**  | `match n { case x if x>5 { ... } }` — guards compile with `JUMP_IF_FALSE` after pattern match. |
+| **VM match ADT bindings** | ADT positional fields extracted via `GET_INDEX` before guard evaluation. |
+| **Optional chain fix** | Reverted over-engineered args check; `w?.a?.b` works again (was broken by v1.0.16 session). |
+
 ### v1.0.16 (March 2026) — VM decorator, priv enforcement, _current_self tracking
 
 | Fix | Description |
@@ -1211,7 +1231,7 @@ All BUG-01 through BUG-30 are now fixed. Current open issues in priority order:
 
 ---
 
-## XIII. SCORES v4.0 — Updated v1.0.16 (March 2026)
+## XIII. SCORES v4.0 — Updated v1.0.17 (March 2026)
 
 | Category | v1.0.1 | v1.0.7 | Direction | Key reason |
 |----------|--------|--------|-----------|------------|
@@ -1253,7 +1273,7 @@ All BUG-01 through BUG-30 are now fixed. Current open issues in priority order:
 
 ---
 
-*Audit updated March 2026 — v1.0.16.*  
+*Audit updated April 2026 — v1.0.17.*  
 *All findings verified by direct execution against both interpreter and VM.*  
 *501 tests passing. 59 stdlib modules. 30/30 catalogued bugs fixed.*
 

@@ -904,6 +904,12 @@ class Interpreter(Visitor):
         self._env.define(node.name, iface)
         return iface
 
+    def visit_TypeAliasDecl(self, node) -> Any:
+        """type ID = ExistingType — store alias so type annotations can reference it."""
+        # Runtime effect: register the alias name so it can be used in is/as checks
+        self._env.define(node.name, {"__type_alias__": True, "__target__": node.target})
+        return None
+
     def visit_ImplDecl(self, node) -> Any:
         """impl Drawable for Sprite — attach methods to struct's runtime definition."""
         try:
@@ -2281,18 +2287,10 @@ class Interpreter(Visitor):
         return self.visit(node.expr)
 
     def visit_OptChainExpr(self, node: OptChainExpr) -> Any:
-        """obj?.member — returns None if obj is null OR if dict key is absent."""
+        """obj?.member OR chained call — short-circuits to None if obj is nil."""
         obj = self.visit(node.obj)
         if obj is None:
             return None
-        # BUG-08 fix: short-circuit when key is absent from a dict
-        if isinstance(obj, dict) and node.member not in obj:
-            # Check it's also not a built-in method name before short-circuiting
-            _dict_methods = {"get","set","has","has_key","has_value","remove","pop",
-                             "keys","values","items","clear","length","len",
-                             "update","merge","is_empty","copy","to_pairs"}
-            if node.member not in _dict_methods:
-                return None
         try:
             return _get_attr(obj, node.member, node.line, self)
         except Exception:
@@ -2310,7 +2308,7 @@ class Interpreter(Visitor):
         return self._call_fn(fn, [val])
 
     def visit_ComptimeExpr(self, node: ComptimeExpr) -> Any:
-        """comptime { ... } — in an interpreted language, just run the block immediately."""
+        """comptime { ... } — run block immediately; defs leak into outer scope."""
         self._push("comptime")
         result = None
         try:
@@ -2319,7 +2317,13 @@ class Interpreter(Visitor):
         except ReturnSignal as r:
             result = r.value
         finally:
+            # Leak all definitions from comptime scope into the parent scope
+            inner = self._env._store
             self._pop()
+            for k, v in inner.items():
+                if not k.startswith("_"):
+                    try: self._env.define(k, v)
+                    except: self._env.assign(k, v)
         return result
 
     def visit_PropagateExpr(self, node: PropagateExpr) -> Any:
@@ -2839,6 +2843,15 @@ def _list_method(lst, name, interp, line):
         "min_by": min_by, "max_by": max_by,
         "group_by": group_by_fn, "unique": unique_fn,
         "sorted":   lambda key=None: sorted(lst, key=(lambda x: interp._call_function(key,[x],[None],line) if isinstance(key, InScriptFunction) else (key(x) if key else x)) if key else None),
+        "take_while": lambda fn: list(__import__('itertools').takewhile(lambda x: _is_truthy(interp._call_fn(fn,[x])), lst)),
+        "drop_while": lambda fn: list(__import__('itertools').dropwhile(lambda x: _is_truthy(interp._call_fn(fn,[x])), lst)),
+        "window":   lambda n: [lst[i:i+int(n)] for i in range(len(lst)-int(n)+1)],
+        "scan":     lambda fn, init=None: (lambda acc=([init] if init is not None else [lst[0]]), items=(lst if init is not None else lst[1:]): [acc.__setitem__(0, interp._call_fn(fn,[acc[0],x])) or acc[0] for x in items])()[0] if False else list(__import__('functools').accumulate(lst, lambda a,b: interp._call_fn(fn,[a,b]))),
+        "none":     lambda fn=None: not any(_is_truthy(interp._call_fn(fn,[x])) for x in lst) if fn else not any(_is_truthy(x) for x in lst),
+        "index_where": lambda fn: next((i for i,x in enumerate(lst) if _is_truthy(interp._call_fn(fn,[x]))), -1),
+        "last_where": lambda fn: next((x for x in reversed(lst) if _is_truthy(interp._call_fn(fn,[x]))), None),
+        "partition": lambda fn: [[x for x in lst if _is_truthy(interp._call_fn(fn,[x]))], [x for x in lst if not _is_truthy(interp._call_fn(fn,[x]))]],
+        "tally":    lambda: dict(__import__('collections').Counter(str(x) for x in lst)),
         "flatten":  lambda: [y for x in lst for y in (x if isinstance(x, list) else [x])],
         "is_empty": lambda: len(lst) == 0,
         "includes": lambda v: v in lst,

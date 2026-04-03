@@ -204,6 +204,7 @@ KEYWORDS: dict = {
     "get":        TT.IDENT,
     "set":        TT.IDENT,
     "comptime":   TT.IDENT,
+    "type":       TT.IDENT,  # soft keyword for type aliases
     "operator":   TT.IDENT,   # Phase 7: treated as ident, parser checks value
 }
 

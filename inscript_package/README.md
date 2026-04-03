@@ -1,9 +1,9 @@
-# InScript v1.0.16 — Game-Focused Scripting Language
+# InScript v1.0.17 — Game-Focused Scripting Language
 
-> **839 tests passing** · **59 stdlib modules** · **Python 3.10+** · **Audit score: 8.6/10**
+> **839 tests passing** · **59 stdlib modules** · **Python 3.10+** · **Audit score: 8.8/10**
 > Pre-stable — first stable release: **v1.1.0 (Q2 2026)**
 
-InScript is a statically-typed scripting language for 2D games — a readable, safe GDScript alternative with 59 built-in game modules and a near-complete bytecode VM.
+InScript is a statically-typed scripting language for 2D games. It has a near-complete bytecode VM, 59 game modules, and now supports nullable types, union types, and type aliases.
 
 ---
 
@@ -13,151 +13,101 @@ InScript is a statically-typed scripting language for 2D games — a readable, s
 pip install pygame pygls
 git clone https://github.com/authorss81/inscript
 cd inscript/inscript_package
-python inscript.py --repl              # Enhanced REPL with 30+ commands
+python inscript.py --repl
 python inscript.py examples/platformer.ins
-python inscript.py --version           # InScript 1.0.16
+python inscript.py --version   # InScript 1.0.17
 ```
 
 ---
 
-## Language Features
+## Language — What's New in v1.0.17
 
 ```inscript
-// Structs with priv fields, inheritance, super, decorators
-struct Counter {
-    priv count: int = 0
-    fn inc()    { self.count += 1 }
-    fn get()    { return self.count }
+// Nullable types, union types, type aliases
+type PlayerID = int
+type Name = string
+
+fn greet(name: Name?) {
+    print("Hello, " ++ (name ?? "stranger"))
 }
 
-struct NamedCounter extends Counter {
-    name: string
-    fn label()  { return self.name ++ ": " ++ string(self.get()) }
-}
-
-// Decorator pattern — @name applies a function wrapper
-fn memoize(f) {
-    let cache = {}
-    return fn(x) {
-        if cache.has_key(string(x)) { return cache[string(x)] }
-        let r = f(x); cache.set(string(x), r); return r
+fn show(x: int|string) -> string {
+    return match x {
+        case int   { "number: " ++ string(x) }
+        case _     { "text: " ++ x }
     }
 }
 
-@memoize
-fn fib(n: int) -> int {
-    if n <= 1 { return n }
-    return fib(n-1) + fib(n-2)
-}
-print(fib(40))   // fast — cached
+// Richer array methods
+let nums = [1, 2, 3, 4, 5, 6, 7, 8]
 
-// ADT enums + pattern matching with range patterns and guards
-enum Temp { Cold  Warm  Hot }
+let small = nums.take_while(fn(x) { return x < 5 })    // [1, 2, 3, 4]
+let big   = nums.drop_while(fn(x) { return x < 5 })    // [5, 6, 7, 8]
+let pairs = nums.window(2)                               // [[1,2],[2,3],...]
+let split = nums.partition(fn(x) { return x % 2 == 0}) // [[2,4,6,8],[1,3,5,7]]
+let idx   = nums.index_where(fn(x) { return x > 5 })   // 5
+let last  = nums.last_where(fn(x) { return x % 2 == 0})// 8
 
-fn classify(c: float) -> string {
-    return match c {
-        case 0.0..=15.0  { "cold" }
-        case 16.0..=25.0 { "warm" }
-        case _           { "hot" }
-    }
+// comptime constants — available at runtime
+comptime {
+    const MAX_PLAYERS = 4
+    const GRAVITY     = 9.8
+}
+print(MAX_PLAYERS)   // 4
+print(GRAVITY)       // 9.8
+
+// VM match with guards
+match score {
+    case 90..=100  { print("A") }
+    case 80..=89   { print("B") }
+    case n if n >= 0 { print("F") }
 }
 
-// Result type chaining
-fn divide(a: float, b: float) -> Result {
-    if b == 0.0 { return Err("zero") }
-    return Ok(a / b)
-}
-let r = divide(10.0, 2.0)
-           .map(fn(v) { return v * 3.0 })
-           .unwrap_or(0.0)
-print(r)   // 15.0
-
-// try-finally guaranteed cleanup
-import "fs" as FS
-fn read_safe(path: string) -> Result {
-    let f = FS.open(path)
-    try {
-        return Ok(f.read())
-    } catch e {
-        return Err(e)
-    } finally {
-        f.close()   // always runs
-    }
-}
+// thread.run — quick parallel work
+import "thread" as T
+let result = T.run(fn() { return heavy_compute() })
 ```
 
 ---
 
-## What's in v1.0.16
+## Full Feature Table
 
 | Feature | Status |
 |---------|--------|
-| Full OOP: structs, inheritance, `super`, interfaces, mixins | ✅ Both interpreter + VM |
-| `priv`/`pub` field enforcement with `_current_self` tracking | ✅ Both paths |
-| `@decorator fn g()` — decorator application compiles to VM correctly | ✅ Fixed v1.0.16 |
-| Pattern matching: ranges `case 1..=10`, ADT guards `case Circle(r) if r>3` | ✅ Fixed v1.0.15-16 |
-| `try/catch/finally` with value-returning `try` expressions | ✅ Both paths |
-| Generators `fn*`/`yield`, variadic `fn(*args)` | ✅ Both paths |
-| `arr.count(val)` and `arr.count(fn)` overloads | ✅ Fixed v1.0.15 |
-| `assert(cond, msg)` / `panic(msg)` — catch gets message directly | ✅ Fixed v1.0.16 |
-| VM `super.method()` working | ✅ Fixed v1.0.15 |
-| VM `try-finally` | ✅ Fixed v1.0.15 |
-| 59 stdlib modules, all documented in REPL (`.doc module`) | ✅ Complete |
-| Bytecode VM: ~feature-complete parity with interpreter | ✅ v1.0.13-16 |
+| `int?` nullable types | ✅ v1.0.17 |
+| `int\|string` union type params | ✅ v1.0.17 |
+| `type ID = int` type aliases | ✅ v1.0.17 |
+| `comptime{}` leaks to outer scope | ✅ v1.0.17 |
+| `arr.take_while/drop_while/window/partition` | ✅ v1.0.17 (both paths) |
+| `arr.none/index_where/last_where` | ✅ v1.0.17 |
+| `thread.run(fn)` sync convenience | ✅ v1.0.17 |
+| VM match guards `case n if n>5` | ✅ v1.0.17 |
+| VM match ADT bindings | ✅ v1.0.17 |
+| VM decorator `@name` | ✅ v1.0.16 |
+| VM `priv` field enforcement | ✅ v1.0.16 |
+| VM `super.method()` | ✅ v1.0.15 |
+| VM `try-finally` | ✅ v1.0.15 |
+| Pattern matching: ranges, guards, ADTs | ✅ v1.0.15-17 |
+| 59 stdlib modules | ✅ Complete |
 
-## Still Missing (v1.1 targets)
+## Missing (v1.1 targets)
 
-- `inscript fmt` — code formatter
-- Step-through debugger in VS Code
-- `pip install inscript-lang` — PyPI not published yet
-- Docs site (`docs.inscript.dev` returns 404)
-- Web playground
+- `inscript fmt` — formatter
+- Debugger
+- `pip install inscript-lang`
+- `docs.inscript.dev`
 
 ---
 
 ## Tests
 
 ```bash
-python test_phase6.py         # 145/145 bytecode VM
-python test_phase7.py         # 32/32  operator overloading
-python test_audit.py          # 54/54  audit regressions
-python test_comprehensive.py  # 335/335 all features
-# Total: 839 tests — all green
+python test_phase6.py         # 145/145
+python test_phase7.py         # 32/32
+python test_audit.py          # 54/54
+python test_comprehensive.py  # 335/335
 ```
 
 ---
 
-## 59 Stdlib Modules
-
-| Category | Modules |
-|----------|---------|
-| Core | math, string, array, json, io, random, time, debug |
-| Data | csv, regex, xml, toml, yaml, url, base64, uuid |
-| Net/Crypto | http, ssl, crypto, hash, net |
-| FS/Process | path, fs, process, compress, log |
-| Date/Coll | datetime, collections, database |
-| Game Visual | color, tween, image, atlas, animation, shader |
-| Game IO | input, audio |
-| Game World | physics2d, tilemap, camera2d, particle, pathfind |
-| Game Systems | grid, events, ecs, fsm, save, localize, net_game |
-| Utilities | signal, vec, pool, iter, format, template, argparse, bench, thread |
-
-In the REPL: `.doc math` — live docs for any module.
-
----
-
-## Roadmap
-
-| Version | Target | Focus |
-|---------|--------|-------|
-| v1.0.16 | March 2026 | VM decorator, priv tracking, assert/panic, count overload |
-| **v1.1.0** | Q2 2026 | **First stable**: formatter, debugger, PyPI, docs, playground |
-| v1.2.0 | Q3 2026 | Union types, generic enforcement, null-safe types |
-| v1.3.0 | Q4 2026 | C extension 5–15× speedup, standalone binary |
-| v2.0.0 | 2027 | WASM, package registry, InScript Studio IDE |
-
-[ROADMAP.md](ROADMAP.md) · [Audit (8.6/10)](InScript_Language_Audit.md) · [Tutorial](REPL_Tutorial.md)
-
----
-
-MIT License · [GitHub](https://github.com/authorss81/inscript)
+MIT License · [GitHub](https://github.com/authorss81/inscript) · [Audit (8.8/10)](InScript_Language_Audit.md) · [Roadmap](ROADMAP.md)

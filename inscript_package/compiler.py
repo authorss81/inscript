@@ -606,13 +606,72 @@ class Compiler:
             pat = arm.pattern
             wild = (pat is None or (isinstance(pat, IdentExpr) and pat.name == '_'))
             if wild:
-                self._scope.begin_block(); self._stmt(arm.body); self._scope.end_block()
-                ends.append(self._e(Op.JUMP, 0)); break
+                binding = getattr(arm, 'binding', None)
+                guard   = getattr(arm, 'guard', None)
+                if binding:
+                    self._scope.begin_block()
+                    lr = self._scope.add_local(binding)
+                    self._e(Op.MOVE, lr, subj)
+                if guard:
+                    gr = self._expr(guard)
+                    gf = self._e(Op.JUMP_IF_FALSE, gr, 0); self._free(gr)
+                    self._scope.begin_block(); self._stmt(arm.body); self._scope.end_block()
+                    ends.append(self._e(Op.JUMP, 0)); self._patch_b(gf)
+                else:
+                    self._scope.begin_block(); self._stmt(arm.body); self._scope.end_block()
+                    ends.append(self._e(Op.JUMP, 0))
+                if binding: self._scope.end_block()
+                break
+
+            # ADT destructuring pattern: case Enum.Variant(field1, field2)
+            if (isinstance(pat, CallExpr) and
+                    not isinstance(pat.callee, IdentExpr and pat.callee.name in ('Ok','Err'))):
+                # Emit variant name comparison via EQ (same as simple EQ on the dict)
+                cr = self._alloc(); pr = self._expr(pat)
+                self._e(Op.EQ, cr, subj, pr); self._free(pr)
+                jf = self._e(Op.JUMP_IF_FALSE, cr, 0); self._free(cr)
+                # Extract positional bindings: each arg that is an IdentExpr becomes a local
+                self._scope.begin_block()
+                for i, arg in enumerate(pat.args):
+                    arg_node = arg.value if hasattr(arg, 'value') else arg
+                    if isinstance(arg_node, IdentExpr) and arg_node.name != '_':
+                        lr = self._scope.add_local(arg_node.name)
+                        # GET_FIELD on subject for the i-th non-_ field
+                        # We use GET_INDEX with integer i as field position
+                        fi = self._alloc()
+                        self._e(Op.LOAD_INT, fi, i)
+                        self._e(Op.GET_INDEX, lr, subj, fi)
+                        self._free(fi)
+                # Evaluate guard with bindings in scope
+                guard = getattr(arm, 'guard', None)
+                if guard:
+                    gr = self._expr(guard)
+                    gf2 = self._e(Op.JUMP_IF_FALSE, gr, 0); self._free(gr)
+                    self._stmt(arm.body)
+                    self._scope.end_block()
+                    ends.append(self._e(Op.JUMP, 0))
+                    self._patch_b(gf2)
+                    self._patch_b(jf)
+                else:
+                    self._stmt(arm.body)
+                    self._scope.end_block()
+                    ends.append(self._e(Op.JUMP, 0))
+                    self._patch_b(jf)
+                continue
+
             cr = self._alloc(); pr = self._expr(pat)
             self._e(Op.EQ, cr, subj, pr); self._free(pr)
             jf = self._e(Op.JUMP_IF_FALSE, cr, 0); self._free(cr)
-            self._scope.begin_block(); self._stmt(arm.body); self._scope.end_block()
-            ends.append(self._e(Op.JUMP, 0)); self._patch_b(jf)
+            guard2 = getattr(arm, 'guard', None)
+            if guard2:
+                gr = self._expr(guard2)
+                gf = self._e(Op.JUMP_IF_FALSE, gr, 0); self._free(gr)
+                self._scope.begin_block(); self._stmt(arm.body); self._scope.end_block()
+                ends.append(self._e(Op.JUMP, 0))
+                self._patch_b(gf); self._patch_b(jf)
+            else:
+                self._scope.begin_block(); self._stmt(arm.body); self._scope.end_block()
+                ends.append(self._e(Op.JUMP, 0)); self._patch_b(jf)
         self._free(subj)
         for j in ends: self._patch_b(j)
 
