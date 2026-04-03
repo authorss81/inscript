@@ -328,7 +328,8 @@ class Compiler:
                     self._e(Op.MOVE, lr, dec_r)
                 self._free_to(t)
         elif isinstance(node, LabeledStmt):   self._stmt(node.stmt)
-        elif isinstance(node, (WaitStmt, MixinDecl)): pass
+        elif isinstance(node, WaitStmt): pass
+        elif isinstance(node, MixinDecl): self._mixin_decl(node)
 
     # ── if ────────────────────────────────────────────────────────────────────
     def _if(self, node):
@@ -489,8 +490,27 @@ class Compiler:
         return proto
 
     # ── struct decl ───────────────────────────────────────────────────────────
+    def _mixin_decl(self, node):
+        """Store mixin as a const so _struct_decl can pull in its methods."""
+        mixin_const = {
+            '__type__': 'mixin_decl',
+            '__name__': node.name,
+            '__methods_nodes__': node.methods,
+        }
+        # Register in proto consts so _struct_decl can find it
+        self._scope.proto.consts.append(mixin_const)
+
     def _struct_decl(self, node):
         methods = {}; operators = {}
+        # Expand mixin methods into the struct's method list
+        for mixin_name in (getattr(node, 'mixins', None) or []):
+            mixin_desc = self._scope.proto.names  # look in globals
+            # Get the mixin from compiler's tracked global consts
+            for c in self._scope.proto.consts:
+                if isinstance(c, dict) and c.get('__type__') == 'mixin_decl' and c.get('__name__') == mixin_name:
+                    for m in c.get('__methods_nodes__', []):
+                        if not any(n.name == m.name for n in node.methods):
+                            node.methods.append(m)
         for m in node.methods:
             p = self._compile_fn(f"{node.name}.{m.name}", m.params, m.body, is_method=True)
             self._scope.proto.protos.append(p); methods[m.name] = p

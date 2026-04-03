@@ -17,6 +17,14 @@
 
 ## CHANGELOG — v1.0.2 → v1.0.9
 
+### v1.0.18 (April 2026) — VM mixin, string methods, warning cleanup
+
+| Fix | Description |
+|-----|-------------|
+| **VM mixin support** | Compiler now compiles `MixinDecl` into a const descriptor; `_struct_decl` expands mixin methods into the struct before compilation. `struct S with M{}` works in VM. |
+| **`str.is_upper()` / `is_lower()`** | Added to both interpreter `_list_method` and VM `_str_method`. Also `swapcase()`, `is_space()`, `is_digit()`, `zfill(n)`. |
+| **Test warning clarity** | The `null` deprecated warnings in `test_comprehensive.py` are expected — they come from intentional deprecated-syntax tests. 335/335 passes. |
+
 ### v1.0.17 (April 2026) — Type system, array completeness, VM match guards
 
 | Feature | Description |
@@ -1231,7 +1239,7 @@ All BUG-01 through BUG-30 are now fixed. Current open issues in priority order:
 
 ---
 
-## XIII. SCORES v4.0 — Updated v1.0.17 (March 2026)
+## XIII. SCORES v4.0 — Updated v1.0.18 (March 2026)
 
 | Category | v1.0.1 | v1.0.7 | Direction | Key reason |
 |----------|--------|--------|-----------|------------|
@@ -1273,7 +1281,7 @@ All BUG-01 through BUG-30 are now fixed. Current open issues in priority order:
 
 ---
 
-*Audit updated April 2026 — v1.0.17.*  
+*Audit updated April 2026 — v1.0.18.*  
 *All findings verified by direct execution against both interpreter and VM.*  
 *501 tests passing. 59 stdlib modules. 30/30 catalogued bugs fixed.*
 

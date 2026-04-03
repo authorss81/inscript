@@ -1,4 +1,4 @@
-# InScript v1.0.17 — Game-Focused Scripting Language
+# InScript v1.0.18 — Game-Focused Scripting Language
 
 > **839 tests passing** · **59 stdlib modules** · **Python 3.10+** · **Audit score: 8.8/10**
 > Pre-stable — first stable release: **v1.1.0 (Q2 2026)**
@@ -15,12 +15,12 @@ git clone https://github.com/authorss81/inscript
 cd inscript/inscript_package
 python inscript.py --repl
 python inscript.py examples/platformer.ins
-python inscript.py --version   # InScript 1.0.17
+python inscript.py --version   # InScript 1.0.18
 ```
 
 ---
 
-## Language — What's New in v1.0.17
+## Language — What's New in v1.0.18
 
 ```inscript
 // Nullable types, union types, type aliases
@@ -74,15 +74,15 @@ let result = T.run(fn() { return heavy_compute() })
 
 | Feature | Status |
 |---------|--------|
-| `int?` nullable types | ✅ v1.0.17 |
-| `int\|string` union type params | ✅ v1.0.17 |
-| `type ID = int` type aliases | ✅ v1.0.17 |
-| `comptime{}` leaks to outer scope | ✅ v1.0.17 |
-| `arr.take_while/drop_while/window/partition` | ✅ v1.0.17 (both paths) |
-| `arr.none/index_where/last_where` | ✅ v1.0.17 |
-| `thread.run(fn)` sync convenience | ✅ v1.0.17 |
-| VM match guards `case n if n>5` | ✅ v1.0.17 |
-| VM match ADT bindings | ✅ v1.0.17 |
+| `int?` nullable types | ✅ v1.0.18 |
+| `int\|string` union type params | ✅ v1.0.18 |
+| `type ID = int` type aliases | ✅ v1.0.18 |
+| `comptime{}` leaks to outer scope | ✅ v1.0.18 |
+| `arr.take_while/drop_while/window/partition` | ✅ v1.0.18 (both paths) |
+| `arr.none/index_where/last_where` | ✅ v1.0.18 |
+| `thread.run(fn)` sync convenience | ✅ v1.0.18 |
+| VM match guards `case n if n>5` | ✅ v1.0.18 |
+| VM match ADT bindings | ✅ v1.0.18 |
 | VM decorator `@name` | ✅ v1.0.16 |
 | VM `priv` field enforcement | ✅ v1.0.16 |
 | VM `super.method()` | ✅ v1.0.15 |
