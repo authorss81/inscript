@@ -186,8 +186,11 @@ register_module("iter", _wrapmod({
 import math as _math_mod
 import re as _re_fmt
 
-def _fmt_number(n, decimals=2, thousands=",", decimal_sep="."):
+def _fmt_number(n, decimals=None, thousands=",", decimal_sep="."):
     n = float(n)
+    # Default: no decimals for whole numbers, 2 for floats
+    if decimals is None:
+        decimals = 0 if n == int(n) else 2
     d = int(decimals)
     # Format with desired decimal places
     if d == 0:

@@ -956,37 +956,49 @@ class Compiler:
         dst = self._alloc()
         if isinstance(node.callee, GetAttrExpr):
             obj = self._expr(node.callee.obj); ni = self._name(node.callee.attr)
-            t   = self._top()
-            pos_args = [arg for arg in node.args if not arg.name]
+            pos_args   = [arg for arg in node.args if not arg.name]
             named_args = [arg for arg in node.args if arg.name]
-            # Compile positional args into consecutive registers starting at t
+            # Args MUST be at obj+1, obj+2, ... for CALL_METHOD to find them
+            # Evaluate each arg into a temp, then MOVE to the required consecutive slots
+            arg_tmps = []
             for arg in pos_args:
-                r = self._alloc(); v = self._expr(arg.value)
-                if v != r: self._e(Op.MOVE, r, v); self._free(v)
+                arg_tmps.append(self._expr(arg.value))
+            # Now place them at obj+1, obj+2, ...
+            for i, (tmp, arg) in enumerate(zip(arg_tmps, pos_args)):
+                slot = obj + 1 + i
+                # Ensure the slot register exists
+                while slot >= self._scope.n_regs:
+                    self._scope.n_regs += 1
+                if tmp != slot:
+                    self._e(Op.MOVE, slot, tmp)
+                    self._free(tmp)
             if named_args:
-                # Build kwargs dict into the next consecutive register slot
-                kw_slot = self._top()  # this is where next arg should be
-                # Build dict in temps above kw_slot
+                # Build kwargs dict into slot after positional args
+                kw_slot = obj + 1 + len(pos_args)
+                while kw_slot >= self._scope.n_regs:
+                    self._scope.n_regs += 1
                 kw_key_start = kw_slot + 1
-                self._scope.n_regs = kw_key_start
+                self._scope.n_regs = max(self._scope.n_regs, kw_key_start)
                 for i, arg in enumerate(named_args):
                     ks = kw_key_start + i*2
                     vs = kw_key_start + i*2 + 1
-                    self._scope.n_regs = max(self._scope.n_regs, ks+1)
-                    self._e(Op.LOAD_CONST, ks, self._const(arg.name))
-                    self._scope.n_regs = ks + 1
                     self._scope.n_regs = max(self._scope.n_regs, vs+1)
+                    self._e(Op.LOAD_CONST, ks, self._const(arg.name))
                     vv = self._expr(arg.value)
                     if vv != vs: self._e(Op.MOVE, vs, vv); self._free(vv)
-                    self._scope.n_regs = vs + 1
-                # MAKE_DICT result goes to kw_slot
                 self._e(Op.MAKE_DICT, kw_slot, kw_key_start, len(named_args))
                 self._scope.n_regs = kw_slot + 1
                 total_args = len(pos_args) + 1
             else:
                 total_args = len(pos_args)
             self._e(Op.CALL_METHOD, obj, ni, total_args)
-            self._e(Op.MOVE, dst, obj); self._free_to(t); self._free(obj)
+            self._e(Op.MOVE, dst, obj)
+            # Free arg slots and obj
+            for i in range(total_args):
+                slot = obj + 1 + i
+                if slot < self._scope.n_regs:
+                    pass  # managed by free_to
+            self._free(obj)
             return dst
         fn = self._expr(node.callee); t = self._top()
         for arg in node.args:

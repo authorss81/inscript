@@ -319,11 +319,17 @@ class Parser:
         )
 
     def _parse_array_destructure(self, is_const: bool, line: int, col: int) -> DestructureDecl:
-        """let [a, b, c] = expr   |   let [[a,b],[c,d]] = expr (nested)"""
+        """let [a, b, c] = expr   |   let [[a,b],[c,d]] = expr   |   let [a,b,...rest] = expr"""
         self.advance()  # consume '['
         names = []
+        rest_name = None  # name for ...rest pattern
         while not self.check(TT.RBRACKET) and not self.is_at_end():
-            if self.check(TT.LBRACKET):
+            if self.check(TT.ELLIPSIS):
+                self.advance()  # consume '...'
+                rest_name = self.advance().value  # get rest variable name
+                self.match(TT.COMMA)
+                break  # ...rest must be last
+            elif self.check(TT.LBRACKET):
                 # Nested array destructure pattern — store as sub-DestructureDecl
                 sub_line, sub_col = self._pos()
                 sub = self._parse_array_destructure(is_const, sub_line, sub_col)
@@ -347,8 +353,10 @@ class Parser:
             self.advance()
             initializer = self.parse_expr()
         self.match(TT.SEMICOLON)
-        return DestructureDecl(names=names, is_object=False, is_const=is_const,
-                               initializer=initializer, line=line, col=col)
+        d = DestructureDecl(names=names, is_object=False, is_const=is_const,
+                            initializer=initializer, line=line, col=col)
+        d.rest_name = rest_name  # attach rest name for interpreter
+        return d
 
     def _parse_object_destructure(self, is_const: bool, line: int, col: int) -> DestructureDecl:
         """let {x, y, z: renamed} = expr"""
@@ -1794,14 +1802,24 @@ class Parser:
             return self.parse_lambda()
 
         # Anonymous function expression: fn(params) -> ret { body }
-        # Allows: thread(fn() { ... }), map(arr, fn(x) { x * 2 })
+        # Also: fn(params) => expr  (arrow function — single expression, implicit return)
+        # Allows: thread(fn() { ... }), map(arr, fn(x) { x * 2 }), fn(x) => x*2
         if tok.type == TT.FN:
             self.advance()  # consume 'fn'
             params = self.parse_param_list()
             ret_type = None
             if self.match(TT.ARROW):
                 ret_type = self.parse_type_annotation()
-            body = self.parse_block()
+            # Arrow form: fn(x) => expr  — single expression, implicit return
+            if self.check(TT.FAT_ARROW):
+                self.advance()  # consume '=>'
+                expr_body = self.parse_expr()
+                from ast_nodes import ReturnStmt, BlockStmt
+                body = BlockStmt(body=[ReturnStmt(value=expr_body,
+                                                   line=expr_body.line, col=expr_body.col)],
+                                  line=expr_body.line, col=expr_body.col)
+            else:
+                body = self.parse_block()
             return LambdaExpr(params=params, return_type=ret_type,
                               body=body, line=line, col=col)
 

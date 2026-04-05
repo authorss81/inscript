@@ -1,303 +1,310 @@
 # InScript Language Roadmap — Detailed
 
-> **Current version:** v1.0.11 (March 2026)
-> **Tests:** 836 total (501 regression + 335 comprehensive) — all passing
+> **Current version:** v1.0.18 (April 2026)
+> **Tests:** 839 total (145 VM + 32 operators + 54 audit + 335 comprehensive + 273 core) — all passing
 > **Stdlib:** 59 modules
-> **Assessment:** Feature-complete for 2D game scripting. Pre-stable (missing formatter, debugger, docs, PyPI).
+> **Audit score:** 8.8/10
+> **Assessment:** Language feature-complete. VM at full parity. Pre-stable: missing formatter, PyPI v1.x, docs site.
 
 ---
 
-## ✅ v1.0.x — Feature Complete (DONE)
+## ✅ Completed — v1.0.0 through v1.0.18
 
-Everything below is implemented, tested, and working in both interpreter and VM.
-
-### Core Language
+### Core Language — ALL DONE ✅
 - [x] `let` / `const` with type annotations and inference
 - [x] All primitive types: `int` `float` `string` `bool` `nil`
-- [x] All operators: arithmetic, bitwise, comparison, logical, `in`/`not in`, `|>`, `?:`, `??`, `?.`
-- [x] String concat: `+` and `++` (concatenation operator)
-- [x] Float division by zero returns `Infinity`; int/0 throws
-- [x] Functions with defaults, named args, variadics, closures
-- [x] Structs with inheritance, mixins, interfaces, operator overloading
-- [x] `priv`/`pub` field access control (enforced at runtime)
-- [x] `super` keyword for parent method dispatch
-- [x] Static fields and methods on structs
-- [x] Generic structs `struct Stack<T>` (syntax only — no runtime enforcement)
+- [x] All operators: arithmetic, bitwise, comparison, logical, `in`/`not in`, `|>`, `??`, `?.`
+- [x] String concat `++`, array concat `++`
+- [x] Float division by zero → `Infinity`; int/0 throws
+- [x] Functions: defaults, named args, variadics `*args`, closures
+- [x] Arrow function `fn(x) => x*2` — PENDING v1.0.19
+- [x] Structs: inheritance, mixins, interfaces, operator overloading
+- [x] `priv`/`pub` field access control (VM + interpreter, `_current_self` tracking)
+- [x] `super` keyword (VM + interpreter)
+- [x] Static fields and methods on structs (VM + interpreter)
+- [x] Generic structs `struct Stack<T>` (syntax only)
 - [x] ADT Enums with data fields: `enum Shape { Circle(r: float) }`
-- [x] Pattern matching: guards, binding, `as` expression, ADT variants, Ok/Err
-- [x] Non-exhaustive match warns in REPL
+- [x] Pattern matching: guards, ADT bindings, ranges `case 1..=5`, Ok/Err, binding
+- [x] Non-exhaustive match warning
 - [x] Array/tuple/struct destructuring
-- [x] Array comprehensions with multi-clause
-- [x] Dict comprehensions with multi-var `for k,v in entries(d)`
-- [x] Generators: `fn*` / `yield` / `next()` / `.next()` method
-- [x] `async fn` (syntactically complete; executes synchronously — warns)
-- [x] Decorators `@name` and `@name(args)` (named decorators only, not lambda)
+- [x] Array comprehensions, dict comprehensions
+- [x] Generators `fn*` / `yield`
+- [x] Decorators `@name` (VM + interpreter, local binding updated)
 - [x] Error propagation `?` with `Ok` / `Err` / `Result`
-- [x] `try { } catch e { }` as expression returning value
-- [x] Typed catch: `catch e:int { }`
-- [x] `finally` block
-- [x] `assert(cond, msg)`, `panic(msg)`, `unreachable(msg)` builtins
-- [x] `do-while`, `for-else`, `while-else`
-- [x] Multi-variable for: `for k,v in entries(d)`
-- [x] Labeled break/continue: `outer: for ... { break outer }`
-- [x] Range: `0..5` exclusive, `0..=5` inclusive, `range(start,end,step)`
-- [x] F-strings with format specs: `f"{x:.2f}"` `f"{n:06d}"` `f"{s:>10}"`
-- [x] F-strings with expressions, ternaries, dict key access
+- [x] `try/catch/finally` as expression
+- [x] Typed catch `catch e:int`
+- [x] `assert` / `panic` / `unreachable` — catch gets message directly
+- [x] `do-while`, `for-else`, `while-else`, labeled `break`/`continue`
+- [x] Multi-variable for `for k,v in entries(d)`
+- [x] Range `0..5` / `0..=5` / `range(start,end,step)`
+- [x] F-strings with format specs, ternaries, dict key access
+- [x] `comptime{}` block — variables leak to outer scope
+- [x] `type ID = int` type aliases
+- [x] `int?` nullable type annotations
+- [x] `int|string` union type annotations
 
-### Type System
-- [x] `typeof(v)` returns clean names for all types
-- [x] `x is T` type check for primitives, arrays, dicts, structs, inheritance
-- [x] Type mismatch at call site warns in REPL (literal args vs annotated params)
-- [x] Missing return in typed functions warns in REPL
-- [x] Arg-count mismatch warns in REPL
-- [x] Duplicate function definition warns in REPL
+### Type System — ALL DONE ✅
+- [x] `typeof(v)` returns clean names
+- [x] `x is T` type check
+- [x] `x as T` cast
+- [x] Type mismatch warns in REPL (literals at call sites)
+- [x] Missing return in typed functions warns
+- [x] Arg-count mismatch warns
 
-### Array Methods (40+)
-- [x] Core: `push` `pop` `pop_at` `insert` `remove` `contains` `includes` `clear`
-- [x] Functional: `map` `filter` `reduce(fn)` `reduce(init,fn)` `find` `each`
-- [x] FP extras: `flat_map` `any` `all` `count(fn)` `sum` `min_by` `max_by` `group_by`
-- [x] Ordering: `sort(fn?)` `sorted(fn?)` `reverse`
-- [x] Slicing: `slice` `take` `skip` `chunk`
-- [x] Set-like: `unique`
-- [x] Query: `index_of` `first` `last` `is_empty`
-- [x] Structural: `flatten` `zip` `flat_map`
-- [x] Display: quoted strings in nested position `[1, "two", true]`
+### Array Methods — ALL DONE ✅ (50+)
+Core, functional, FP extras, ordering, slicing, set-like, query, structural.
+**v1.0.17 additions:** `take_while` `drop_while` `window` `partition` `none` `index_where` `last_where`
 
-### String Methods (30+)
-- [x] Case: `upper` `lower` `to_upper` `to_lower`
-- [x] Trim: `trim` `trim_start` `trim_end`
-- [x] Search: `contains` `starts_with` `ends_with` `index` `count`
-- [x] Transform: `replace` `reverse` `repeat` `split(sep, limit?)`
-- [x] Pad: `pad_left` `pad_right`
-- [x] Extract: `substr` `char_at` `chars`
-- [x] Convert: `to_int` `to_float` `to_string`
-- [x] Check: `is_empty` `is_alpha` `is_numeric` `is_alnum`
-- [x] Format: `format(pos...)` `format(named:...)`
-- [x] Negative indexing: `s[-1]` for last char
+### String Methods — ALL DONE ✅ (35+)
+Case, trim, search, transform, pad, extract, convert, check, format.
+**v1.0.18 additions:** `is_upper` `is_lower` `swapcase` `is_space` `is_digit` `zfill`
 
-### Dict Methods (20+)
-- [x] `get(k, default)` `set(k,v)` `has(k)` `has_key(k)` `has_value(v)` `remove(k)` `pop(k)`
-- [x] `keys()` `values()` `items()` `to_pairs()`
-- [x] `merge(other)` `update(other)` `copy()` `clear()` `is_empty()`
-- [x] Spread: `{...a, "y":2}` in dict literals
-- [x] Display: `{"k": "v"}` double-quote style
+### Dict Methods — ALL DONE ✅ (25+)
+Including `filter(fn)` `map_values(fn)` `map_keys(fn)` `each(fn)` `any_value` `all_values` `count_values`
 
-### Execution Engines
-- [x] Tree-walk interpreter (full feature support)
-- [x] Register-based bytecode VM (near-parity with interpreter)
-- [x] VM: `match` as expression
-- [x] VM: `try { } catch e { }` as expression
-- [x] VM: dict comprehension with multi-var
-- [x] VM: struct `.copy()` with deep-copy of list/dict fields
-- [x] VM: all array/string instance methods via `_list_method`/`_str_method`
-- [x] VM: named args in method calls (kwargs dict)
-- [x] VM: `in`/`not in` as `CONTAINS`/`NOT_CONTAINS` opcodes
-- [x] VM: for-else / while-else / do-while
-- [x] VM: source line tracking per instruction (errors show Line N)
+### VM (Bytecode Engine) — ALL DONE ✅
+- [x] Full parity with interpreter
+- [x] `match` as expression, `try` as expression
+- [x] ADT patterns, range patterns, match guards + ADT bindings (v1.0.15-17)
+- [x] Decorators compile correctly — local variable updated after wrapping (v1.0.16)
+- [x] `priv` field enforcement with `_current_self` tracking (v1.0.16)
+- [x] `super.method()` working (v1.0.15)
+- [x] `try-finally` (v1.0.15)
+- [x] Static fields and methods (v1.0.13)
+- [x] Variadic `fn(*args)` (v1.0.13)
+- [x] Mixin expansion in compiler (v1.0.18)
+- [x] `throw struct` — catch binds actual struct (v1.0.14)
+- [x] `arr ++ arr` concat (v1.0.14)
+- [x] `1.0/0.0 = Infinity` (v1.0.13)
+- [x] All dict/string methods via `_do_method` fallback (v1.0.13-14)
 
-### Standard Library (59 modules — all working)
-Core, Data, Format/Iter, Net/Crypto, FS/Process, Date/Collections, Threading/Bench,
-Game Visual, Game IO, Game World, Game Systems, Utilities — see audit Section VI.
+### Standard Library — ALL DONE ✅
+59 modules across Core, Data, Format/Iter, Net/Crypto, FS/Process, Date/Collections,
+Threading/Bench, Game Visual, Game IO, Game World, Game Systems, Utilities.
 
-### Tooling
-- [x] Enhanced REPL with pixel-art banner, 30+ commands
-- [x] `.doc <module>` live documentation for all 59 modules
-- [x] Complete REPL tutorial (REPL_Tutorial.md)
-- [x] LSP server (pygls-based)
-- [x] VS Code extension (syntax highlighting, snippets, LSP)
-- [x] Package manager (inscript install/remove/search — stub implementation)
-- [x] Bytecode save/load (`.ibc` files)
-- [x] 836 tests: 270 Phase 5 + 145 Phase 6 + 32 Phase 7 + 54 Audit + 335 Comprehensive
+### Tooling — PARTIALLY DONE
+- [x] Enhanced REPL — pixel-art banner, 30+ commands, tab completion, history
+- [x] `.doc <module>` — live docs for all 59 modules
+- [x] LSP server + VS Code extension
+- [x] Bytecode `.ibc` save/load
+- [x] `inscript check` — static analysis
+- [x] Web playground (basic, in repl.py `--web`)
+- [ ] `inscript fmt` — formatter (v1.0.19)
+- [ ] `inscript --watch` — watch mode (v1.0.20)
+- [ ] `inscript test` — `.ins` test runner (v1.0.21)
+- [ ] `pyproject.toml` + PyPI v1.x release (v1.0.22)
+- [ ] Docs site (v1.0.23)
 
 ---
 
-## 📋 v1.1.0 — Developer-Ready Stable (Q2 2026, ~2-3 months)
+## 🔧 v1.0.19 — Formatter + Arrow Functions + Rest Destructuring
 
-**Goal:** First release that a developer can use professionally. Focus on tooling, not new language features. **Zero breaking changes.**
+**Goal:** Polish + missing syntax. 1–2 sessions.
 
-### 🔴 Critical (blocks stable label)
+### `inscript fmt` — Token-based formatter
+- [ ] `inscript fmt file.ins` — formats in place
+- [ ] `inscript fmt --check file.ins` — exits 1 if not formatted (for CI)
+- [ ] `inscript fmt --dry-run` — print without writing
+- [ ] Rules: 2-space indent, spaces around operators, trailing newline
+- [ ] Max line length 100 (break long fn signatures)
+- [ ] Trailing comma in multi-line arrays/dicts/params
+- [ ] Implementation: ~250 lines using existing `Lexer` token stream
 
-#### Formatter — `inscript fmt`
-- Token-based formatter (no full AST round-trip required)
-- Consistent indentation (2 spaces)
-- Consistent spacing around operators
-- Max line length 100 (configurable)
-- Trailing comma in multi-line arrays/dicts
-- `inscript fmt --check` for CI
-- Integration in VS Code extension (format on save)
-- **Implementation:** ~1 week using existing lexer
+### Arrow function syntax `=>`
+- [ ] `let f = fn(x) => x*2` — single expression, no braces needed
+- [ ] `let f = fn(x, y) => x + y`
+- [ ] Works in interpreter and VM
+- [ ] Chaining: `[1,2,3].map(fn(x) => x*2).filter(fn(x) => x>2)`
 
-#### Package Publication
-- `pyproject.toml` with `[project]` metadata
-- `pip install inscript` via PyPI (free account)
-- Entry point: `inscript` CLI command in PATH
-- Version: `inscript --version` outputs `InScript 1.1.0`
+### Rest destructuring `...rest`
+- [ ] `let [a, b, ...rest] = [1,2,3,4,5]` → `rest = [3,4,5]`
+- [ ] In function params: `fn f(first, ...rest)` (already works as `*args` — add `...` syntax alias)
+- [ ] Spread in array literals: `let c = [...a, ...b]`
 
-#### Documentation Site
-- GitHub Pages at `inscript-lang.dev` (or `authorss81.github.io/inscript`)
-- Sections: Getting Started, Language Guide, Stdlib Reference, Error Codes
-- All `https://docs.inscript.dev/errors/E0XXX` URLs return real content
-- Auto-generated stdlib reference from `_MODULES` docstrings
+### Stdlib quick fixes
+- [ ] `random.int(min, max)` — fix off-by-one (currently `R.int(1,6)` doesn't always work)
+- [ ] `iter.range(start, end, step)` — fix to return list with step correctly
+- [ ] `format.number(n)` — add comma-separated thousands (`1234567` → `"1,234,567"`)
 
-### 🟡 High Priority
+---
 
-#### Debugger (VS Code)
-- DAP (Debug Adapter Protocol) server in Python — free spec
-- Breakpoints in `.ins` files
-- Variable watch panel
-- Call stack display
-- Step over / step into / step out
-- **Implementation:** ~2 weeks using `debugpy` as reference
+## 🔧 v1.0.20 — Watch Mode + Test Runner + `inscript run`
 
-#### Watch Mode
-- `inscript --watch game.ins` reruns on file change
-- Uses `watchdog` Python library (free, `pip install watchdog`)
-- Clears terminal on rerun
-- Shows error location with colored output
+**Goal:** Developer workflow tools. 1 session.
 
-#### Web Playground
-- Single-page app on GitHub Pages
-- Uses Pyodide (Python in WASM) to run InScript in browser
-- Code editor: CodeMirror 6 (free, MIT)
-- 10 example programs included
-- Share button (GitHub Gist API — free)
+### `inscript --watch file.ins`
+- [ ] Watch for file changes using `os.stat` polling (no `watchdog` dep — keep it stdlib-only)
+- [ ] Clear terminal and rerun on change
+- [ ] Show error location with colored output and file:line reference
+- [ ] `Ctrl+C` to stop
+- [ ] Also watch imported files
 
-#### Test Runner
-- `inscript test` command runs `test_*.ins` files
-- `.ins` test format: `assert(expr, "message")`
-- Output: pass/fail count, colored output, timing
-- JUnit XML output for CI integration
+### `inscript test`
+- [ ] Discovers and runs `test_*.ins` files in current directory
+- [ ] Test format: `assert(expr, "message")` — any assert failure = test fail
+- [ ] Named tests: `test "addition works" { assert(1+1==2) }`
+- [ ] Output: colored pass/fail count, timing per test, total time
+- [ ] `--verbose` flag shows all test names
+- [ ] Exit code: 0 = all pass, 1 = any fail (CI compatible)
 
-### 🟢 Nice to Have
+### `inscript run` improvements
+- [ ] `inscript run file.ins --vm` — force VM mode
+- [ ] `inscript run file.ins --profile` — print per-function timing
+- [ ] Better error output: file path + line + source context + caret
 
-- `inscript check` — static analysis without execution
-- Source maps for full stack traces in `.ins` files
-- REPL multi-line paste mode
-- Tree-sitter grammar (for Neovim/Emacs support)
-- `inscript doc` — generates HTML from `///` doc comments
-- Homebrew formula
-- Right-click "Run with InScript" in VS Code
+---
 
-### v1.1.0 — What Does NOT Change
-- Language syntax (frozen at v1.0.11)
+## 🔧 v1.0.21 — PyPI Release (v1.0.x on PyPI)
+
+**Goal:** `pip install inscript-lang` works. You already have a PyPI account with v0.6 published.
+
+### `pyproject.toml`
+- [ ] Replace or augment `setup.py` with `pyproject.toml`
+- [ ] Package name: `inscript-lang` (matches your existing PyPI package)
+- [ ] Version: `1.0.21`
+- [ ] Entry point: `inscript` → `inscript.py:main`
+- [ ] Dependencies: `pygame>=2.0` (optional), `pygls>=1.0` (optional)
+- [ ] Python: `>=3.10`
+
+### PyPI upload
+- [ ] `python -m build` produces wheel + sdist
+- [ ] `python -m twine upload dist/*` uploads to PyPI
+- [ ] Test: `pip install inscript-lang==1.0.21` in a fresh venv works
+- [ ] `inscript --version` prints `InScript 1.0.21`
+
+### Upgrade from v0.6
+- [ ] Note in README: "Upgrade from v0.6: `pip install --upgrade inscript-lang`"
+- [ ] v0.6 → v1.0 migration guide (one paragraph — syntax is backward compatible)
+
+---
+
+## 🔧 v1.0.22 — Docs Site + Error Pages
+
+**Goal:** All error links in error messages point to real content.
+
+### GitHub Pages docs (authorss81.github.io/inscript)
+- [ ] `/` — landing page (already updated with index.html)
+- [ ] `/docs/` — language guide (Getting Started, Syntax, Types, Functions, Structs)
+- [ ] `/docs/stdlib/` — stdlib reference (auto-generated from `STDLIB_DOCS` in `repl.py`)
+- [ ] `/docs/errors/` — error code index
+- [ ] `/docs/errors/E0040/` — one page per error code with example + fix
+- [ ] Navigation menu, search (just browser Ctrl+F — no JS needed for v1)
+- [ ] All written in Markdown, rendered by GitHub Pages (Jekyll or just HTML)
+
+### Error codes covered
+- [ ] E0001 — LexerError (unterminated string etc.)
+- [ ] E0010 — ParseError
+- [ ] E0040 — RuntimeError
+- [ ] E0042 — NameError (undefined variable)
+- [ ] E0050 — AssertionError
+- [ ] E0051 — Panic
+- [ ] All codes in `errors.py`
+
+---
+
+## 🔧 v1.0.23 — Web Playground (Pyodide)
+
+**Goal:** Run InScript in the browser — no install needed.
+
+### Implementation
+- [ ] Host on `authorss81.github.io/inscript/playground`
+- [ ] Use Pyodide (Python in WASM) to run InScript engine in browser
+- [ ] Code editor: CodeMirror 6 (MIT, CDN)
+- [ ] InScript syntax highlighting via CodeMirror language extension
+- [ ] 10 built-in examples (fibonacci, fizzbuzz, sorting, struct demo, game loop)
+- [ ] Share button (encode code in URL hash — no backend needed)
+- [ ] Runs completely client-side — zero server costs
+
+---
+
+## 📋 v1.1.0 — First Stable Release (Q2 2026)
+
+**Goal:** A developer can use InScript professionally. All tooling complete.
+**Gate:** v1.0.19 through v1.0.23 must all be done. Zero breaking changes.
+
+### Checklist (all must be ✅ before tagging v1.1.0)
+- [ ] `inscript fmt` working and integrated in VS Code
+- [ ] `inscript --watch` working
+- [ ] `inscript test` working
+- [ ] `pip install inscript-lang` installs current version from PyPI
+- [ ] `inscript --version` prints `InScript 1.1.0`
+- [ ] All error URLs (`https://docs.inscript.dev/errors/E0040`) return real pages
+- [ ] GitHub Pages docs site has Getting Started, Language Guide, Stdlib Reference
+- [ ] Web playground running at GitHub Pages URL
+- [ ] All 839+ tests still passing
+- [ ] README updated for v1.1.0
+
+### What v1.1.0 does NOT change
+- Language syntax (frozen — no new features in v1.1.0 itself)
 - Standard library API (no breaking changes)
-- VM/interpreter behaviour
-- All 836 existing tests must continue to pass
+- VM/interpreter behavior
+- All 839 existing tests pass unchanged
 
 ---
 
-## 🔮 v1.2.0 — Type-Safe (Q3 2026)
+## 🔮 v1.2.0 — Type Safety (Q3 2026)
 
-**Goal:** Add real type system features. May include minor breaking changes (if any, announced 2 releases ahead).
+**Goal:** Add real type enforcement. May include minor breaking changes (announced 2 releases ahead).
 
-### Type System
-- [ ] Union types: `type Shape = Circle | Rectangle`
-- [ ] Type aliases: `type ID = int`
-- [ ] Generic enforcement: `Stack<int>` rejects non-int values at push time
+- [ ] Generic enforcement: `Stack<int>` rejects non-int at push time
 - [ ] Generic constraints: `fn sort<T: Comparable>(arr: [T]) -> [T]`
 - [ ] Type narrowing in match arms
 - [ ] Recursive types: linked list, tree nodes
-- [ ] Null-safe types: `int?` for nullable integers
-- [ ] Type error messages show expected vs actual type
-
-### Analyzer Improvements
-- [ ] Type mismatch for non-literal expressions (variables, fn returns)
-- [ ] Missing return in all branches (nested if/match fully traversed)
-- [ ] Unused variable detection with `--no-warn-unused` flag
-- [ ] Dead code after unreachable statement
-- [ ] Unreachable match arms
-
-### Language Features
-- [ ] `async/await` — either wire to asyncio or formally deprecate and document
-- [ ] `comptime` — restrict to compile-time-evaluatable expressions; reject runtime calls
-- [ ] Struct value semantics option: `@value struct Point { ... }` for copy-on-assign
-- [ ] `match` on ranges: `case 1..10 { }`
-- [ ] String template literals with `${expr}` alternative syntax
-- [ ] `interface` static methods
-- [ ] `mat4` stdlib module for 3D math (no NumPy dependency)
+- [ ] Type error messages show expected vs actual (not just a warning)
+- [ ] `async/await` — wire to asyncio event loop OR formally remove + document
+- [ ] `comptime` — restrict to compile-time expressions, error on runtime calls
+- [ ] `@value struct Point` — copy-on-assign semantics
+- [ ] Interface static methods
+- [ ] `mat4` stdlib for 3D math (no NumPy)
 
 ---
 
-## 🚀 v1.3.0 — Performant (Q4 2026)
+## 🚀 v1.3.0 — Performance (Q4 2026)
 
-**Goal:** Make InScript fast enough for real game loops. This is Phase 6.2 from the original plan.
+**Goal:** Fast enough for real game loops. 5–15× speedup via C extension.
 
-### Performance — Phase 6.2 C Extension
-
-The current interpreter is ~40× slower than Python for tight loops. Target: 5-15× speedup.
-
-**Approach:**
-1. Profile a real game loop (not microbenchmarks) to find actual bottlenecks
-2. Write C extension for the 3-5 most expensive operations:
-   - Environment lookup (`_env.get()`)
-   - Function call dispatch (`_call_function()`)
-   - Integer arithmetic (avoids Python boxing)
-3. Use `cffi` or `ctypes` (no compilation required from user) — free
-4. Estimated result: fib(20) from ~200ms to ~20ms
-
-**Why not now:** The VM needs language correctness first. Building a C layer on an
-inconsistent VM locks in bugs permanently. v1.0.11 achieved VM parity — now it's safe.
-
-### Other v1.3 Goals
-- [ ] Tail call optimisation (removes Python 1000-frame stack limit)
-- [ ] Bytecode optimisation passes: constant folding, dead code elimination, inlining
-- [ ] JIT via `numba` for numeric hot paths (optional, free)
-- [ ] WASM exploration: can InScript run in the browser via Pyodide?
-- [ ] Standalone binary: `pyinstaller` wrapper for one-click distribution (free)
-- [ ] InScript Studio IDE — begin development (Electron/Tauri)
-
-### NumPy Integration Decision Point
-After Phase 6.2, benchmark whether InScript's native arrays are fast enough for:
-- 4×4 matrix multiplication (for 3D transforms)
-- Batch AABB collision detection (100+ objects)
-
-If not: add optional `inscript_numpy` bridge (separate package, `pip install inscript-numpy`).
-If yes: native arrays are sufficient.
+- [ ] Profile real game loop to find bottlenecks
+- [ ] C extension for: env lookup, fn dispatch, integer arithmetic
+- [ ] `cffi` or `ctypes` (no compile step for user)
+- [ ] Tail call optimization (removes Python 1000-frame limit)
+- [ ] Bytecode optimization: constant folding, dead code elimination
+- [ ] Standalone binary via `pyinstaller` (one-click distribution)
+- [ ] WASM exploration via Pyodide
 
 ---
 
 ## 🌐 v2.0.0 — Ecosystem (2027)
 
-**Goal:** Production-ready with full ecosystem. Zero breaking changes from v1.x.
-
-### Native & WASM
-- [ ] JIT compilation via LLVM (experimental, via `llvmlite` — free)
-- [ ] Native binary output via Cython/Nuitka bridge (free tools)
-- [ ] Full WASM target — run InScript games in a browser without Python
+- [ ] Package registry at `inscript-lang.dev/packages`
+- [ ] `inscript publish` / `inscript install <package>`
+- [ ] InScript Studio IDE (Electron/Tauri)
+- [ ] Godot plugin
+- [ ] Native binary output via Cython/Nuitka
+- [ ] Full WASM target (games in browser)
 - [ ] iOS/Android via WASM + PWA wrapper
-
-### Ecosystem
-- [ ] Package registry at `inscript-lang.dev/packages` (self-hosted, free)
-- [ ] `inscript publish` / `inscript install <package>` end-to-end
-- [ ] 10+ first-party game templates
-- [ ] InScript Studio v1.0 — embedded script editor, scene graph, asset browser
-- [ ] Godot plugin — use InScript as an alternative to GDScript inside Godot
-- [ ] Static type checker as separate CLI tool (`inscript typecheck`)
 
 ---
 
-## Timeline Summary
+## Timeline
 
 ```
-March 2026   v1.0.11   Feature-complete, 836 tests, 100+ bugs fixed
-                       STATUS: Public beta / early adopters only
-                       MISSING: formatter, debugger, docs, PyPI, no users
+April 2026   v1.0.18   Current — VM complete, 839 tests, audit 8.8/10
+             STATUS: Early adopter ready. Missing tooling for general use.
 
-Q2 2026      v1.1.0    Developer-ready stable
-             ~2-3mo    formatter ✅ debugger ✅ PyPI ✅ docs site ✅ playground ✅
-                       STATUS: ✅ FIRST STABLE RELEASE (recommend for early adopters)
+             v1.0.19   fmt + arrow fn + rest destructure + stdlib fixes
+             v1.0.20   --watch + inscript test + run improvements
+             v1.0.21   pip install inscript-lang (PyPI v1.0.x upgrade from v0.6)
+             v1.0.22   docs site + all E0XXX error pages
+             v1.0.23   web playground (Pyodide)
 
-Q3 2026      v1.2.0    Type-safe
-             ~3-4mo    union types, generic enforcement, null safety, type narrowing
-                       STATUS: ✅ Stable for production 2D games
+Q2 2026      v1.1.0    FIRST STABLE RELEASE
+             STATUS: ✅ Ready for professional use
 
-Q4 2026      v1.3.0    Performant
-             ~3-4mo    C extension (5-15× speedup), TCO, standalone binary
-                       STATUS: ✅ Stable for performance-sensitive games
+Q3 2026      v1.2.0    Type safety + generic enforcement
 
-2027         v2.0.0    Ecosystem
-             ~6mo      WASM, package registry, InScript Studio IDE
-                       STATUS: ✅ Production stable, comparable to Lua/GDScript
+Q4 2026      v1.3.0    Performance (5-15× via C extension)
+
+2027         v2.0.0    Ecosystem (registry, Studio IDE, WASM)
 ```
 
 ---
@@ -306,36 +313,30 @@ Q4 2026      v1.3.0    Performant
 
 | Version | Date | Highlights |
 |---------|------|------------|
-| v1.0.0 | 2026-03-04 | Initial stable — full language + 18 stdlib + VM + LSP |
-| v1.0.1 | 2026-03-08 | VM fixes BUG-01–05, REPL improvements |
-| v1.0.2 | 2026-03-10 | 20 bug fixes BUG-06–30, 56 stdlib modules, 501 tests |
-| v1.0.3 | 2026-03-13 | Pixel-art banner, tween/iter/collections fixes |
-| v1.0.4 | 2026-03-14 | `.doc` all 59 modules, dict comprehensions, `do-while` |
-| v1.0.5 | 2026-03-14 | `pub` fields, `for-else`, `assert`/`panic`, arg-count warnings |
-| v1.0.6 | 2026-03-14 | `typeof` clean, 21 new array/string methods, struct print |
-| v1.0.7 | 2026-03-14 | `x in arr`, 15 new methods, VM parity phase 1 |
-| v1.0.8 | 2026-03-14 | `reduce(fn)`, `dict()`, f-string dict key, `try` as expr, VM builtins |
-| v1.0.9 | 2026-03-14 | VM line numbers, struct copy deep, match-expr, type warnings, priv fields |
-| v1.0.10 | 2026-03-14 | VM parity phase 2: 25+ methods, dict comp, named args, match fn |
-| v1.0.11 | 2026-03-14 | `++` operator, Err display, chain-call double-eval fix, float/0=Inf, 335 tests |
+| v0.6 | 2025 | **PyPI release** — initial public release on PyPI as `inscript-lang` |
+| v1.0.0 | 2026-03-04 | Full language + 18 stdlib + VM + LSP |
+| v1.0.1–11 | Mar 2026 | VM parity, 100+ bug fixes, 59 modules, 836 tests |
+| v1.0.12 | Mar 2026 | VM arr++arr, throw struct, dict/str methods |
+| v1.0.13 | Mar 2026 | VM variadic fn(*args), static fields/methods, int/float methods |
+| v1.0.14 | Mar 2026 | VM dict.filter/map_values, str.lines/bytes/title, 1.0/0=Inf |
+| v1.0.15 | Mar 2026 | match ranges case 1..=5, VM super, VM try-finally, arr.count(val) |
+| v1.0.16 | Mar 2026 | VM @decorator, priv _current_self tracking, VMInstance slots fix |
+| v1.0.17 | Apr 2026 | int? nullable, int\|string union, type alias, take_while/drop_while/partition |
+| v1.0.18 | Apr 2026 | VM mixin, str.is_upper/lower/swapcase, 839 tests, audit 8.8/10 |
+| **v1.0.19** | *next* | fmt, arrow fn =>, rest destructure [...rest], stdlib fixes |
+| **v1.0.20** | *next* | --watch, inscript test runner |
+| **v1.0.21** | *next* | **PyPI upgrade** — pip install inscript-lang (from v0.6 → v1.x) |
+| **v1.0.22** | *next* | docs site + E0XXX error pages |
+| **v1.0.23** | *next* | web playground (Pyodide) |
+| **v1.1.0** | Q2 2026 | **FIRST STABLE** — all tooling complete |
 
 ---
 
-## Notes on Python Library Strategy
+## PyPI Notes
 
-**InScript does NOT need NumPy, Pandas, or TensorFlow.**
+Your package `inscript-lang` exists on PyPI at v0.6.
+To upgrade to v1.0.x: update `setup.py` or add `pyproject.toml`, then `twine upload`.
+Migration from v0.6 to v1.0: syntax is **fully backward compatible** — no changes needed.
 
-InScript is a game scripting language targeting GDScript parity. The correct dependencies are:
-- `pygame` — game backend (already required)
-- `pygls` — LSP server (already required)
-- `sqlite3` — database module (Python built-in)
-- `watchdog` — watch mode, add at v1.1 (free, 1MB)
-- `Pillow` — image module improvements, optional at v1.1 (free, MIT)
-
-Scientific/ML libraries would massively bloat the install, require complex type bridging,
-and serve a use case (data science) that is completely outside InScript's scope.
-
-At v1.3.0, evaluate whether a thin NumPy bridge is needed for 3D matrix math.
-Default assumption: native InScript arrays + a `mat4` module are sufficient.
-
-**Total additional Python dependencies needed to reach v2.0: 2-3 packages, all free.**
+The package name stays `inscript-lang` (not `inscript` — already taken on PyPI by another project).
+`pip install inscript-lang` is the install command. The CLI entry point is `inscript`.

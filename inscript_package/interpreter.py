@@ -2280,6 +2280,10 @@ class Interpreter(Visitor):
                 else:
                     # Nested DestructureDecl — recurse with the sub-value
                     self._destructure_apply(name, item)
+            # Handle ...rest — collect remaining elements
+            rest = getattr(node, 'rest_name', None)
+            if rest:
+                self._env.define(rest, lst[len(node.names):], is_const=node.is_const)
 
     def visit_SpreadExpr(self, node: SpreadExpr) -> Any:
         """...expr — in expression context, just return the value; expansion

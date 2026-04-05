@@ -333,6 +333,7 @@ register_module("random", {
     "float":       lambda lo=None, hi=None: (random.random() if lo is None else random.uniform(float(lo), float(hi))),
     "range":       lambda lo, hi: random.uniform(lo, hi),
     "int":         lambda lo, hi: random.randint(int(lo), int(hi)),
+    "rand_int":    lambda lo, hi: random.randint(int(lo), int(hi)),  # alias for R.int (avoids keyword)
     "bool":        lambda p=0.5: random.random() < p,
     "choice":      lambda lst: random.choice(lst) if lst else None,
     "choices":     lambda lst, k=1: random.choices(lst, k=int(k)),

@@ -1,9 +1,9 @@
-# InScript v1.0.18 — Game-Focused Scripting Language
+# InScript v1.0.19 — Game-Focused Scripting Language
 
-> **839 tests passing** · **59 stdlib modules** · **Python 3.10+** · **Audit score: 8.8/10**
+> **839 tests passing** · **59 stdlib modules** · **Python 3.10+** · **Audit score: 9.0/10**
 > Pre-stable — first stable release: **v1.1.0 (Q2 2026)**
 
-InScript is a statically-typed scripting language for 2D games. It has a near-complete bytecode VM, 59 game modules, and now supports nullable types, union types, and type aliases.
+InScript is a statically-typed scripting language for 2D games. v1.0.19 adds the formatter, arrow functions, and rest destructuring. One session away from v1.1.0.
 
 ---
 
@@ -15,87 +15,75 @@ git clone https://github.com/authorss81/inscript
 cd inscript/inscript_package
 python inscript.py --repl
 python inscript.py examples/platformer.ins
-python inscript.py --version   # InScript 1.0.18
+python inscript.py --version   # InScript 1.0.19
 ```
 
 ---
 
-## Language — What's New in v1.0.18
+## New in v1.0.19
 
 ```inscript
-// Nullable types, union types, type aliases
-type PlayerID = int
-type Name = string
+// Arrow functions — cleaner lambdas
+let double = fn(x) => x * 2
+let evens  = [1,2,3,4,5].filter(fn(x) => x % 2 == 0)
+let names  = users.map(fn(u) => u.name).filter(fn(n) => n.len() > 3)
 
-fn greet(name: Name?) {
-    print("Hello, " ++ (name ?? "stranger"))
+// Chained method calls work in VM now (was broken)
+let result = data
+    .filter(fn(x) => x.score > 50)
+    .map(fn(x) => x.name)
+    .sorted()
+
+// Rest destructuring
+let [first, second, ...rest] = [1, 2, 3, 4, 5]
+print(first)   // 1
+print(rest)    // [3, 4, 5]
+
+fn log(level, ...messages) {
+    for msg in messages { print(f"[{level}] {msg}") }
 }
+```
 
-fn show(x: int|string) -> string {
-    return match x {
-        case int   { "number: " ++ string(x) }
-        case _     { "text: " ++ x }
-    }
-}
+```bash
+# Formatter — built in
+inscript --fmt game.ins             # format in place
+inscript --fmt-check game.ins       # exit 1 if not formatted (CI)
+inscript --fmt-dry-run game.ins     # print without writing
 
-// Richer array methods
-let nums = [1, 2, 3, 4, 5, 6, 7, 8]
-
-let small = nums.take_while(fn(x) { return x < 5 })    // [1, 2, 3, 4]
-let big   = nums.drop_while(fn(x) { return x < 5 })    // [5, 6, 7, 8]
-let pairs = nums.window(2)                               // [[1,2],[2,3],...]
-let split = nums.partition(fn(x) { return x % 2 == 0}) // [[2,4,6,8],[1,3,5,7]]
-let idx   = nums.index_where(fn(x) { return x > 5 })   // 5
-let last  = nums.last_where(fn(x) { return x % 2 == 0})// 8
-
-// comptime constants — available at runtime
-comptime {
-    const MAX_PLAYERS = 4
-    const GRAVITY     = 9.8
-}
-print(MAX_PLAYERS)   // 4
-print(GRAVITY)       // 9.8
-
-// VM match with guards
-match score {
-    case 90..=100  { print("A") }
-    case 80..=89   { print("B") }
-    case n if n >= 0 { print("F") }
-}
-
-// thread.run — quick parallel work
-import "thread" as T
-let result = T.run(fn() { return heavy_compute() })
+# Watch mode — rerun on file change
+inscript --watch game.ins
 ```
 
 ---
 
-## Full Feature Table
+## Feature Status
 
 | Feature | Status |
 |---------|--------|
-| `int?` nullable types | ✅ v1.0.18 |
-| `int\|string` union type params | ✅ v1.0.18 |
-| `type ID = int` type aliases | ✅ v1.0.18 |
-| `comptime{}` leaks to outer scope | ✅ v1.0.18 |
-| `arr.take_while/drop_while/window/partition` | ✅ v1.0.18 (both paths) |
-| `arr.none/index_where/last_where` | ✅ v1.0.18 |
-| `thread.run(fn)` sync convenience | ✅ v1.0.18 |
-| VM match guards `case n if n>5` | ✅ v1.0.18 |
-| VM match ADT bindings | ✅ v1.0.18 |
-| VM decorator `@name` | ✅ v1.0.16 |
-| VM `priv` field enforcement | ✅ v1.0.16 |
-| VM `super.method()` | ✅ v1.0.15 |
-| VM `try-finally` | ✅ v1.0.15 |
-| Pattern matching: ranges, guards, ADTs | ✅ v1.0.15-17 |
+| Arrow functions `fn(x) => x*2` | ✅ v1.0.19 — interpreter + VM |
+| Rest destructuring `[a,...rest]` | ✅ v1.0.19 |
+| `inscript --fmt` formatter | ✅ v1.0.19 |
+| `inscript --watch` watch mode | ✅ v1.0.19 |
+| VM chained method calls fixed | ✅ v1.0.19 |
+| `int?` nullable, `int\|string` union | ✅ v1.0.17 |
+| `type ID = int` type aliases | ✅ v1.0.17 |
+| VM mixin, str.is_upper/lower | ✅ v1.0.18 |
+| VM decorator, priv, super | ✅ v1.0.16 |
+| Pattern matching (ranges, guards, ADT) | ✅ v1.0.15-17 |
 | 59 stdlib modules | ✅ Complete |
+| `inscript check` static analysis | ✅ Complete |
+| Web playground (basic `--web`) | ✅ Complete |
 
-## Missing (v1.1 targets)
+## Path to v1.1.0
 
-- `inscript fmt` — formatter
-- Debugger
-- `pip install inscript-lang`
-- `docs.inscript.dev`
+| Version | What | Status |
+|---------|------|--------|
+| v1.0.19 | `inscript fmt` + arrow fn + rest + watch | ✅ **Done** |
+| v1.0.20 | `inscript test` runner | 🔧 Next |
+| v1.0.21 | **PyPI upgrade** — `pip install inscript-lang` (you have v0.6 on PyPI) | 🔧 Next |
+| v1.0.22 | Docs site + E0XXX error pages | 🔧 Next |
+| v1.0.23 | Web playground with Pyodide | 🔧 Next |
+| **v1.1.0** | **FIRST STABLE** | Q2 2026 |
 
 ---
 
@@ -110,4 +98,4 @@ python test_comprehensive.py  # 335/335
 
 ---
 
-MIT License · [GitHub](https://github.com/authorss81/inscript) · [Audit (8.8/10)](InScript_Language_Audit.md) · [Roadmap](ROADMAP.md)
+MIT License · [GitHub](https://github.com/authorss81/inscript) · [Audit (9.0/10)](InScript_Language_Audit.md) · [Roadmap](ROADMAP.md)

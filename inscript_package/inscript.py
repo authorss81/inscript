@@ -424,6 +424,14 @@ Examples:
                         help="Suppress all warnings")
     parser.add_argument("--warn-as-error", action="store_true",
                         help="Treat any warning as an error (CI strictness)")
+    parser.add_argument("--fmt",     action="store_true",
+                        help="Format .ins files: inscript --fmt file.ins")
+    parser.add_argument("--fmt-check", action="store_true",
+                        help="Check formatting without writing (exit 1 if unformatted)")
+    parser.add_argument("--fmt-dry-run", action="store_true",
+                        help="Print formatted output without writing")
+    parser.add_argument("--watch",   action="store_true",
+                        help="Watch file for changes and rerun: inscript --watch game.ins")
     parser.add_argument("--version", action="store_true", help="Print version and exit")
     parser.add_argument("--install", metavar="PKG",
                         help="Install a package: inscript install math-utils")
@@ -449,6 +457,40 @@ Examples:
 
     if args.version:
         print(f"InScript {VERSION}")
+        return
+
+    # ── inscript --fmt / --fmt-check / --fmt-dry-run ─────────────────────────
+    if args.fmt or args.fmt_check or args.fmt_dry_run:
+        try:
+            from inscript_fmt import main as fmt_main
+        except ImportError:
+            print("Error: inscript_fmt.py not found", file=sys.stderr); return
+        fmt_argv = []
+        if args.file: fmt_argv.append(args.file)
+        if args.fmt_check: fmt_argv.append("--check")
+        if args.fmt_dry_run: fmt_argv.append("--dry-run")
+        import sys as _sys; _sys.exit(fmt_main(fmt_argv) or 0)
+
+    # ── inscript --watch ─────────────────────────────────────────────────────
+    if args.watch:
+        if not args.file:
+            print("Usage: inscript --watch <file.ins>", file=sys.stderr); return
+        import time as _time
+        print(f"\033[36mWatching {args.file} — Ctrl+C to stop\033[0m")
+        last_mtime = None
+        while True:
+            try:
+                mtime = os.path.getmtime(args.file)
+                if mtime != last_mtime:
+                    last_mtime = mtime
+                    if last_mtime is not None:
+                        print(f"\033[2m--- reloading {args.file} ---\033[0m")
+                    os.system(f"{sys.executable} {__file__} {args.file}")
+                _time.sleep(0.5)
+            except KeyboardInterrupt:
+                print(f"\033[2m[watch] stopped\033[0m"); break
+            except FileNotFoundError:
+                print(f"\033[31mFile not found: {args.file}\033[0m"); break
         return 0
 
     if args.lsp:

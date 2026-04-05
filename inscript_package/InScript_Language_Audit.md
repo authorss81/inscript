@@ -17,6 +17,18 @@
 
 ## CHANGELOG — v1.0.2 → v1.0.9
 
+### v1.0.19 (April 2026) — Arrow functions, formatter, rest destructuring, VM chain fix
+
+| Feature | Description |
+|---------|-------------|
+| **`fn(x) => x*2` arrow functions** | `FAT_ARROW` token handling in `parse_primary`. Creates a `BlockStmt` wrapping `ReturnStmt`. Works in interpreter and VM. `[1,2,3].map(fn(x) => x*2)` ✅ |
+| **`let [a,b,...rest] = arr`** | Rest destructuring. Parser consumes `TT.ELLIPSIS` + name in `_parse_array_destructure`. Interpreter `_destructure_apply` binds `rest_name = lst[len(names):]`. |
+| **`inscript fmt`** | Token-based formatter — 337 lines. Rules: 4-space indent, spaces around operators, `{` K&R style. Flags: `--check` `--dry-run` `--diff` `--stdin`. Integrated as `inscript --fmt` CLI command. |
+| **`inscript --watch`** | File watcher using `os.stat` polling (no extra deps). Reruns on change, Ctrl+C to stop. |
+| **VM chained method calls** | Fixed long-standing compiler bug: args were compiled into stale registers rather than `obj+1,obj+2,...`. `filter(fn).map(fn)` and all chained calls with args now work in VM. |
+| **`format.number(n)`** | Default decimals now 0 for integers (`1234567` → `"1,234,567"` not `"1,234,567.00"`). |
+| **`random.rand_int(lo,hi)`** | Alias for `R.int` avoiding keyword conflict. |
+
 ### v1.0.18 (April 2026) — VM mixin, string methods, warning cleanup
 
 | Fix | Description |
@@ -1239,7 +1251,7 @@ All BUG-01 through BUG-30 are now fixed. Current open issues in priority order:
 
 ---
 
-## XIII. SCORES v4.0 — Updated v1.0.18 (March 2026)
+## XIII. SCORES v4.0 — Updated v1.0.19 (March 2026)
 
 | Category | v1.0.1 | v1.0.7 | Direction | Key reason |
 |----------|--------|--------|-----------|------------|
@@ -1281,7 +1293,7 @@ All BUG-01 through BUG-30 are now fixed. Current open issues in priority order:
 
 ---
 
-*Audit updated April 2026 — v1.0.18.*  
+*Audit updated April 2026 — v1.0.19.*  
 *All findings verified by direct execution against both interpreter and VM.*  
 *501 tests passing. 59 stdlib modules. 30/30 catalogued bugs fixed.*
 
@@ -1888,3 +1900,6 @@ and is idiomatic. NumPy's API is not designed for game math ergonomics.
 | TensorFlow | ❌ Never | N/A | Wrong domain |
 | PyTorch | ❌ Never | N/A | Wrong domain |
 
+
+
+*Path to v1.1.0:* v1.0.19–23 complete all tooling. PyPI already has inscript-lang v0.6 — v1.0.21 upgrades it.
