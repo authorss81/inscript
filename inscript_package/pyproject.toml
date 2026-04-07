@@ -4,7 +4,7 @@ build-backend = "setuptools.backends.legacy:build"
 
 [project]
 name = "inscript-lang"
-version = "1.0.21"
+version = "1.0.23"
 description = "InScript — a game-focused scripting language with 59 game modules and a bytecode VM"
 readme = "README.md"
 license = { text = "MIT" }

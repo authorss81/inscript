@@ -17,6 +17,15 @@
 
 ## CHANGELOG — v1.0.2 → v1.0.9
 
+### v1.0.23 (April 2026) — Docs site + web playground
+
+| Feature | Description |
+|---------|-------------|
+| **Docs site** | Full GitHub Pages site: landing page, getting-started, stdlib reference (auto-generated from `STDLIB_DOCS`), complete error reference (E0001–E0052 with examples and fixes). |
+| **Web playground** | `playground.html` — CodeMirror 6 editor + Pyodide runtime. 8 built-in examples. Share via URL hash. Fallback message when CDN unavailable. |
+| **`inscript --test`** | Test runner (`inscript_test.py`). `test "name" { assert(...) }` syntax. Exit code 1 on failures. Verbose/fail-fast flags. |
+| **`pyproject.toml`** | Package config for PyPI `inscript-lang`. Version 1.0.23. Entry point: `inscript = inscript:main`. |
+
 ### v1.0.21 (April 2026) — Test runner + PyPI release
 
 | Feature | Description |
@@ -1262,7 +1271,7 @@ All BUG-01 through BUG-30 are now fixed. Current open issues in priority order:
 
 ---
 
-## XIII. SCORES v4.0 — Updated v1.0.21 (March 2026)
+## XIII. SCORES v4.0 — Updated v1.0.23 (March 2026)
 
 | Category | v1.0.1 | v1.0.7 | Direction | Key reason |
 |----------|--------|--------|-----------|------------|
@@ -1304,7 +1313,7 @@ All BUG-01 through BUG-30 are now fixed. Current open issues in priority order:
 
 ---
 
-*Audit updated April 2026 — v1.0.21.*  
+*Audit updated April 2026 — v1.0.23.*  
 *All findings verified by direct execution against both interpreter and VM.*  
 *501 tests passing. 59 stdlib modules. 30/30 catalogued bugs fixed.*
 

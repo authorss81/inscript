@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>InScript Playground</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
+<style>
+:root{--bg:#0d1117;--sf:#161b22;--sf2:#21262d;--bd:#30363d;--tx:#e6edf3;--tx2:#8b949e;
+      --pr:#58a6ff;--gn:#3fb950;--rd:#f85149;--yl:#d29922;--pu:#bc8cff}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+     background:var(--bg);color:var(--tx);height:100vh;display:flex;flex-direction:column;overflow:hidden}
+header{padding:8px 16px;background:var(--sf);border-bottom:1px solid var(--bd);
+       display:flex;align-items:center;gap:12px;flex-shrink:0}
+.logo{font-weight:800;color:var(--pr);font-size:15px}
+.vbadge{background:var(--sf2);border:1px solid var(--bd);color:var(--tx2);
+        font-size:10px;padding:2px 8px;border-radius:10px}
+.hright{margin-left:auto;display:flex;gap:8px;align-items:center}
+.btn{border:none;padding:5px 14px;border-radius:5px;font-size:12px;font-weight:600;cursor:pointer}
+.btn:hover{opacity:.82}
+.btn-run{background:var(--gn);color:#0d1117}
+.btn-sec{background:var(--sf2);border:1px solid var(--bd);color:var(--tx);font-size:12px}
+select{background:var(--sf2);border:1px solid var(--bd);color:var(--tx);padding:4px 8px;
+       border-radius:5px;font-size:12px;cursor:pointer}
+main{flex:1;display:grid;grid-template-columns:1fr 1fr;overflow:hidden}
+.pane{display:flex;flex-direction:column;overflow:hidden}
+.ph{padding:6px 14px;background:var(--sf);border-bottom:1px solid var(--bd);
+    font-size:11px;font-weight:600;color:var(--tx2);text-transform:uppercase;
+    letter-spacing:.5px;display:flex;align-items:center;gap:8px;flex-shrink:0}
+.dots{display:flex;gap:4px}
+.dot{width:9px;height:9px;border-radius:50%}
+.CodeMirror{height:100%;font-size:13px;line-height:1.7;background:#0d1117;color:#e6edf3}
+.CodeMirror-scroll{overflow:auto!important}
+.out{flex:1;overflow-y:auto;background:#0a0e14;padding:14px 16px;border-left:1px solid var(--bd)}
+.out::-webkit-scrollbar{width:4px}
+.out::-webkit-scrollbar-thumb{background:var(--bd);border-radius:2px}
+.ol{color:var(--tx);font-family:"Cascadia Code","Fira Code",monospace;font-size:13px;line-height:1.75;white-space:pre-wrap;word-break:break-all}
+.oe{color:var(--rd);font-family:monospace;font-size:13px;line-height:1.75;white-space:pre-wrap}
+.om{color:var(--tx2);font-size:11px;margin-top:8px;font-family:monospace}
+.hr{border:none;border-top:1px solid var(--bd);margin:8px 0}
+.spin{display:inline-block;width:10px;height:10px;border:2px solid var(--bd);
+      border-top-color:var(--pr);border-radius:50%;animation:sp .7s linear infinite;vertical-align:middle;margin-right:4px}
+@keyframes sp{to{transform:rotate(360deg)}}
+.sb{background:var(--sf);border-top:1px solid var(--bd);padding:4px 16px;
+    font-size:11px;color:var(--tx2);display:flex;gap:14px;flex-shrink:0}
+kbd{background:var(--sf2);border:1px solid var(--bd);border-radius:3px;padding:1px 4px;font-size:10px}
+/* Pyodide loading banner */
+#pyload{position:fixed;inset:0;background:rgba(13,17,23,.95);display:flex;flex-direction:column;
+        align-items:center;justify-content:center;gap:16px;z-index:100}
+#pyload h2{color:var(--pr)}
+.pbar{width:320px;height:4px;background:var(--sf2);border-radius:2px;overflow:hidden}
+.pbar-inner{height:100%;background:var(--pr);border-radius:2px;transition:width .3s;width:0}
+#pyload p{color:var(--tx2);font-size:.875rem}
+</style>
+</head>
+<body>
+<div id="pyload">
+  <h2>Loading InScript</h2>
+  <div class="pbar"><div class="pbar-inner" id="pbar"></div></div>
+  <p id="pstatus">Initializing Pyodide runtime…</p>
+</div>
+
+<header>
+  <span class="logo">InScript</span>
+  <span class="vbadge">v1.0.21</span>
+  <select id="examples" onchange="loadExample(this.value)">
+    <option value="">Examples…</option>
+    <option value="hello">Hello World</option>
+    <option value="fibonacci">Fibonacci</option>
+    <option value="fizzbuzz">FizzBuzz</option>
+    <option value="structs">Structs</option>
+    <option value="match">Pattern Matching</option>
+    <option value="result">Result Type</option>
+    <option value="arrows">Arrow Functions</option>
+    <option value="game">Game Loop</option>
+  </select>
+  <div class="hright">
+    <span id="shareLbl" style="display:none;color:var(--gn);font-size:12px">Link copied!</span>
+    <button class="btn btn-sec" onclick="shareCode()">Share</button>
+    <button class="btn btn-run" onclick="runCode()" id="runBtn">▶ Run <kbd>Ctrl+Enter</kbd></button>
+  </div>
+</header>
+
+<main>
+  <div class="pane">
+    <div class="ph">
+      <div class="dots">
+        <div class="dot" style="background:#ff5f57"></div>
+        <div class="dot" style="background:#febc2e"></div>
+        <div class="dot" style="background:#28c840"></div>
+      </div>
+      editor
+    </div>
+    <textarea id="editor"></textarea>
+  </div>
+  <div class="pane">
+    <div class="ph" style="border-left:1px solid var(--bd)">output</div>
+    <div class="out" id="output"><span class="om">Press ▶ Run or Ctrl+Enter to execute</span></div>
+  </div>
+</main>
+<div class="sb">
+  <span>InScript Playground — runs in browser via Pyodide</span>
+  <span><a href="docs/" style="color:var(--tx2)">Docs</a></span>
+  <span><a href="https://github.com/authorss81/inscript" style="color:var(--tx2)">GitHub</a></span>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/javascript/javascript.min.js"></script>
+<script>
+const EXAMPLES = {
+  hello: `print("Hello, InScript!")
+
+let name = "world"
+print(f"Hello, {name}!")
+
+for i in 1..=5 {
+    print(f"  Line {i}")
+}`,
+  fibonacci: `fn fib(n: int) -> int {
+    if n <= 1 { return n }
+    return fib(n-1) + fib(n-2)
+}
+
+for i in 0..10 {
+    print(fib(i))
+}`,
+  fizzbuzz: `for i in 1..=30 {
+    match [i%3==0, i%5==0] {
+        case [true, true]  { print("FizzBuzz") }
+        case [true, false] { print("Fizz") }
+        case [false, true] { print("Buzz") }
+        case _             { print(i) }
+    }
+}`,
+  structs: `struct Vec2 {
+    x: float  y: float
+    fn +(o) { return Vec2{x: self.x+o.x, y: self.y+o.y} }
+    fn len() { return sqrt(self.x*self.x + self.y*self.y) }
+    fn str() { return f"Vec2({self.x}, {self.y})" }
+}
+
+let a = Vec2{x: 3.0, y: 4.0}
+let b = Vec2{x: 1.0, y: 2.0}
+let c = a + b
+print(string(a))
+print(f"length of a: {a.len()}")
+print(f"a + b = ({c.x}, {c.y})")`,
+  match: `enum Shape {
+    Circle(r: float)
+    Rect(w: float, h: float)
+}
+
+fn area(s: Shape) -> float {
+    return match s {
+        case Shape.Circle(r) if r > 5.0 { print("big circle!"); 3.14159 * r * r }
+        case Shape.Circle(r)             { 3.14159 * r * r }
+        case Shape.Rect(w, h)            { w * h }
+        case _                           { 0.0 }
+    }
+}
+
+print(area(Shape.Circle(3.0)))
+print(area(Shape.Circle(10.0)))
+print(area(Shape.Rect(4.0, 5.0)))`,
+  result: `fn divide(a: float, b: float) -> Result {
+    if b == 0.0 { return Err("division by zero") }
+    return Ok(a / b)
+}
+
+let r1 = divide(10.0, 2.0)
+let r2 = divide(5.0, 0.0)
+
+print(r1.is_ok())
+print(r1.unwrap())
+print(r2.is_err())
+print(r2.unwrap_or(0.0))
+
+let chain = divide(100.0, 4.0)
+    .map(fn(v) => v * 2.0)
+    .map(fn(v) => v + 5.0)
+print(chain.unwrap())`,
+  arrows: `// Arrow functions — cleaner lambdas
+let nums = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+
+let evens   = nums.filter(fn(x) => x % 2 == 0)
+let doubled = evens.map(fn(x) => x * 2)
+let total   = doubled.reduce(fn(acc, x) => acc + x, 0)
+
+print(evens)
+print(doubled)
+print(f"total = {total}")
+
+// Method chaining
+let result = [3,1,4,1,5,9,2,6,5,3]
+    .filter(fn(x) => x > 3)
+    .sorted()
+    .unique()
+print(result)`,
+  game: `// Simulated game loop (no pygame needed)
+struct Player {
+    x: float = 0.0
+    y: float = 0.0
+    speed: float = 5.0
+    priv score: int = 0
+
+    fn move(dx: float, dy: float) {
+        self.x += dx * self.speed
+        self.y += dy * self.speed
+    }
+    fn add_score(pts: int) {
+        self.score += pts
+    }
+    fn get_score() { return self.score }
+    fn str() { return f"Player({self.x:.1f}, {self.y:.1f}) score={self.score}" }
+}
+
+let p = Player{}
+p.move(1.0, 0.0)
+p.move(0.0, 1.0)
+p.add_score(100)
+p.move(-0.5, 0.5)
+p.add_score(50)
+print(string(p))
+
+// Simulate 5 frames
+for frame in 1..=5 {
+    p.move(0.1, 0.0)
+    if frame % 2 == 0 { p.add_score(10) }
+    print(f"frame {frame}: {string(p)}")
+}`
+};
+
+// CodeMirror editor setup
+const cm = CodeMirror.fromTextArea(document.getElementById('editor'), {
+  mode: 'javascript',  // closest available — InScript syntax is similar
+  theme: 'default',
+  lineNumbers: true,
+  matchBrackets: true,
+  autoCloseBrackets: true,
+  indentUnit: 4,
+  tabSize: 4,
+  extraKeys: {
+    "Ctrl-Enter": runCode,
+    "Cmd-Enter": runCode
+  }
+});
+cm.getWrapperElement().style.height = '100%';
+cm.getWrapperElement().style.background = '#0d1117';
+
+// Load from URL hash or default
+function getHashCode() {
+  try {
+    const h = location.hash.slice(1);
+    if (h.startsWith('code=')) return decodeURIComponent(h.slice(5));
+  } catch {}
+  return null;
+}
+const initialCode = getHashCode() || EXAMPLES.hello;
+cm.setValue(initialCode);
+
+function loadExample(name) {
+  if (EXAMPLES[name]) { cm.setValue(EXAMPLES[name]); document.getElementById('output').innerHTML = '<span class="om">Press ▶ Run or Ctrl+Enter to execute</span>'; }
+  document.getElementById('examples').value = '';
+}
+
+function shareCode() {
+  const code = encodeURIComponent(cm.getValue());
+  const url = location.origin + location.pathname + '#code=' + code;
+  navigator.clipboard.writeText(url).then(() => {
+    const lbl = document.getElementById('shareLbl');
+    lbl.style.display = 'inline';
+    setTimeout(() => { lbl.style.display = 'none'; }, 2000);
+  });
+}
+
+// Pyodide loading
+let pyodide = null;
+let inscriptReady = false;
+
+async function loadPyodide_() {
+  const pbar = document.getElementById('pbar');
+  const pstatus = document.getElementById('pstatus');
+
+  try {
+    pstatus.textContent = 'Loading Pyodide runtime (first load: ~5MB)…';
+    pbar.style.width = '20%';
+
+    pyodide = await loadPyodide({ indexURL: "https://cdn.jsdelivr.net/pyodide/v0.26.4/full/" });
+    pbar.style.width = '60%';
+    pstatus.textContent = 'Loading InScript engine…';
+
+    // Fetch InScript source files and load them
+    const files = ['lexer.py','ast_nodes.py','errors.py','environment.py',
+                   'parser.py','interpreter.py','repl.py'];
+    const base = 'https://raw.githubusercontent.com/authorss81/inscript/main/inscript_package/';
+
+    for (let i = 0; i < files.length; i++) {
+      const f = files[i];
+      pstatus.textContent = `Loading ${f}…`;
+      pbar.style.width = (60 + (i/files.length)*35) + '%';
+      try {
+        const resp = await fetch(base + f);
+        if (resp.ok) {
+          const src = await resp.text();
+          pyodide.FS.writeFile('/' + f, src);
+        }
+      } catch(e) { console.warn('Could not load', f, e); }
+    }
+
+    pbar.style.width = '100%';
+    pstatus.textContent = 'Ready!';
+
+    await pyodide.runPythonAsync(`
+import sys
+sys.path.insert(0, '/')
+try:
+    from interpreter import Interpreter
+    from repl import EnhancedREPL
+    _repl = EnhancedREPL()
+    print("InScript 1.0.21 loaded")
+except Exception as e:
+    print(f"Warning: {e}")
+`);
+    inscriptReady = true;
+  } catch (e) {
+    pstatus.textContent = 'Pyodide load failed — using fallback mode';
+    inscriptReady = false;
+  }
+
+  setTimeout(() => {
+    document.getElementById('pyload').style.display = 'none';
+  }, 500);
+}
+
+// Fallback: run code via fetch to a simple eval endpoint
+// (when Pyodide is unavailable, show a helpful message)
+async function runFallback(code) {
+  return { stdout: '', error: 'Browser runtime unavailable. Install locally:\n  pip install inscript-lang\n  inscript --repl', ms: 0 };
+}
+
+async function runCode() {
+  const code = cm.getValue().trim();
+  if (!code) return;
+
+  const outEl = document.getElementById('output');
+  const runBtn = document.getElementById('runBtn');
+  outEl.innerHTML = '<span class="spin"></span><span class="om">Running…</span>';
+  runBtn.disabled = true;
+
+  const t0 = performance.now();
+  let stdout = '', errMsg = '';
+
+  try {
+    if (inscriptReady && pyodide) {
+      pyodide.globals.set('_code_to_run', code);
+      const result = await pyodide.runPythonAsync(`
+import io, sys
+_buf = io.StringIO()
+_old = sys.stdout
+sys.stdout = _buf
+_err = ''
+try:
+    from repl import EnhancedREPL
+    _r = EnhancedREPL()
+    _, _e, _ = _r._eval(_code_to_run)
+    if _e: _err = str(_e)
+except Exception as ex:
+    _err = str(ex)
+finally:
+    sys.stdout = _old
+[_buf.getvalue(), _err]
+`);
+      stdout = result.get(0) || '';
+      errMsg = result.get(1) || '';
+    } else {
+      const r = await runFallback(code);
+      stdout = r.stdout; errMsg = r.error;
+    }
+  } catch(e) {
+    errMsg = String(e);
+  }
+
+  const ms = Math.round(performance.now() - t0);
+  runBtn.disabled = false;
+
+  let html = '';
+  if (stdout) {
+    html += stdout.split('\n').map(l => `<div class="ol">${escHtml(l)}</div>`).join('');
+  }
+  if (errMsg) {
+    if (html) html += '<hr class="hr">';
+    html += errMsg.split('\n').map(l => `<div class="oe">${escHtml(l)}</div>`).join('');
+  }
+  if (!html) html = '<span class="om">(no output)</span>';
+  html += `<div class="om" style="margin-top:12px">— ${ms}ms</div>`;
+  outEl.innerHTML = html;
+  outEl.scrollTop = outEl.scrollHeight;
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// Load Pyodide from CDN
+const s = document.createElement('script');
+s.src = 'https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js';
+s.onload = () => loadPyodide_();
+s.onerror = () => {
+  document.getElementById('pstatus').textContent = 'CDN unavailable — install locally: pip install inscript-lang';
+  setTimeout(() => { document.getElementById('pyload').style.display = 'none'; }, 2000);
+};
+document.head.appendChild(s);
+
+// Style CodeMirror to match dark theme
+const style = document.createElement('style');
+style.textContent = `.CodeMirror{background:#0d1117!important;color:#e6edf3!important}
+.CodeMirror-gutters{background:#0d1117!important;border-right:1px solid #30363d!important}
+.CodeMirror-linenumber{color:#6e7681!important}
+.CodeMirror-cursor{border-left:1px solid #e6edf3!important}`;
+document.head.appendChild(style);
+</script>
+</body></html>

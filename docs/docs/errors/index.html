@@ -1,0 +1,75 @@
+<!DOCTYPE html><html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>InScript Error Reference</title>
+<style>
+:root{--bg:#0d1117;--sf:#161b22;--bd:#30363d;--tx:#e6edf3;--tx2:#8b949e;--pr:#58a6ff;--rd:#f85149;--yl:#d29922}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--tx);padding:40px 24px;max-width:900px;margin:0 auto}
+a{color:var(--pr);text-decoration:none}a:hover{text-decoration:underline}
+h1{font-size:2rem;margin-bottom:8px}
+.sub{color:var(--tx2);margin-bottom:32px}
+h2{font-size:1.2rem;margin:32px 0 12px;color:var(--tx2);border-bottom:1px solid var(--bd);padding-bottom:6px}
+.error-grid{display:grid;gap:12px}
+.err-card{background:var(--sf);border:1px solid var(--bd);border-radius:8px;padding:16px 20px;display:flex;align-items:flex-start;gap:16px}
+.err-code{font-family:monospace;color:var(--rd);font-weight:700;font-size:14px;min-width:60px}
+.err-name{font-weight:600;margin-bottom:4px}
+.err-desc{color:var(--tx2);font-size:.875rem}
+pre{background:#0a0e14;border:1px solid var(--bd);border-radius:6px;padding:12px;font-family:monospace;font-size:13px;margin:8px 0}
+code{background:var(--sf);border:1px solid var(--bd);padding:2px 6px;border-radius:4px;font-family:monospace;font-size:.9em}
+</style></head><body>
+<p><a href="../">← Back to Docs</a></p><br>
+<h1>Error Reference</h1>
+<p class="sub">All InScript error codes with examples and fixes.</p>
+
+<h2>E000x — Lexer Errors</h2>
+<div class="error-grid">
+<div class="err-card"><span class="err-code">E0001</span><div><div class="err-name">LexerError</div><div class="err-desc">General lexer error — unexpected character or malformed token.</div></div></div>
+<div class="err-card"><span class="err-code">E0002</span><div><div class="err-name">UnknownChar</div><div class="err-desc">Unrecognized character in source. Check for typos or paste artifacts.</div></div></div>
+<div class="err-card"><span class="err-code">E0003</span><div><div class="err-name">UnterminatedString</div><div class="err-desc">String literal not closed. Add a closing <code>"</code>.<pre>let s = "hello   // ❌ missing closing quote
+let s = "hello"  // ✅</pre></div></div></div>
+</div>
+
+<h2>E001x — Parse Errors</h2>
+<div class="error-grid">
+<div class="err-card"><span class="err-code">E0010</span><div><div class="err-name">ParseError</div><div class="err-desc">Syntax error — unexpected token. Check brackets, keywords, and spacing.</div></div></div>
+<div class="err-card"><span class="err-code">E0011</span><div><div class="err-name">UnexpectedToken</div><div class="err-desc">Got a token that doesn't fit here. Common causes: missing <code>{</code>, extra keyword, wrong operator.</div></div></div>
+<div class="err-card"><span class="err-code">E0012</span><div><div class="err-name">MissingToken</div><div class="err-desc">Expected a token (like <code>)</code> or <code>}</code>) but found something else.<pre>fn f(x  { return x }  // ❌ missing )
+fn f(x) { return x }  // ✅</pre></div></div></div>
+<div class="err-card"><span class="err-code">E0013</span><div><div class="err-name">UnbalancedBrace</div><div class="err-desc">Mismatched <code>{}</code> <code>[]</code> <code>()</code>. Count your opening and closing brackets.</div></div></div>
+</div>
+
+<h2>E002x — Semantic / Analyzer Errors</h2>
+<div class="error-grid">
+<div class="err-card"><span class="err-code">E0020</span><div><div class="err-name">SemanticError</div><div class="err-desc">Type or scope error found by the static analyzer before execution.</div></div></div>
+<div class="err-card"><span class="err-code">E0021</span><div><div class="err-name">UndefinedName</div><div class="err-desc">Variable/function not declared in this scope.<pre>print(x)        // ❌ x not defined yet
+let x = 5
+print(x)        // ✅</pre></div></div></div>
+<div class="err-card"><span class="err-code">E0022</span><div><div class="err-name">AlreadyDeclared</div><div class="err-desc">Name already defined in this scope. Rename or use a different scope.</div></div></div>
+<div class="err-card"><span class="err-code">E0023</span><div><div class="err-name">TypeMismatch</div><div class="err-desc">Value doesn't match the declared type annotation.<pre>let x: int = "hello"   // ❌ string ≠ int
+let x: int = 42        // ✅</pre></div></div></div>
+</div>
+
+<h2>E004x — Runtime Errors</h2>
+<div class="error-grid">
+<div class="err-card"><span class="err-code">E0040</span><div><div class="err-name">InScriptRuntimeError</div><div class="err-desc">General runtime error — method not found, wrong argument type, etc. The most common error. Check the message for the specific cause.</div></div></div>
+<div class="err-card"><span class="err-code">E0041</span><div><div class="err-name">TypeError</div><div class="err-desc">Operation on wrong type.<pre>let x = 5 + "hello"  // ❌ int + string
+let x = 5 + 10       // ✅</pre></div></div></div>
+<div class="err-card"><span class="err-code">E0042</span><div><div class="err-name">NameError</div><div class="err-desc">Undefined variable at runtime. Did you mean: hint shown if similar name exists.</div></div></div>
+<div class="err-card"><span class="err-code">E0043</span><div><div class="err-name">IndexError</div><div class="err-desc">Array index out of bounds.<pre>let a = [1,2,3]
+print(a[5])   // ❌ index 5 out of range (len=3)
+print(a[2])   // ✅ last element = 3</pre></div></div></div>
+<div class="err-card"><span class="err-code">E0044</span><div><div class="err-name">ImportError</div><div class="err-desc">Module not found. Check the module name — use <code>.modules</code> in REPL to see all 59 available modules.</div></div></div>
+<div class="err-card"><span class="err-code">E0045</span><div><div class="err-name">DivisionByZero</div><div class="err-desc">Integer division by zero. Use <code>float</code> division if you want <code>Infinity</code>: <code>1.0 / 0.0 = Infinity</code>.</div></div></div>
+<div class="err-card"><span class="err-code">E0046</span><div><div class="err-name">StackOverflow</div><div class="err-desc">Too deep recursion. Add a base case or increase the limit.</div></div></div>
+<div class="err-card"><span class="err-code">E0047</span><div><div class="err-name">MatchError</div><div class="err-desc">Non-exhaustive match — no arm matched. Add <code>case _ { }</code> as a wildcard.</div></div></div>
+<div class="err-card"><span class="err-code">E0049</span><div><div class="err-name">NilAccess</div><div class="err-desc">Accessed field/method on <code>nil</code>. Use <code>?.&nbsp;</code> optional chaining or check with <code>x != nil</code>.</div></div></div>
+</div>
+
+<h2>E005x — Assert / Panic</h2>
+<div class="error-grid">
+<div class="err-card"><span class="err-code">E0050</span><div><div class="err-name">AssertionError</div><div class="err-desc"><code>assert(cond, msg)</code> failed. The catch variable receives the message string directly.</div></div></div>
+<div class="err-card"><span class="err-code">E0051</span><div><div class="err-name">Panic</div><div class="err-desc"><code>panic(msg)</code> called. Use for truly unrecoverable states.</div></div></div>
+<div class="err-card"><span class="err-code">E0052</span><div><div class="err-name">Unreachable</div><div class="err-desc"><code>unreachable(msg)</code> reached. This is a programmer error — the code path was supposed to be impossible.</div></div></div>
+</div>
+
+</body></html>

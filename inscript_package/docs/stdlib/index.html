@@ -1,0 +1,471 @@
+<!DOCTYPE html><html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>InScript Stdlib Reference</title>
+<style>
+:root{--bg:#0d1117;--sf:#161b22;--bd:#30363d;--tx:#e6edf3;--tx2:#8b949e;--pr:#58a6ff;--gn:#3fb950}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--tx);display:flex;min-height:100vh}
+a{color:var(--pr);text-decoration:none}a:hover{text-decoration:underline}
+nav{width:220px;background:var(--sf);border-right:1px solid var(--bd);padding:20px 12px;position:sticky;top:0;height:100vh;overflow-y:auto;flex-shrink:0;font-size:13px}
+.nav-logo{font-weight:800;color:var(--pr);font-size:15px;margin-bottom:16px;display:block}
+nav h4{color:var(--tx2);font-size:10px;text-transform:uppercase;letter-spacing:.5px;margin:14px 0 6px}
+nav a{display:block;padding:4px 8px;border-radius:4px;color:var(--tx2);margin-bottom:1px}
+nav a:hover{background:rgba(88,166,255,.1);color:var(--pr);text-decoration:none}
+main{flex:1;padding:40px 48px;max-width:860px}
+h1{font-size:1.8rem;margin-bottom:8px}
+.sub{color:var(--tx2);margin-bottom:32px}
+h2{font-size:1.2rem;margin:36px 0 16px;color:var(--tx);padding-bottom:8px;border-bottom:1px solid var(--bd)}
+.mod-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin-bottom:32px}
+.mod-card{background:var(--sf);border:1px solid var(--bd);border-radius:6px;padding:14px}
+.mod-name{font-weight:700;color:var(--pr);margin-bottom:8px;font-size:14px}
+.fn-list{display:flex;flex-wrap:wrap;gap:4px}
+.fn-tag{background:#0a0e14;border:1px solid var(--bd);padding:2px 8px;border-radius:4px;font-family:monospace;font-size:11px;color:#c9d1d9}
+</style></head><body>
+<nav>
+  <a href="../../" class="nav-logo">← InScript</a>
+  <h4>Core</h4>
+  <a href="#math">math</a>
+  <a href="#string">string</a>
+  <a href="#array">array</a>
+  <a href="#json">json</a>
+  <a href="#io">io</a>
+  <a href="#random">random</a>
+  <a href="#time">time</a>
+  <a href="#debug">debug</a>
+  <h4>Data</h4>
+  <a href="#csv">csv</a>
+  <a href="#regex">regex</a>
+  <a href="#xml">xml</a>
+  <a href="#toml">toml</a>
+  <a href="#yaml">yaml</a>
+  <a href="#url">url</a>
+  <a href="#base64">base64</a>
+  <a href="#uuid">uuid</a>
+  <h4>Format/Iter</h4>
+  <a href="#format">format</a>
+  <a href="#iter">iter</a>
+  <a href="#template">template</a>
+  <a href="#argparse">argparse</a>
+  <h4>Net/Crypto</h4>
+  <a href="#http">http</a>
+  <a href="#ssl">ssl</a>
+  <a href="#crypto">crypto</a>
+  <a href="#hash">hash</a>
+  <a href="#net">net</a>
+  <h4>FS/Process</h4>
+  <a href="#path">path</a>
+  <a href="#fs">fs</a>
+  <a href="#process">process</a>
+  <a href="#compress">compress</a>
+  <a href="#log">log</a>
+  <h4>Date/Collections</h4>
+  <a href="#datetime">datetime</a>
+  <a href="#collections">collections</a>
+  <a href="#database">database</a>
+  <h4>Async/Bench</h4>
+  <a href="#thread">thread</a>
+  <a href="#bench">bench</a>
+  <h4>Game: Visual</h4>
+  <a href="#color">color</a>
+  <a href="#tween">tween</a>
+  <a href="#image">image</a>
+  <a href="#atlas">atlas</a>
+  <a href="#animation">animation</a>
+  <a href="#shader">shader</a>
+  <h4>Game: I/O</h4>
+  <a href="#input">input</a>
+  <a href="#audio">audio</a>
+  <h4>Game: World</h4>
+  <a href="#physics2d">physics2d</a>
+  <a href="#tilemap">tilemap</a>
+  <a href="#camera2d">camera2d</a>
+  <a href="#particle">particle</a>
+  <a href="#pathfind">pathfind</a>
+  <h4>Game: Systems</h4>
+  <a href="#grid">grid</a>
+  <a href="#events">events</a>
+  <a href="#ecs">ecs</a>
+  <a href="#fsm">fsm</a>
+  <a href="#save">save</a>
+  <a href="#localize">localize</a>
+  <a href="#net_game">net_game</a>
+  <h4>Utilities</h4>
+  <a href="#signal">signal</a>
+  <a href="#vec">vec</a>
+  <a href="#pool">pool</a>
+</nav>
+<main>
+  <h1>Stdlib Reference</h1>
+  <p class="sub">59 built-in modules. Import with: <code>import "math" as M</code> · Browse in REPL with <code>.doc math</code></p>
+
+  <h2>Core</h2>
+  <div class="mod-grid">
+    <div class="mod-card" id="math">
+      <div class="mod-name">math</div>
+      <div class="fn-list">
+        <span class="fn-tag">sin(x)</span>
+        <span class="fn-tag">cos(x)</span>
+        <span class="fn-tag">tan(x)</span>
+        <span class="fn-tag">sqrt(x)</span>
+        <span class="fn-tag">pow(x,y)</span>
+        <span class="fn-tag">abs(x)</span>
+        <span class="fn-tag">floor(x)</span>
+        <span class="fn-tag">ceil(x)</span>
+        <span class="fn-tag">round(x)</span>
+        <span class="fn-tag">log(x)</span>
+        <span class="fn-tag">log2(x)</span>
+        <span class="fn-tag">exp(x)</span>
+        <span class="fn-tag">+5 more</span>
+      </div>
+    </div>
+    <div class="mod-card" id="string">
+      <div class="mod-name">string</div>
+      <div class="fn-list">
+        <span class="fn-tag">len(s)</span>
+        <span class="fn-tag">upper(s)</span>
+        <span class="fn-tag">lower(s)</span>
+        <span class="fn-tag">trim(s)</span>
+        <span class="fn-tag">split(s,sep)</span>
+        <span class="fn-tag">join(a,sep)</span>
+        <span class="fn-tag">replace(s,old,new)</span>
+        <span class="fn-tag">contains(s,sub)</span>
+        <span class="fn-tag">starts_with(s,p)</span>
+        <span class="fn-tag">ends_with(s,p)</span>
+        <span class="fn-tag">substring(s,a,b)</span>
+        <span class="fn-tag">repeat(s,n)</span>
+        <span class="fn-tag">+2 more</span>
+      </div>
+    </div>
+    <div class="mod-card" id="array">
+      <div class="mod-name">array</div>
+      <div class="fn-list">
+        <span class="fn-tag">len(a)</span>
+        <span class="fn-tag">push(a,v)</span>
+        <span class="fn-tag">pop(a)</span>
+        <span class="fn-tag">insert(a,i,v)</span>
+        <span class="fn-tag">remove(a,i)</span>
+        <span class="fn-tag">contains(a,v)</span>
+        <span class="fn-tag">sort(a)</span>
+        <span class="fn-tag">reverse(a)</span>
+        <span class="fn-tag">map(a,fn)</span>
+        <span class="fn-tag">filter(a,fn)</span>
+        <span class="fn-tag">reduce(a,fn,i)</span>
+        <span class="fn-tag">zip(a,b)</span>
+        <span class="fn-tag">+10 more</span>
+      </div>
+    </div>
+    <div class="mod-card" id="json">
+      <div class="mod-name">json</div>
+      <div class="fn-list">
+        <span class="fn-tag">parse(s)</span>
+        <span class="fn-tag">stringify(v)</span>
+        <span class="fn-tag">stringify_pretty(v)</span>
+      </div>
+    </div>
+    <div class="mod-card" id="io">
+      <div class="mod-name">io</div>
+      <div class="fn-list">
+        <span class="fn-tag">read_file(p)</span>
+        <span class="fn-tag">write_file(p,s)</span>
+        <span class="fn-tag">append_file(p,s)</span>
+        <span class="fn-tag">read_lines(p)</span>
+        <span class="fn-tag">file_exists(p)</span>
+        <span class="fn-tag">delete_file(p)</span>
+        <span class="fn-tag">list_dir(p)</span>
+        <span class="fn-tag">input(prompt)</span>
+      </div>
+    </div>
+    <div class="mod-card" id="random">
+      <div class="mod-name">random</div>
+      <div class="fn-list">
+        <span class="fn-tag">int(min,max)</span>
+        <span class="fn-tag">float(min,max)</span>
+        <span class="fn-tag">bool()</span>
+        <span class="fn-tag">choice(arr)</span>
+        <span class="fn-tag">shuffle(arr)</span>
+        <span class="fn-tag">seed(n)</span>
+      </div>
+    </div>
+    <div class="mod-card" id="time">
+      <div class="mod-name">time</div>
+      <div class="fn-list">
+        <span class="fn-tag">now()</span>
+        <span class="fn-tag">sleep(ms)</span>
+        <span class="fn-tag">format(t,fmt)</span>
+      </div>
+    </div>
+    <div class="mod-card" id="debug">
+      <div class="mod-name">debug</div>
+      <div style="color:#6e7681;font-size:12px">Game module — see REPL .doc</div>
+    </div>
+  </div>
+
+  <h2>Data</h2>
+  <div class="mod-grid">
+    <div class="mod-card" id="csv">
+      <div class="mod-name">csv</div>
+      <div style="color:#6e7681;font-size:12px">Game module — see REPL .doc</div>
+    </div>
+    <div class="mod-card" id="regex">
+      <div class="mod-name">regex</div>
+      <div class="fn-list">
+        <span class="fn-tag">match(pat,s)</span>
+        <span class="fn-tag">find(pat,s)</span>
+        <span class="fn-tag">find_all(pat,s)</span>
+        <span class="fn-tag">replace(pat,s,r)</span>
+        <span class="fn-tag">test(pat,s)</span>
+      </div>
+    </div>
+    <div class="mod-card" id="xml">
+      <div class="mod-name">xml</div>
+      <div style="color:#6e7681;font-size:12px">Game module — see REPL .doc</div>
+    </div>
+    <div class="mod-card" id="toml">
+      <div class="mod-name">toml</div>
+      <div style="color:#6e7681;font-size:12px">Game module — see REPL .doc</div>
+    </div>
+    <div class="mod-card" id="yaml">
+      <div class="mod-name">yaml</div>
+      <div style="color:#6e7681;font-size:12px">Game module — see REPL .doc</div>
+    </div>
+    <div class="mod-card" id="url">
+      <div class="mod-name">url</div>
+      <div style="color:#6e7681;font-size:12px">Game module — see REPL .doc</div>
+    </div>
+    <div class="mod-card" id="base64">
+      <div class="mod-name">base64</div>
+      <div style="color:#6e7681;font-size:12px">Game module — see REPL .doc</div>
+    </div>
+    <div class="mod-card" id="uuid">
+      <div class="mod-name">uuid</div>
+      <div style="color:#6e7681;font-size:12px">Game module — see REPL .doc</div>
+    </div>
+  </div>
+
+  <h2>Format/Iter</h2>
+  <div class="mod-grid">
+    <div class="mod-card" id="format">
+      <div class="mod-name">format</div>
+      <div style="color:#6e7681;font-size:12px">Game module — see REPL .doc</div>
+    </div>
+    <div class="mod-card" id="iter">
+      <div class="mod-name">iter</div>
+      <div style="color:#6e7681;font-size:12px">Game module — see REPL .doc</div>
+    </div>
+    <div class="mod-card" id="template">
+      <div class="mod-name">template</div>
+      <div style="color:#6e7681;font-size:12px">Game module — see REPL .doc</div>
+    </div>
+    <div class="mod-card" id="argparse">
+      <div class="mod-name">argparse</div>
+      <div style="color:#6e7681;font-size:12px">Game module — see REPL .doc</div>
+    </div>
+  </div>
+
+  <h2>Net/Crypto</h2>
+  <div class="mod-grid">
+    <div class="mod-card" id="http">
+      <div class="mod-name">http</div>
+      <div style="color:#6e7681;font-size:12px">Game module — see REPL .doc</div>
+    </div>
+    <div class="mod-card" id="ssl">
+      <div class="mod-name">ssl</div>
+      <div style="color:#6e7681;font-size:12px">Game module — see REPL .doc</div>
+    </div>
+    <div class="mod-card" id="crypto">
+      <div class="mod-name">crypto</div>
+      <div style="color:#6e7681;font-size:12px">Game module — see REPL .doc</div>
+    </div>
+    <div class="mod-card" id="hash">
+      <div class="mod-name">hash</div>
+      <div style="color:#6e7681;font-size:12px">Game module — see REPL .doc</div>
+    </div>
+    <div class="mod-card" id="net">
+      <div class="mod-name">net</div>
+      <div style="color:#6e7681;font-size:12px">Game module — see REPL .doc</div>
+    </div>
+  </div>
+
+  <h2>FS/Process</h2>
+  <div class="mod-grid">
+    <div class="mod-card" id="path">
+      <div class="mod-name">path</div>
+      <div class="fn-list">
+        <span class="fn-tag">join(...)</span>
+        <span class="fn-tag">exists(p)</span>
+        <span class="fn-tag">dir(p)</span>
+        <span class="fn-tag">base(p)</span>
+        <span class="fn-tag">ext(p)</span>
+        <span class="fn-tag">absolute(p)</span>
+      </div>
+    </div>
+    <div class="mod-card" id="fs">
+      <div class="mod-name">fs</div>
+      <div style="color:#6e7681;font-size:12px">Game module — see REPL .doc</div>
+    </div>
+    <div class="mod-card" id="process">
+      <div class="mod-name">process</div>
+      <div style="color:#6e7681;font-size:12px">Game module — see REPL .doc</div>
+    </div>
+    <div class="mod-card" id="compress">
+      <div class="mod-name">compress</div>
+      <div style="color:#6e7681;font-size:12px">Game module — see REPL .doc</div>
+    </div>
+    <div class="mod-card" id="log">
+      <div class="mod-name">log</div>
+      <div style="color:#6e7681;font-size:12px">Game module — see REPL .doc</div>
+    </div>
+  </div>
+
+  <h2>Date/Collections</h2>
+  <div class="mod-grid">
+    <div class="mod-card" id="datetime">
+      <div class="mod-name">datetime</div>
+      <div style="color:#6e7681;font-size:12px">Game module — see REPL .doc</div>
+    </div>
+    <div class="mod-card" id="collections">
+      <div class="mod-name">collections</div>
+      <div style="color:#6e7681;font-size:12px">Game module — see REPL .doc</div>
+    </div>
+    <div class="mod-card" id="database">
+      <div class="mod-name">database</div>
+      <div style="color:#6e7681;font-size:12px">Game module — see REPL .doc</div>
+    </div>
+  </div>
+
+  <h2>Async/Bench</h2>
+  <div class="mod-grid">
+    <div class="mod-card" id="thread">
+      <div class="mod-name">thread</div>
+      <div style="color:#6e7681;font-size:12px">Game module — see REPL .doc</div>
+    </div>
+    <div class="mod-card" id="bench">
+      <div class="mod-name">bench</div>
+      <div style="color:#6e7681;font-size:12px">Game module — see REPL .doc</div>
+    </div>
+  </div>
+
+  <h2>Game: Visual</h2>
+  <div class="mod-grid">
+    <div class="mod-card" id="color">
+      <div class="mod-name">color</div>
+      <div class="fn-list">
+        <span class="fn-tag">rgb(r,g,b)</span>
+        <span class="fn-tag">rgba(r,g,b,a)</span>
+        <span class="fn-tag">hsv(h,s,v)</span>
+        <span class="fn-tag">lerp(a,b,t)</span>
+        <span class="fn-tag">from_hex(s)</span>
+        <span class="fn-tag">to_hex(c)</span>
+        <span class="fn-tag">BLACK</span>
+        <span class="fn-tag">WHITE</span>
+        <span class="fn-tag">RED</span>
+        <span class="fn-tag">GREEN</span>
+        <span class="fn-tag">BLUE</span>
+      </div>
+    </div>
+    <div class="mod-card" id="tween">
+      <div class="mod-name">tween</div>
+      <div style="color:#6e7681;font-size:12px">Game module — see REPL .doc</div>
+    </div>
+    <div class="mod-card" id="image">
+      <div class="mod-name">image</div>
+      <div style="color:#6e7681;font-size:12px">Game module — see REPL .doc</div>
+    </div>
+    <div class="mod-card" id="atlas">
+      <div class="mod-name">atlas</div>
+      <div style="color:#6e7681;font-size:12px">Game module — see REPL .doc</div>
+    </div>
+    <div class="mod-card" id="animation">
+      <div class="mod-name">animation</div>
+      <div style="color:#6e7681;font-size:12px">Game module — see REPL .doc</div>
+    </div>
+    <div class="mod-card" id="shader">
+      <div class="mod-name">shader</div>
+      <div style="color:#6e7681;font-size:12px">Game module — see REPL .doc</div>
+    </div>
+  </div>
+
+  <h2>Game: I/O</h2>
+  <div class="mod-grid">
+    <div class="mod-card" id="input">
+      <div class="mod-name">input</div>
+      <div style="color:#6e7681;font-size:12px">Game module — see REPL .doc</div>
+    </div>
+    <div class="mod-card" id="audio">
+      <div class="mod-name">audio</div>
+      <div style="color:#6e7681;font-size:12px">Game module — see REPL .doc</div>
+    </div>
+  </div>
+
+  <h2>Game: World</h2>
+  <div class="mod-grid">
+    <div class="mod-card" id="physics2d">
+      <div class="mod-name">physics2d</div>
+      <div style="color:#6e7681;font-size:12px">Game module — see REPL .doc</div>
+    </div>
+    <div class="mod-card" id="tilemap">
+      <div class="mod-name">tilemap</div>
+      <div style="color:#6e7681;font-size:12px">Game module — see REPL .doc</div>
+    </div>
+    <div class="mod-card" id="camera2d">
+      <div class="mod-name">camera2d</div>
+      <div style="color:#6e7681;font-size:12px">Game module — see REPL .doc</div>
+    </div>
+    <div class="mod-card" id="particle">
+      <div class="mod-name">particle</div>
+      <div style="color:#6e7681;font-size:12px">Game module — see REPL .doc</div>
+    </div>
+    <div class="mod-card" id="pathfind">
+      <div class="mod-name">pathfind</div>
+      <div style="color:#6e7681;font-size:12px">Game module — see REPL .doc</div>
+    </div>
+  </div>
+
+  <h2>Game: Systems</h2>
+  <div class="mod-grid">
+    <div class="mod-card" id="grid">
+      <div class="mod-name">grid</div>
+      <div style="color:#6e7681;font-size:12px">Game module — see REPL .doc</div>
+    </div>
+    <div class="mod-card" id="events">
+      <div class="mod-name">events</div>
+      <div style="color:#6e7681;font-size:12px">Game module — see REPL .doc</div>
+    </div>
+    <div class="mod-card" id="ecs">
+      <div class="mod-name">ecs</div>
+      <div style="color:#6e7681;font-size:12px">Game module — see REPL .doc</div>
+    </div>
+    <div class="mod-card" id="fsm">
+      <div class="mod-name">fsm</div>
+      <div style="color:#6e7681;font-size:12px">Game module — see REPL .doc</div>
+    </div>
+    <div class="mod-card" id="save">
+      <div class="mod-name">save</div>
+      <div style="color:#6e7681;font-size:12px">Game module — see REPL .doc</div>
+    </div>
+    <div class="mod-card" id="localize">
+      <div class="mod-name">localize</div>
+      <div style="color:#6e7681;font-size:12px">Game module — see REPL .doc</div>
+    </div>
+    <div class="mod-card" id="net_game">
+      <div class="mod-name">net_game</div>
+      <div style="color:#6e7681;font-size:12px">Game module — see REPL .doc</div>
+    </div>
+  </div>
+
+  <h2>Utilities</h2>
+  <div class="mod-grid">
+    <div class="mod-card" id="signal">
+      <div class="mod-name">signal</div>
+      <div style="color:#6e7681;font-size:12px">Game module — see REPL .doc</div>
+    </div>
+    <div class="mod-card" id="vec">
+      <div class="mod-name">vec</div>
+      <div style="color:#6e7681;font-size:12px">Game module — see REPL .doc</div>
+    </div>
+    <div class="mod-card" id="pool">
+      <div class="mod-name">pool</div>
+      <div style="color:#6e7681;font-size:12px">Game module — see REPL .doc</div>
+    </div>
+  </div>
+</main></body></html>

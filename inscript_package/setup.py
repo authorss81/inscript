@@ -8,7 +8,7 @@ from setuptools import setup, find_packages
 
 setup(
     name             = "inscript-lang",
-    version          = "1.0.21",
+    version          = "1.0.23",
     author           = "Shreyasi Sarkar",
     description      = "InScript — a modern scripting language for game development",
     long_description = open("README.md", encoding="utf-8").read(),

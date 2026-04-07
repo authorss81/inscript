@@ -1,0 +1,107 @@
+<!DOCTYPE html><html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>InScript Docs — Getting Started</title>
+<style>
+:root{--bg:#0d1117;--sf:#161b22;--bd:#30363d;--tx:#e6edf3;--tx2:#8b949e;--pr:#58a6ff;--gn:#3fb950}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--tx);display:flex;min-height:100vh}
+a{color:var(--pr);text-decoration:none}
+a:hover{text-decoration:underline}
+nav{width:240px;background:var(--sf);border-right:1px solid var(--bd);padding:20px 16px;position:sticky;top:0;height:100vh;overflow-y:auto;flex-shrink:0}
+.nav-logo{font-weight:800;color:var(--pr);font-size:16px;margin-bottom:24px;display:block}
+nav h4{color:var(--tx2);font-size:11px;text-transform:uppercase;letter-spacing:.5px;margin:20px 0 8px}
+nav a{display:block;padding:5px 10px;border-radius:5px;font-size:14px;color:var(--tx2);margin-bottom:2px}
+nav a:hover,nav a.active{background:rgba(88,166,255,.1);color:var(--pr);text-decoration:none}
+main{flex:1;padding:48px;max-width:860px}
+h1{font-size:2rem;margin-bottom:8px}
+.subtitle{color:var(--tx2);margin-bottom:32px;font-size:1rem}
+h2{font-size:1.4rem;margin:36px 0 12px;border-bottom:1px solid var(--bd);padding-bottom:8px}
+h3{font-size:1.1rem;margin:24px 0 8px;color:var(--pr)}
+p{margin-bottom:12px;color:#c9d1d9;line-height:1.7}
+pre{background:#0a0e14;border:1px solid var(--bd);border-radius:8px;padding:20px;overflow-x:auto;font-family:"Cascadia Code","Fira Code",monospace;font-size:13px;line-height:1.7;margin:16px 0}
+code{background:var(--sf);border:1px solid var(--bd);padding:2px 6px;border-radius:4px;font-family:monospace;font-size:.9em}
+.tip{background:rgba(88,166,255,.08);border:1px solid rgba(88,166,255,.3);border-radius:6px;padding:12px 16px;margin:16px 0;font-size:.9rem}
+.warn{background:rgba(210,153,34,.08);border:1px solid rgba(210,153,34,.3);border-radius:6px;padding:12px 16px;margin:16px 0;font-size:.9rem}
+</style></head><body>
+<nav>
+  <a href="../" class="nav-logo">← InScript</a>
+  <h4>Getting Started</h4>
+  <a href="index.html" class="active">Installation</a>
+  <a href="quickstart.html">Quick Start</a>
+  <h4>Language</h4>
+  <a href="syntax.html">Syntax Overview</a>
+  <a href="types.html">Type System</a>
+  <a href="functions.html">Functions</a>
+  <a href="structs.html">Structs &amp; Enums</a>
+  <a href="errors.html">Error Handling</a>
+  <a href="match.html">Pattern Matching</a>
+  <h4>Tools</h4>
+  <a href="repl.html">REPL</a>
+  <a href="fmt.html">Formatter</a>
+  <a href="testing.html">Test Runner</a>
+  <h4>Reference</h4>
+  <a href="stdlib/">Stdlib Reference</a>
+  <a href="errors/">Error Codes</a>
+</nav>
+<main>
+  <h1>Getting Started</h1>
+  <p class="subtitle">InScript — a game-focused scripting language for Python 3.10+</p>
+
+  <h2>Installation</h2>
+  <pre>pip install inscript-lang</pre>
+  <p>Or with game support (requires pygame):</p>
+  <pre>pip install "inscript-lang[game]"</pre>
+  <p>Verify installation:</p>
+  <pre>inscript --version   # InScript 1.0.21</pre>
+
+  <h2>Hello World</h2>
+  <pre>print("Hello, InScript!")
+
+let name = "world"
+print(f"Hello, {name}!")
+
+// Variables are typed
+let x: int = 42
+let pi: float = 3.14159
+let greeting: string = "Hello"</pre>
+
+  <h2>First Program</h2>
+  <p>Save as <code>hello.ins</code> and run with <code>inscript hello.ins</code>:</p>
+  <pre>fn greet(name: string) -> string {
+    return "Hello, " ++ name ++ "!"
+}
+
+let people = ["Alice", "Bob", "Charlie"]
+for person in people {
+    print(greet(person))
+}
+
+// Output:
+// Hello, Alice!
+// Hello, Bob!
+// Hello, Charlie!</pre>
+
+  <h2>REPL</h2>
+  <p>Start the interactive shell:</p>
+  <pre>inscript --repl</pre>
+  <p>Useful REPL commands:</p>
+  <pre>.help           Show all commands
+.doc math       Show math module docs
+.vars           List defined variables
+.fns            List defined functions
+.vm             Toggle bytecode VM mode
+exit            Quit</pre>
+
+  <h2>Next Steps</h2>
+  <ul style="color:#c9d1d9;line-height:2;padding-left:20px">
+    <li><a href="syntax.html">Language syntax overview</a></li>
+    <li><a href="structs.html">Structs and enums</a></li>
+    <li><a href="../docs/stdlib/">59 stdlib modules</a></li>
+    <li><a href="../playground.html">Try in browser</a></li>
+  </ul>
+
+  <div class="tip">
+    💡 <strong>Upgrading from v0.6?</strong> Run <code>pip install --upgrade inscript-lang</code>.
+    All v0.6 syntax is fully backward compatible.
+  </div>
+</main></body></html>

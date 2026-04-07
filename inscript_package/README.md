@@ -1,16 +1,16 @@
-# InScript v1.0.21 — Game-Focused Scripting Language
+# InScript v1.0.23 — Game-Focused Scripting Language
 
-> **839 tests passing** · **59 stdlib modules** · **Python 3.10+** · **Audit 9.2/10**  
+> **839 tests passing** · **59 stdlib modules** · **Python 3.10+** · **Audit 9.5/10**  
 > Available on PyPI: **`pip install inscript-lang`** · First stable: **v1.1.0 (Q2 2026)**
 
-InScript is a statically-typed scripting language for 2D games. v1.0.21 adds the test runner and PyPI package config — one session from the first stable release.
+InScript is a statically-typed scripting language for 2D games. v1.0.23 adds the test runner and PyPI package config — one session from the first stable release.
 
 ---
 
 ## Install
 
 ```bash
-# From PyPI (when v1.0.21 is uploaded)
+# From PyPI (when v1.0.23 is uploaded)
 pip install inscript-lang
 
 # Or from source
@@ -21,7 +21,7 @@ pip install -e .
 # Start
 inscript --repl
 inscript examples/platformer.ins
-inscript --version   # InScript 1.0.21
+inscript --version   # InScript 1.0.23
 ```
 
 ---
@@ -101,8 +101,8 @@ load("data.json")
 | Bytecode VM parity | ✅ Complete (v1.0.13-18) |
 | `inscript fmt` formatter | ✅ v1.0.19 |
 | `inscript --watch` | ✅ v1.0.19 |
-| `inscript --test` test runner | ✅ v1.0.21 |
-| `pyproject.toml` for PyPI | ✅ v1.0.21 |
+| `inscript --test` test runner | ✅ v1.0.23 |
+| `pyproject.toml` for PyPI | ✅ v1.0.23 |
 | 59 stdlib modules | ✅ Complete |
 | LSP + VS Code extension | ✅ Complete |
 | Docs site | 🔧 v1.0.22 |
@@ -132,4 +132,4 @@ All v0.6 programs run unchanged. New features are additive.
 
 ---
 
-MIT License · [GitHub](https://github.com/authorss81/inscript) · [Audit (9.2/10)](InScript_Language_Audit.md) · [Roadmap](ROADMAP.md)
+MIT License · [GitHub](https://github.com/authorss81/inscript) · [Audit (9.5/10)](InScript_Language_Audit.md) · [Roadmap](ROADMAP.md)
