@@ -24,7 +24,7 @@ from errors   import (InScriptError, LexerError, ParseError,
                        SemanticError, InScriptRuntimeError,
                        MultiError, InScriptWarning)
 
-VERSION = "1.0.1"
+VERSION = "1.0.21"
 LANG    = "InScript"
 PACKAGES_DIR = os.path.join(os.path.expanduser("~"), ".inscript", "packages")
 REGISTRY_URL = "https://raw.githubusercontent.com/authorss81/inscript-packages/main/registry.json"
@@ -430,6 +430,12 @@ Examples:
                         help="Check formatting without writing (exit 1 if unformatted)")
     parser.add_argument("--fmt-dry-run", action="store_true",
                         help="Print formatted output without writing")
+    parser.add_argument("--test",    action="store_true",
+                        help="Run test_*.ins files: inscript --test [file.ins]")
+    parser.add_argument("--test-verbose", action="store_true",
+                        help="Verbose test output")
+    parser.add_argument("--test-fail-fast", action="store_true",
+                        help="Stop tests on first failure")
     parser.add_argument("--watch",   action="store_true",
                         help="Watch file for changes and rerun: inscript --watch game.ins")
     parser.add_argument("--version", action="store_true", help="Print version and exit")
@@ -470,6 +476,18 @@ Examples:
         if args.fmt_check: fmt_argv.append("--check")
         if args.fmt_dry_run: fmt_argv.append("--dry-run")
         import sys as _sys; _sys.exit(fmt_main(fmt_argv) or 0)
+
+    # ── inscript --test ─────────────────────────────────────────────────────
+    if args.test:
+        try:
+            from inscript_test import main as test_main
+        except ImportError:
+            print("Error: inscript_test.py not found", file=sys.stderr); return
+        test_argv = []
+        if args.file: test_argv.append(args.file)
+        if args.test_verbose: test_argv.append("--verbose")
+        if args.test_fail_fast: test_argv.append("--fail-fast")
+        import sys as _sys; _sys.exit(test_main(test_argv) or 0)
 
     # ── inscript --watch ─────────────────────────────────────────────────────
     if args.watch:

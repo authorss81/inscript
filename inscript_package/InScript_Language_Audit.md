@@ -17,6 +17,17 @@
 
 ## CHANGELOG — v1.0.2 → v1.0.9
 
+### v1.0.21 (April 2026) — Test runner + PyPI release
+
+| Feature | Description |
+|---------|-------------|
+| **`inscript --test`** | Test runner (`inscript_test.py`, 253 lines). Discovers `test_*.ins` files. Syntax: `test "name" { assert(...) }`. Colored pass/fail output, timing, `--verbose`, `--fail-fast`. Exit code 1 on failure (CI compatible). |
+| **`pyproject.toml`** | Package config for PyPI. Name: `inscript-lang`. Entry point: `inscript = inscript:main`. Optional deps: `[game]` for pygame, `[lsp]` for pygls. Python >=3.10. |
+| **`setup.py` updated** | Version bumped to 1.0.21, author set, entry point fixed. Upgrade path from v0.6 documented. |
+| **VERSION bump** | Both `repl.py` and `inscript.py` now read `VERSION = "1.0.21"`. |
+
+### v1.0.20 — (merged into v1.0.21; watch mode was in v1.0.19)
+
 ### v1.0.19 (April 2026) — Arrow functions, formatter, rest destructuring, VM chain fix
 
 | Feature | Description |
@@ -1251,7 +1262,7 @@ All BUG-01 through BUG-30 are now fixed. Current open issues in priority order:
 
 ---
 
-## XIII. SCORES v4.0 — Updated v1.0.19 (March 2026)
+## XIII. SCORES v4.0 — Updated v1.0.21 (March 2026)
 
 | Category | v1.0.1 | v1.0.7 | Direction | Key reason |
 |----------|--------|--------|-----------|------------|
@@ -1293,7 +1304,7 @@ All BUG-01 through BUG-30 are now fixed. Current open issues in priority order:
 
 ---
 
-*Audit updated April 2026 — v1.0.19.*  
+*Audit updated April 2026 — v1.0.21.*  
 *All findings verified by direct execution against both interpreter and VM.*  
 *501 tests passing. 59 stdlib modules. 30/30 catalogued bugs fixed.*
 

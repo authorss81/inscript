@@ -1,23 +1,23 @@
 # -*- coding: utf-8 -*-
 """
-InScript — setup.py (legacy fallback; pyproject.toml is canonical)
-Run:  pip install .
-      python -m build && twine upload dist/*
+InScript — setup.py (legacy fallback; pyproject.toml is canonical for v1.0.21+)
+Upgrade from v0.6: pip install --upgrade inscript-lang
+Publish: python -m build && python -m twine upload dist/*
 """
 from setuptools import setup, find_packages
 
 setup(
     name             = "inscript-lang",
-    version          = "1.0.0",
-    author           = "InScript Contributors",
+    version          = "1.0.21",
+    author           = "Shreyasi Sarkar",
     description      = "InScript — a modern scripting language for game development",
     long_description = open("README.md", encoding="utf-8").read(),
     long_description_content_type = "text/markdown",
     license          = "MIT",
     python_requires  = ">=3.10",
     packages         = find_packages(),
-    package_data     = {"inscript_package": ["examples/*.ins"]},
-    entry_points     = {"console_scripts": ["inscript=inscript_package.inscript:main"]},
+    package_data     = {"": ["*.ins", "examples/*.ins", "*.md"]},
+    entry_points     = {"console_scripts": ["inscript=inscript:main"]},
     classifiers      = [
         "Development Status :: 5 - Production/Stable",
         "Intended Audience :: Developers",

@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=65", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "inscript-lang"
+version = "1.0.21"
+description = "InScript — a game-focused scripting language with 59 game modules and a bytecode VM"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "Shreyasi Sarkar" }]
+requires-python = ">=3.10"
+keywords = ["game", "scripting", "language", "gamedev", "gdscript"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Games/Entertainment",
+    "Topic :: Software Development :: Interpreters",
+]
+
+# Core dependencies: none required (pygame and pygls are optional)
+dependencies = []
+
+[project.optional-dependencies]
+game  = ["pygame>=2.0"]
+lsp   = ["pygls>=1.0"]
+all   = ["pygame>=2.0", "pygls>=1.0"]
+
+[project.urls]
+Homepage   = "https://github.com/authorss81/inscript"
+Repository = "https://github.com/authorss81/inscript"
+"Bug Tracker" = "https://github.com/authorss81/inscript/issues"
+
+[project.scripts]
+inscript = "inscript:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["inscript*"]
+
+[tool.setuptools.package-data]
+"*" = ["*.ins", "*.md", "*.toml"]

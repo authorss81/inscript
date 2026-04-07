@@ -1,101 +1,135 @@
-# InScript v1.0.19 — Game-Focused Scripting Language
+# InScript v1.0.21 — Game-Focused Scripting Language
 
-> **839 tests passing** · **59 stdlib modules** · **Python 3.10+** · **Audit score: 9.0/10**
-> Pre-stable — first stable release: **v1.1.0 (Q2 2026)**
+> **839 tests passing** · **59 stdlib modules** · **Python 3.10+** · **Audit 9.2/10**  
+> Available on PyPI: **`pip install inscript-lang`** · First stable: **v1.1.0 (Q2 2026)**
 
-InScript is a statically-typed scripting language for 2D games. v1.0.19 adds the formatter, arrow functions, and rest destructuring. One session away from v1.1.0.
+InScript is a statically-typed scripting language for 2D games. v1.0.21 adds the test runner and PyPI package config — one session from the first stable release.
 
 ---
 
-## Quick Start
+## Install
 
 ```bash
-pip install pygame pygls
+# From PyPI (when v1.0.21 is uploaded)
+pip install inscript-lang
+
+# Or from source
 git clone https://github.com/authorss81/inscript
 cd inscript/inscript_package
-python inscript.py --repl
-python inscript.py examples/platformer.ins
-python inscript.py --version   # InScript 1.0.19
+pip install -e .
+
+# Start
+inscript --repl
+inscript examples/platformer.ins
+inscript --version   # InScript 1.0.21
 ```
 
 ---
 
-## New in v1.0.19
+## Developer Workflow
 
+```bash
+# Run a file
+inscript game.ins
+
+# Format code
+inscript --fmt game.ins           # format in place
+inscript --fmt-check game.ins     # CI check
+
+# Watch mode — auto-rerun on save
+inscript --watch game.ins
+
+# Run tests
+inscript --test                   # discover test_*.ins
+inscript --test --verbose         # show each test name
+inscript --test --fail-fast       # stop on first failure
+```
+
+**Test file format:**
 ```inscript
-// Arrow functions — cleaner lambdas
-let double = fn(x) => x * 2
-let evens  = [1,2,3,4,5].filter(fn(x) => x % 2 == 0)
-let names  = users.map(fn(u) => u.name).filter(fn(n) => n.len() > 3)
+// test_physics.ins
+test "collision detection" {
+    import "physics2d" as P
+    let r1 = P.Rect(0, 0, 10, 10)
+    let r2 = P.Rect(5, 5, 10, 10)
+    assert(r1.overlaps(r2), "rects should overlap")
+}
 
-// Chained method calls work in VM now (was broken)
-let result = data
-    .filter(fn(x) => x.score > 50)
-    .map(fn(x) => x.name)
-    .sorted()
-
-// Rest destructuring
-let [first, second, ...rest] = [1, 2, 3, 4, 5]
-print(first)   // 1
-print(rest)    // [3, 4, 5]
-
-fn log(level, ...messages) {
-    for msg in messages { print(f"[{level}] {msg}") }
+test "gravity" {
+    let body = physics2d.RigidBody(mass: 1.0)
+    body.update(0.1)
+    assert(body.vel_y > 0.0, "should fall")
 }
 ```
 
-```bash
-# Formatter — built in
-inscript --fmt game.ins             # format in place
-inscript --fmt-check game.ins       # exit 1 if not formatted (CI)
-inscript --fmt-dry-run game.ins     # print without writing
+---
 
-# Watch mode — rerun on file change
-inscript --watch game.ins
+## Language Features
+
+```inscript
+// Arrow functions
+let evens  = [1,2,3,4,5].filter(fn(x) => x % 2 == 0)
+let scores = students.map(fn(s) => s.score).filter(fn(n) => n >= 60)
+
+// Nullable + union types
+fn greet(name: string?) { print("Hi " ++ (name ?? "stranger")) }
+fn parse(x: int|string) -> float { return float(string(x)) }
+
+// Pattern matching with ranges and guards
+match level {
+    case 1..=5   { print("beginner") }
+    case 6..=10  { print("intermediate") }
+    case n if n > 10 { print("expert") }
+}
+
+// Result type chaining
+fn load(path: string) -> Result {
+    return try { Ok(read_file(path)) } catch e { Err(e) }
+}
+load("data.json")
+    .map(fn(s) => parse_json(s))
+    .unwrap_or({})
 ```
 
 ---
 
-## Feature Status
+## Feature Completeness
 
-| Feature | Status |
-|---------|--------|
-| Arrow functions `fn(x) => x*2` | ✅ v1.0.19 — interpreter + VM |
-| Rest destructuring `[a,...rest]` | ✅ v1.0.19 |
-| `inscript --fmt` formatter | ✅ v1.0.19 |
-| `inscript --watch` watch mode | ✅ v1.0.19 |
-| VM chained method calls fixed | ✅ v1.0.19 |
-| `int?` nullable, `int\|string` union | ✅ v1.0.17 |
-| `type ID = int` type aliases | ✅ v1.0.17 |
-| VM mixin, str.is_upper/lower | ✅ v1.0.18 |
-| VM decorator, priv, super | ✅ v1.0.16 |
-| Pattern matching (ranges, guards, ADT) | ✅ v1.0.15-17 |
+| Category | Status |
+|----------|--------|
+| Core language (all features) | ✅ Complete |
+| Bytecode VM parity | ✅ Complete (v1.0.13-18) |
+| `inscript fmt` formatter | ✅ v1.0.19 |
+| `inscript --watch` | ✅ v1.0.19 |
+| `inscript --test` test runner | ✅ v1.0.21 |
+| `pyproject.toml` for PyPI | ✅ v1.0.21 |
 | 59 stdlib modules | ✅ Complete |
-| `inscript check` static analysis | ✅ Complete |
-| Web playground (basic `--web`) | ✅ Complete |
-
-## Path to v1.1.0
-
-| Version | What | Status |
-|---------|------|--------|
-| v1.0.19 | `inscript fmt` + arrow fn + rest + watch | ✅ **Done** |
-| v1.0.20 | `inscript test` runner | 🔧 Next |
-| v1.0.21 | **PyPI upgrade** — `pip install inscript-lang` (you have v0.6 on PyPI) | 🔧 Next |
-| v1.0.22 | Docs site + E0XXX error pages | 🔧 Next |
-| v1.0.23 | Web playground with Pyodide | 🔧 Next |
-| **v1.1.0** | **FIRST STABLE** | Q2 2026 |
+| LSP + VS Code extension | ✅ Complete |
+| Docs site | 🔧 v1.0.22 |
+| Web playground | 🔧 v1.0.23 |
+| **v1.1.0 stable** | **Q2 2026** |
 
 ---
 
 ## Tests
 
 ```bash
-python test_phase6.py         # 145/145
-python test_phase7.py         # 32/32
-python test_audit.py          # 54/54
-python test_comprehensive.py  # 335/335
+python test_phase6.py         # 145/145 VM
+python test_phase7.py         # 32/32  operators
+python test_audit.py          # 54/54  audit
+python test_comprehensive.py  # 335/335 features
 ```
 
 ---
 
-MIT License · [GitHub](https://github.com/authorss81/inscript) · [Audit (9.0/10)](InScript_Language_Audit.md) · [Roadmap](ROADMAP.md)
+## Upgrading from v0.6
+
+Syntax is **fully backward compatible**. Just upgrade:
+```bash
+pip install --upgrade inscript-lang
+```
+All v0.6 programs run unchanged. New features are additive.
+
+---
+
+MIT License · [GitHub](https://github.com/authorss81/inscript) · [Audit (9.2/10)](InScript_Language_Audit.md) · [Roadmap](ROADMAP.md)
