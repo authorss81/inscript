@@ -1,6 +1,6 @@
 [build-system]
 requires = ["setuptools>=65", "wheel"]
-build-backend = "setuptools.backends.legacy:build"
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "inscript-lang"
@@ -22,26 +22,30 @@ classifiers = [
     "Topic :: Games/Entertainment",
     "Topic :: Software Development :: Interpreters",
 ]
-
-# Core dependencies: none required (pygame and pygls are optional)
 dependencies = []
 
 [project.optional-dependencies]
-game  = ["pygame>=2.0"]
-lsp   = ["pygls>=1.0"]
-all   = ["pygame>=2.0", "pygls>=1.0"]
+game = ["pygame>=2.0"]
+lsp  = ["pygls>=1.0"]
+all  = ["pygame>=2.0", "pygls>=1.0"]
 
 [project.urls]
-Homepage   = "https://github.com/authorss81/inscript"
-Repository = "https://github.com/authorss81/inscript"
+Homepage      = "https://github.com/authorss81/inscript"
+Repository    = "https://github.com/authorss81/inscript"
 "Bug Tracker" = "https://github.com/authorss81/inscript/issues"
+Documentation = "https://authorss81.github.io/inscript/docs/"
 
 [project.scripts]
 inscript = "inscript:main"
 
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["inscript*"]
+[tool.setuptools]
+py-modules = [
+    "inscript", "repl", "lexer", "parser", "interpreter",
+    "compiler", "vm", "analyzer", "errors", "environment",
+    "stdlib", "stdlib_extended", "stdlib_extended_2", "stdlib_game",
+    "stdlib_values", "ast_nodes", "inscript_fmt", "inscript_test",
+    "pygame_backend"
+]
 
 [tool.setuptools.package-data]
-"*" = ["*.ins", "*.md", "*.toml"]
+"*" = ["examples/*.ins", "*.md", "lsp/*.py"]
