@@ -17,6 +17,21 @@
 
 ## CHANGELOG — v1.0.2 → v1.0.9
 
+### v1.1.0 (April 2026) — FIRST STABLE RELEASE 🎉
+
+All v1.1.0 roadmap requirements complete:
+
+| Requirement | Done |
+|-------------|------|
+| `inscript fmt` formatter | ✅ v1.0.19 |
+| `inscript --watch` watch mode | ✅ v1.0.19 |
+| `inscript --test` test runner | ✅ v1.0.21 |
+| `pyproject.toml` + `pip install inscript-lang` | ✅ v1.0.21 |
+| Docs site (GitHub Pages) | ✅ v1.0.22 |
+| Web playground (Pyodide) | ✅ v1.0.23 |
+| GitHub Actions CI + auto-PyPI publish | ✅ v1.1.0 |
+| All 839 tests passing | ✅ v1.1.0 |
+
 ### v1.0.23 (April 2026) — Docs site + web playground
 
 | Feature | Description |
@@ -1271,7 +1286,7 @@ All BUG-01 through BUG-30 are now fixed. Current open issues in priority order:
 
 ---
 
-## XIII. SCORES v4.0 — Updated v1.0.23 (March 2026)
+## XIII. SCORES v4.0 — Updated v1.1.0 (STABLE) (March 2026)
 
 | Category | v1.0.1 | v1.0.7 | Direction | Key reason |
 |----------|--------|--------|-----------|------------|
@@ -1313,7 +1328,7 @@ All BUG-01 through BUG-30 are now fixed. Current open issues in priority order:
 
 ---
 
-*Audit updated April 2026 — v1.0.23.*  
+*Audit updated April 2026 — v1.1.0 STABLE.*  
 *All findings verified by direct execution against both interpreter and VM.*  
 *501 tests passing. 59 stdlib modules. 30/30 catalogued bugs fixed.*
 

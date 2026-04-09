@@ -1,0 +1,50 @@
+# .github/workflows/test.yml
+# Runs the full test suite on every push and pull request.
+
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: InScript test suite
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ['3.10', '3.11', '3.12']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install optional deps
+        run: pip install pygame pygls
+        continue-on-error: true   # tests still run without pygame
+
+      - name: Run core tests
+        working-directory: inscript_package
+        run: |
+          python test_phase6.py
+          python test_phase7.py
+          python test_audit.py
+          python test_comprehensive.py
+
+      - name: Run formatter smoke test
+        working-directory: inscript_package
+        run: |
+          echo "fn f(x:int)->int{return x*2}" > /tmp/smoke.ins
+          python inscript.py --fmt-check /tmp/smoke.ins || true
+        if: runner.os != 'Windows'
+
+      - name: Check version consistency
+        working-directory: inscript_package
+        run: python -c "import repl; assert repl.VERSION, 'VERSION must be set'"

@@ -1,0 +1,75 @@
+# .github/workflows/publish.yml
+# Automatically publishes inscript-lang to PyPI when you push a version tag.
+#
+# Setup (one-time):
+#   1. Go to https://pypi.org/manage/account/token/ → Create API token (scope: entire account)
+#   2. Go to https://github.com/authorss81/inscript/settings/secrets/actions
+#   3. New repository secret → Name: PYPI_API_TOKEN → Value: paste token
+#
+# To publish:
+#   git tag -a v1.1.0 -m "InScript v1.1.0"
+#   git push origin v1.1.0
+#   → GitHub Actions builds and uploads to PyPI automatically
+
+name: Publish to PyPI
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'   # triggers on any version tag: v1.1.0, v1.2.0, etc.
+
+jobs:
+  test:
+    name: Run tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install pygame pygls
+
+      - name: Run test suite
+        working-directory: inscript_package
+        run: |
+          python test_phase6.py
+          python test_phase7.py
+          python test_audit.py
+          python test_comprehensive.py
+
+  build-and-publish:
+    name: Build and publish to PyPI
+    needs: test          # only runs if tests pass
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/inscript-lang/
+
+    permissions:
+      id-token: write    # required for trusted publishing (OIDC)
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install build tools
+        run: pip install build twine
+
+      - name: Build wheel and sdist
+        working-directory: inscript_package
+        run: python -m build
+
+      - name: Publish to PyPI
+        working-directory: inscript_package
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+        run: python -m twine upload dist/* --non-interactive
