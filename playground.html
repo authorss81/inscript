@@ -63,7 +63,7 @@ kbd{background:var(--sf2);border:1px solid var(--bd);border-radius:3px;padding:1
 
 <header>
   <span class="logo">InScript</span>
-  <span class="vbadge">v1.0.21</span>
+  <span class="vbadge">v1.1.0</span>
   <select id="examples" onchange="loadExample(this.value)">
     <option value="">Examples…</option>
     <option value="hello">Hello World</option>
@@ -291,8 +291,13 @@ async function loadPyodide_() {
     pstatus.textContent = 'Loading InScript engine…';
 
     // Fetch InScript source files and load them
-    const files = ['lexer.py','ast_nodes.py','errors.py','environment.py',
-                   'parser.py','interpreter.py','repl.py'];
+    const files = [
+      'lexer.py', 'ast_nodes.py', 'errors.py', 'environment.py',
+      'parser.py', 'interpreter.py', 'compiler.py', 'vm.py',
+      'stdlib_values.py', 'stdlib.py', 'stdlib_extended.py',
+      'stdlib_extended_2.py', 'stdlib_game.py',
+      'analyzer.py', 'repl.py', 'inscript_fmt.py', 'inscript_test.py'
+    ];
     const base = 'https://raw.githubusercontent.com/authorss81/inscript/main/inscript_package/';
 
     for (let i = 0; i < files.length; i++) {
@@ -312,15 +317,24 @@ async function loadPyodide_() {
     pstatus.textContent = 'Ready!';
 
     await pyodide.runPythonAsync(`
-import sys
+import sys, os
 sys.path.insert(0, '/')
+# Suppress pygame banner in Pyodide (pygame not available anyway)
+os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = '1'
+# Stub pygame so stdlib_game imports don't crash
+import types
+pg = types.ModuleType('pygame')
+pg.error = Exception
+sys.modules['pygame'] = pg
+sys.modules['pygame.freetype'] = types.ModuleType('pygame.freetype')
 try:
-    from interpreter import Interpreter
     from repl import EnhancedREPL
     _repl = EnhancedREPL()
-    print("InScript 1.0.21 loaded")
+    _inscript_ready = True
+    print("InScript 1.1.0 ready")
 except Exception as e:
-    print(f"Warning: {e}")
+    _inscript_ready = False
+    print(f"Load warning: {e}")
 `);
     inscriptReady = true;
   } catch (e) {
@@ -361,10 +375,11 @@ _old = sys.stdout
 sys.stdout = _buf
 _err = ''
 try:
-    from repl import EnhancedREPL
-    _r = EnhancedREPL()
-    _, _e, _ = _r._eval(_code_to_run)
-    if _e: _err = str(_e)
+    # Use the global _repl instance loaded at startup (faster, maintains session)
+    _, _e, _ = _repl._eval(_code_to_run)
+    if _e:
+        import re as _re
+        _err = _re.sub(r'\\033\\[[0-9;]*m', '', str(_e))
 except Exception as ex:
     _err = str(ex)
 finally:

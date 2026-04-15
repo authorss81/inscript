@@ -882,9 +882,15 @@ class Parser:
         _default_starts = (TT.NULL, TT.BOOL, TT.INT, TT.FLOAT, TT.STRING, TT.MINUS)
 
         if self.check(TT.LBRACKET):
-            if self.peek.type != TT.RBRACKET:  # [int] — type annotation
+            if self.peek.type != TT.RBRACKET:
+                # [int] or [T] — proper type annotation
                 type_ann = self.parse_type_annotation()
-            # [] → skip type, consume as default below
+            else:
+                # bare [] — consume as array-of-any type, then = default follows
+                self.advance()  # consume '['
+                self.advance()  # consume ']'
+                from ast_nodes import TypeAnnotation
+                type_ann = TypeAnnotation(name='[]', line=line, col=col)
         elif self.current.type in _default_starts:
             pass  # bare literal default — no type annotation, consume below
         elif self.current.type in _type_starts:
@@ -1900,24 +1906,19 @@ class Parser:
             saved = self.pos
             try:
                 self.advance()  # consume '<'
-                # parse comma-separated type args until '>'
-                depth = 1
-                while not self.is_at_end() and depth > 0:
-                    if self.current.type == TT.LT:
-                        depth += 1
-                        self.advance()
-                    elif self.current.type == TT.GT:
-                        depth -= 1
-                        if depth == 0:
-                            self.advance()  # consume final '>'
-                        else:
-                            self.advance()
-                    else:
-                        self.advance()
+                # capture type args as strings
+                type_args = []
+                while not self.is_at_end() and self.current.type != TT.GT:
+                    if self.current.type not in (TT.COMMA,):
+                        type_args.append(getattr(self.current, 'value', str(self.current.type)))
+                    self.advance()
+                if self.current.type == TT.GT:
+                    self.advance()  # consume '>'
                 if self.check(TT.LBRACE):
-                    return self.parse_struct_init(name, line, col)
+                    init = self.parse_struct_init(name, line, col)
+                    init.type_args = type_args  # attach for runtime enforcement
+                    return init
                 else:
-                    # Not a struct init — restore
                     self.pos = saved
             except Exception:
                 self.pos = saved

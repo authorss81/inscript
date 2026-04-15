@@ -487,6 +487,8 @@ class Interpreter(Visitor):
         if node.type_ann and value is not None:
             value = self._enforce_type(value, node.type_ann.name, node.line,
                                        context=f"variable '{node.name}'")
+        # @value struct: deep-copy on assignment
+        value = _maybe_copy_value(value)
         self._env.define(node.name, value, is_const=node.is_const)
         return value
 
@@ -1325,6 +1327,16 @@ class Interpreter(Visitor):
         fn_value = self._env.get(name, node.line)
         # Apply decorators outermost-first (reversed so innermost runs first)
         for dec_name, dec_args in reversed(node.decorators):
+            # @value is a built-in struct decorator — marks copy-on-assign semantics
+            if dec_name == 'value':
+                # @value marks struct as copy-on-assign
+                from ast_nodes import StructDecl as _SD
+                if isinstance(fn_value, _SD):
+                    fn_value.__value_type__ = True
+                elif isinstance(fn_value, dict):
+                    fn_value['__value_type__'] = True
+                self._env.set(name, fn_value)
+                continue
             try:
                 decorator = self._env.get(dec_name, node.line)
             except Exception:
@@ -1880,6 +1892,32 @@ class Interpreter(Visitor):
         self._error(f"Unknown namespace '{node.namespace}'", node.line)
 
     def visit_CallExpr(self, node: CallExpr) -> Any:
+        # OptChain callee: x?.method() — short-circuit to None if x is nil
+        if isinstance(node.callee, OptChainExpr):
+            obj = self.visit(node.callee.obj)
+            if obj is None:
+                return None   # x?.method() where x is nil → nil
+            # obj is not nil — get method and call normally
+            try:
+                callee = _get_attr(obj, node.callee.member, node.callee.line, self)
+            except Exception:
+                return None
+            arg_vals, arg_names = [], []
+            for arg in node.args:
+                if isinstance(arg.value, SpreadExpr):
+                    spread = self.visit(arg.value.expr)
+                    if isinstance(spread, list): arg_vals.extend(spread)
+                    else: arg_vals.append(spread)
+                else:
+                    arg_vals.append(self.visit(arg.value))
+                    arg_names.append(arg.name)
+            if callable(callee):
+                try: return callee(*arg_vals)
+                except: pass
+            if isinstance(callee, InScriptFunction):
+                return self._call_function(callee, arg_vals, arg_names, node.callee.line, obj)
+            return self._call_fn(callee, arg_vals)
+
         # Resolve 'self' before evaluating callee so method calls bind the instance.
         # IMPORTANT: Evaluate node.callee.obj ONCE and cache it to avoid double side-effects
         # (e.g. b.add(3).add(4) would call add(3) twice without this)
@@ -2046,6 +2084,10 @@ class Interpreter(Visitor):
         if self_instance is not None:
             call_env.define("self", self_instance)
 
+        # Generic type enforcement: if self_instance has __generic_bindings__,
+        # resolve type param names in param annotations and enforce
+        generic_bindings = getattr(self_instance, '__generic_bindings__', {}) if self_instance else {}
+
         # Bind parameters
         if arg_names and any(n is not None for n in arg_names):
             # Named args
@@ -2155,9 +2197,17 @@ class Interpreter(Visitor):
             print(f"\033[33m  Warning: struct '{decl.name}' missing required field(s) {names} — initialised to nil\033[0m")
 
         inst = InScriptInstance(decl.name, fields)
+        inst._struct_def = decl   # store for @value checks
         priv_fields = {f.name for f in decl.fields if getattr(f, 'is_priv', False)}
         if priv_fields:
             inst._private_fields = priv_fields
+        # Generic bindings: Stack<int>{} → __generic_bindings__ = {'T': 'int'}
+        type_params = getattr(decl, 'type_params', []) or []
+        type_args   = getattr(node, 'type_args', []) or []
+        if type_params and type_args:
+            inst.__generic_bindings__ = {
+                tp: ta for tp, ta in zip(type_params, type_args)
+            }
         for method in decl.methods:
             bound = self._make_fn(method.name, method.params, method.body, self._env)
             inst.fields[method.name] = bound
@@ -3037,6 +3087,21 @@ def _inscript_repr(val) -> str:
         escaped = val.replace('\\', '\\\\').replace('"', '\\"')
         return f'"{escaped}"'
     return _inscript_str(val)
+
+
+def _maybe_copy_value(val):
+    """If val is an instance of a @value struct, return a deep copy."""
+    if isinstance(val, InScriptInstance):
+        struct_def = getattr(val, '_struct_def', None)
+        is_value = False
+        if struct_def is not None:
+            is_value = (getattr(struct_def, '__value_type__', False) or
+                        (isinstance(struct_def, dict) and struct_def.get('__value_type__')))
+        if is_value:
+            new_inst = InScriptInstance(val.struct_name, dict(val.fields))
+            if struct_def: new_inst._struct_def = struct_def
+            return new_inst
+    return val
 
 
 def _inscript_str(val) -> str:

@@ -33,3 +33,4 @@ coverage.xml
 .env
 venv/
 .venv/
+INSCRIPT_HANDOUT.md
