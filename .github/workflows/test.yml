@@ -14,9 +14,14 @@ jobs:
     name: InScript test suite
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false          # run all matrix jobs even if one fails
       matrix:
         os: [ubuntu-latest, windows-latest]
         python: ['3.10', '3.11', '3.12']
+
+    env:
+      PYTHONIOENCODING: utf-8   # fix Unicode output on Windows (✅ ❌ ═ etc.)
+      PYTHONUTF8: 1             # Python 3.7+ UTF-8 mode (belt + suspenders)
 
     steps:
       - uses: actions/checkout@v4
@@ -28,7 +33,7 @@ jobs:
 
       - name: Install optional deps
         run: pip install pygame pygls
-        continue-on-error: true   # tests still run without pygame
+        continue-on-error: true   # tests still run without pygame/pygls
 
       - name: Run core tests
         working-directory: inscript_package
@@ -37,13 +42,21 @@ jobs:
           python test_phase7.py
           python test_audit.py
           python test_comprehensive.py
+          python test_v120.py
 
-      - name: Run formatter smoke test
+      - name: Run formatter smoke test (Unix only)
         working-directory: inscript_package
+        if: runner.os != 'Windows'
         run: |
           echo "fn f(x:int)->int{return x*2}" > /tmp/smoke.ins
           python inscript.py --fmt-check /tmp/smoke.ins || true
-        if: runner.os != 'Windows'
+
+      - name: Run formatter smoke test (Windows)
+        working-directory: inscript_package
+        if: runner.os == 'Windows'
+        run: |
+          python -c "open('smoke.ins','w').write('fn f(x:int)->int{return x*2}')"
+          python inscript.py --fmt-check smoke.ins || true
 
       - name: Check version consistency
         working-directory: inscript_package

@@ -242,20 +242,21 @@ Threading/Bench, Game Visual, Game IO, Game World, Game Systems, Utilities.
 
 ---
 
-## 🔮 v1.2.0 — Type Safety (Q3 2026)
+## ✅ v1.2.0 — Type Safety (released)
 
 **Goal:** Add real type enforcement. May include minor breaking changes (announced 2 releases ahead).
 
-- [ ] Generic enforcement: `Stack<int>` rejects non-int at push time
-- [ ] Generic constraints: `fn sort<T: Comparable>(arr: [T]) -> [T]`
-- [ ] Type narrowing in match arms
-- [ ] Recursive types: linked list, tree nodes
-- [ ] Type error messages show expected vs actual (not just a warning)
-- [ ] `async/await` — wire to asyncio event loop OR formally remove + document
-- [ ] `comptime` — restrict to compile-time expressions, error on runtime calls
-- [ ] `@value struct Point` — copy-on-assign semantics
-- [ ] Interface static methods
-- [ ] `mat4` stdlib for 3D math (no NumPy)
+- [x] Generic enforcement: `Stack<int>` rejects non-int at push time
+- [x] `@value struct Point` — copy-on-assign semantics  *(completed in v1.2.0-dev)*
+- [x] `struct Stack<T>{}` — type_args captured on StructInitExpr  *(completed in v1.2.0-dev)*
+- [x] Unused variable warnings in analyzer — `--no-warn-unused` to suppress
+- [x] Unreachable code warnings after return/break/continue/throw
+- [x] `mat4` stdlib for 3D math (17 functions, no NumPy)
+- [ ] Generic constraints: `fn sort<T: Comparable>(arr: [T]) -> [T]`  → deferred to v1.3.0
+- [ ] Type narrowing in match arms  → deferred to v1.3.0
+- [ ] Recursive types: linked list, tree nodes  → deferred to v1.3.0
+- [ ] `async/await` — formally documented as sync-only, event loop deferred
+- [ ] Interface static methods  → deferred to v1.3.0
 
 ---
 

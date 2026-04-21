@@ -133,6 +133,7 @@ class Symbol:
         self.struct_node = struct_node   # for structs: the AST node
         self.line        = line
         self.col         = col
+        self.used        = False         # v1.2.0: unused-variable tracking
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -180,7 +181,8 @@ class Analyzer(Visitor):
     def __init__(self, source_lines: List[str] = None,
                  multi_error: bool = True,
                  warn_as_error: bool = False,
-                 no_warn: bool = False):
+                 no_warn: bool = False,
+                 no_warn_unused: bool = False):
         self._src         = source_lines or []
         self._scope       = Scope(kind="global")
         self._errors:   List[SemanticError]    = []   # collected (multi-error)
@@ -188,6 +190,7 @@ class Analyzer(Visitor):
         self._multi_error  = multi_error
         self._warn_as_error = warn_as_error
         self._no_warn      = no_warn
+        self._no_warn_unused = no_warn_unused
 
         # State for context-sensitive checks
         self._current_fn_return_type: Optional[InScriptType] = None
@@ -261,6 +264,7 @@ class Analyzer(Visitor):
             candidates = list(self._all_visible_names())
             self._error(f"Undefined name: '{name}'", line, col, candidates)
             return Symbol(name, T_ANY, kind="var")   # dummy to continue analysis
+        sym.used = True   # v1.2.0: mark as used
         return sym
 
     def _all_visible_names(self) -> List[str]:
@@ -307,6 +311,19 @@ class Analyzer(Visitor):
 
     def _pop_scope(self) -> Scope:
         old = self._scope
+        # v1.2.0: warn about unused locals in fn/block scopes
+        if (not self._no_warn and not self._no_warn_unused
+                and old.kind in ("fn", "block", "match_arm")):
+            for sym in old.symbols.values():
+                if (sym.kind in ("var", "const")
+                        and not sym.used
+                        and not sym.name.startswith("_")):
+                    self._warn(
+                        "unused",
+                        f"Variable '{sym.name}' is defined but never used "
+                        f"(prefix with '_' to suppress)",
+                        sym.line,
+                    )
         self._scope = self._scope.parent
         return old
 
@@ -523,13 +540,15 @@ class Analyzer(Visitor):
         prev_ret = self._current_fn_return_type
         self._current_fn_return_type = ret_type
 
-        # Register parameters
+        # Register parameters — mark used=True so we never warn about unused params
         for param in node.params:
             p_type = self._resolve_type_ann(param.type_ann)
-            self._define(Symbol(
+            sym = Symbol(
                 param.name, p_type, kind="var",
                 line=param.line, col=param.col
-            ))
+            )
+            sym.used = True   # params are always "used" by the caller
+            self._define(sym)
 
         # Analyze body
         self.visit(node.body)
@@ -657,17 +676,18 @@ class Analyzer(Visitor):
 
     def visit_BlockStmt(self, node: BlockStmt) -> InScriptType:
         self._push_scope("block")
-        returned = False
+        terminated = False   # True after return/break/continue/throw
         for stmt in node.body:
-            if returned:
-                # 3.6: warn about unreachable code after return/break/continue
+            if terminated and not self._no_warn:
                 line = getattr(stmt, "line", 0)
                 self._warn("unreachable",
-                           "Unreachable code after return/break/continue", line)
-                break
+                           "Unreachable code after return/break/continue/throw",
+                           line)
+                # Still visit so inner undefined-name errors are caught
             self.visit(stmt)
-            if isinstance(stmt, (ReturnStmt, BreakStmt, ContinueStmt)):
-                returned = True
+            from ast_nodes import ThrowStmt as ThrowStmt_
+            if isinstance(stmt, (ReturnStmt, BreakStmt, ContinueStmt, ThrowStmt_)):
+                terminated = True
         self._pop_scope()
         return T_VOID
 

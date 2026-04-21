@@ -185,6 +185,7 @@ def run_file(path: str, type_check: bool = True) -> int:
 def run_source(source: str, filename: str = "<stdin>",
                type_check: bool = True,
                no_warn: bool = False,
+               no_warn_unused: bool = False,
                warn_as_error: bool = False) -> int:
     """Lex, parse, analyze, and interpret InScript source code."""
     # ── 1. Lex ────────────────────────────────────────────────────────────
@@ -209,6 +210,7 @@ def run_source(source: str, filename: str = "<stdin>",
             multi_error=True,
             warn_as_error=warn_as_error,
             no_warn=no_warn,
+            no_warn_unused=no_warn_unused,
         )
         try:
             _analyzer.analyze(program)
@@ -422,6 +424,8 @@ Examples:
                         help="Skip semantic analysis (faster, less safe)")
     parser.add_argument("--no-warn", action="store_true",
                         help="Suppress all warnings")
+    parser.add_argument("--no-warn-unused", action="store_true",
+                        help="Suppress unused-variable warnings only")
     parser.add_argument("--warn-as-error", action="store_true",
                         help="Treat any warning as an error (CI strictness)")
     parser.add_argument("--fmt",     action="store_true",
@@ -619,14 +623,16 @@ Examples:
         return 0
 
     # Normal run
-    type_check = not args.no_typecheck
-    no_warn      = getattr(args, "no_warn", False)
-    warn_as_error= getattr(args, "warn_as_error", False)
+    type_check    = not args.no_typecheck
+    no_warn       = getattr(args, "no_warn", False)
+    no_warn_unused= getattr(args, "no_warn_unused", False)
+    warn_as_error = getattr(args, "warn_as_error", False)
 
     with open(args.file, "r", encoding="utf-8") as _f:
         _source = _f.read()
     return run_source(_source, filename=args.file, type_check=type_check,
-                      no_warn=no_warn, warn_as_error=warn_as_error)
+                      no_warn=no_warn, no_warn_unused=no_warn_unused,
+                      warn_as_error=warn_as_error)
 
 
 if __name__ == "__main__":

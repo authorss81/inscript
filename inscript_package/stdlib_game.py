@@ -1730,3 +1730,279 @@ register_module("audio", _wrapmod({
     "Sound":             _AudioSound,
     "ENABLED":           _AUDIO_ENABLED,
 }, "audio"))
+
+# ═══════════════════════════════════════════════════════════════════════════
+# mat4 — 4×4 column-major matrix for 3D transforms  (pure Python, no NumPy)
+# ═══════════════════════════════════════════════════════════════════════════
+import math as _math
+
+class _Mat4:
+    """Immutable 4×4 matrix stored as a flat 16-element list (column-major)."""
+    __slots__ = ("_m",)
+
+    def __init__(self, m):
+        # Accept list[16], tuple[16], or another _Mat4
+        if isinstance(m, _Mat4):
+            self._m = list(m._m)
+        else:
+            if len(m) != 16:
+                raise ValueError("mat4 requires exactly 16 values")
+            self._m = [float(v) for v in m]
+
+    # ── indexing ──────────────────────────────────────────────────────────
+    def get(self, row, col):
+        """Return element at (row, col). Both 0-indexed."""
+        return self._m[col * 4 + row]
+
+    def to_array(self):
+        return list(self._m)
+
+    def __repr__(self):
+        r = self._m
+        def fmt(v): return f"{v:8.4f}"
+        rows = []
+        for row in range(4):
+            rows.append(" ".join(fmt(r[col*4+row]) for col in range(4)))
+        return "mat4[\n  " + "\n  ".join(rows) + "\n]"
+
+    # InScript wants dicts for attribute access — expose as a dict-like wrapper
+    def __getitem__(self, key):
+        if isinstance(key, int):
+            return self._m[key]
+        raise KeyError(key)
+
+    def __len__(self):
+        return 16
+
+    def __iter__(self):
+        return iter(self._m)
+
+
+def _mat4_identity():
+    """Return the 4×4 identity matrix."""
+    return _Mat4([
+        1,0,0,0,
+        0,1,0,0,
+        0,0,1,0,
+        0,0,0,1,
+    ])
+
+def _mat4_zero():
+    return _Mat4([0.0]*16)
+
+def _mat4_from_list(lst):
+    """Create a mat4 from a 16-element array."""
+    if isinstance(lst, list) and len(lst) == 16:
+        return _Mat4(lst)
+    raise ValueError("mat4.from_array expects a 16-element array")
+
+def _mat4_mul(a, b):
+    """Matrix multiply a × b."""
+    r = [0.0]*16
+    for col in range(4):
+        for row in range(4):
+            s = 0.0
+            for k in range(4):
+                s += a._m[k*4+row] * b._m[col*4+k]
+            r[col*4+row] = s
+    return _Mat4(r)
+
+def _mat4_mul_vec4(m, v):
+    """Multiply mat4 × vec4 (list of 4 floats). Returns list[4]."""
+    if isinstance(v, dict):
+        v = [v.get("x",0), v.get("y",0), v.get("z",0), v.get("w",1)]
+    x,y,z,w = float(v[0]), float(v[1]), float(v[2]), float(v[3])
+    def dot(col):
+        return (m._m[col*4]*x + m._m[col*4+1]*y +
+                m._m[col*4+2]*z + m._m[col*4+3]*w)
+    # Row-vector transform
+    out = [0.0]*4
+    for row in range(4):
+        out[row] = (m._m[row]*x + m._m[4+row]*y +
+                    m._m[8+row]*z + m._m[12+row]*w)
+    return out
+
+def _mat4_translate(x=0.0, y=0.0, z=0.0):
+    """Return a translation matrix."""
+    m = list(_mat4_identity()._m)
+    m[12] = float(x); m[13] = float(y); m[14] = float(z)
+    return _Mat4(m)
+
+def _mat4_scale(x=1.0, y=1.0, z=1.0):
+    """Return a scale matrix."""
+    return _Mat4([
+        x,0,0,0,
+        0,y,0,0,
+        0,0,z,0,
+        0,0,0,1,
+    ])
+
+def _mat4_rotate_x(angle_rad):
+    """Rotation around X-axis (radians)."""
+    c = _math.cos(angle_rad); s = _math.sin(angle_rad)
+    return _Mat4([
+        1, 0, 0, 0,
+        0, c, s, 0,
+        0,-s, c, 0,
+        0, 0, 0, 1,
+    ])
+
+def _mat4_rotate_y(angle_rad):
+    """Rotation around Y-axis (radians)."""
+    c = _math.cos(angle_rad); s = _math.sin(angle_rad)
+    return _Mat4([
+        c, 0,-s, 0,
+        0, 1, 0, 0,
+        s, 0, c, 0,
+        0, 0, 0, 1,
+    ])
+
+def _mat4_rotate_z(angle_rad):
+    """Rotation around Z-axis (radians)."""
+    c = _math.cos(angle_rad); s = _math.sin(angle_rad)
+    return _Mat4([
+        c, s, 0, 0,
+       -s, c, 0, 0,
+        0, 0, 1, 0,
+        0, 0, 0, 1,
+    ])
+
+def _mat4_rotate_axis(ax, ay, az, angle_rad):
+    """Rotation around an arbitrary axis (ax,ay,az) by angle_rad."""
+    # Normalise axis
+    length = _math.sqrt(ax*ax + ay*ay + az*az)
+    if length < 1e-10:
+        return _mat4_identity()
+    ax /= length; ay /= length; az /= length
+    c = _math.cos(angle_rad); s = _math.sin(angle_rad); t = 1 - c
+    return _Mat4([
+        t*ax*ax+c,    t*ax*ay+s*az, t*ax*az-s*ay, 0,
+        t*ax*ay-s*az, t*ay*ay+c,    t*ay*az+s*ax, 0,
+        t*ax*az+s*ay, t*ay*az-s*ax, t*az*az+c,    0,
+        0,            0,            0,            1,
+    ])
+
+def _mat4_perspective(fov_y_rad, aspect, near, far):
+    """OpenGL-style perspective projection matrix."""
+    f = 1.0 / _math.tan(fov_y_rad / 2.0)
+    nf = 1.0 / (near - far)
+    return _Mat4([
+        f/aspect, 0,  0,                    0,
+        0,        f,  0,                    0,
+        0,        0,  (far+near)*nf,       -1,
+        0,        0,  2*far*near*nf,        0,
+    ])
+
+def _mat4_ortho(left, right, bottom, top, near, far):
+    """Orthographic projection matrix."""
+    rl = 1.0/(right-left); tb = 1.0/(top-bottom); fn = 1.0/(far-near)
+    return _Mat4([
+        2*rl,       0,          0,      0,
+        0,          2*tb,       0,      0,
+        0,          0,         -2*fn,   0,
+        -(right+left)*rl, -(top+bottom)*tb, -(far+near)*fn, 1,
+    ])
+
+def _mat4_look_at(ex, ey, ez, cx, cy, cz, ux, uy, uz):
+    """View matrix: eye position, center target, up vector."""
+    # Forward
+    fx = cx-ex; fy = cy-ey; fz = cz-ez
+    fl = _math.sqrt(fx*fx+fy*fy+fz*fz)
+    if fl < 1e-10: return _mat4_identity()
+    fx /= fl; fy /= fl; fz /= fl
+    # Right = forward × up
+    rx = fy*uz - fz*uy; ry = fz*ux - fx*uz; rz = fx*uy - fy*ux
+    rl = _math.sqrt(rx*rx+ry*ry+rz*rz)
+    if rl > 1e-10: rx /= rl; ry /= rl; rz /= rl
+    # Up = right × forward
+    ux2 = ry*fz - rz*fy; uy2 = rz*fx - rx*fz; uz2 = rx*fy - ry*fx
+    return _Mat4([
+        rx,   ux2,  -fx,  0,
+        ry,   uy2,  -fy,  0,
+        rz,   uz2,  -fz,  0,
+        -(rx*ex+ry*ey+rz*ez), -(ux2*ex+uy2*ey+uz2*ez), (fx*ex+fy*ey+fz*ez), 1,
+    ])
+
+def _mat4_transpose(m):
+    r = m._m
+    return _Mat4([
+        r[0], r[4], r[8],  r[12],
+        r[1], r[5], r[9],  r[13],
+        r[2], r[6], r[10], r[14],
+        r[3], r[7], r[11], r[15],
+    ])
+
+def _mat4_inverse(m):
+    """Return the inverse of m (raises ValueError if not invertible)."""
+    # cofactor / adjugate method
+    a = m._m
+    b = [0.0]*16
+
+    b[0]  =  a[5]*a[10]*a[15] - a[5]*a[11]*a[14] - a[9]*a[6]*a[15] + a[9]*a[7]*a[14] + a[13]*a[6]*a[11] - a[13]*a[7]*a[10]
+    b[4]  = -a[4]*a[10]*a[15] + a[4]*a[11]*a[14] + a[8]*a[6]*a[15] - a[8]*a[7]*a[14] - a[12]*a[6]*a[11] + a[12]*a[7]*a[10]
+    b[8]  =  a[4]*a[9]*a[15]  - a[4]*a[11]*a[13] - a[8]*a[5]*a[15] + a[8]*a[7]*a[13] + a[12]*a[5]*a[11] - a[12]*a[7]*a[9]
+    b[12] = -a[4]*a[9]*a[14]  + a[4]*a[10]*a[13] + a[8]*a[5]*a[14] - a[8]*a[6]*a[13] - a[12]*a[5]*a[10] + a[12]*a[6]*a[9]
+
+    det = a[0]*b[0] + a[1]*b[4] + a[2]*b[8] + a[3]*b[12]
+    if abs(det) < 1e-15:
+        raise ValueError("mat4.inverse: matrix is not invertible (det≈0)")
+    inv = 1.0 / det
+
+    b[1]  = (-a[1]*a[10]*a[15] + a[1]*a[11]*a[14] + a[9]*a[2]*a[15] - a[9]*a[3]*a[14] - a[13]*a[2]*a[11] + a[13]*a[3]*a[10]) * inv
+    b[5]  = ( a[0]*a[10]*a[15] - a[0]*a[11]*a[14] - a[8]*a[2]*a[15] + a[8]*a[3]*a[14] + a[12]*a[2]*a[11] - a[12]*a[3]*a[10]) * inv
+    b[9]  = (-a[0]*a[9]*a[15]  + a[0]*a[11]*a[13] + a[8]*a[1]*a[15] - a[8]*a[3]*a[13] - a[12]*a[1]*a[11] + a[12]*a[3]*a[9])  * inv
+    b[13] = ( a[0]*a[9]*a[14]  - a[0]*a[10]*a[13] - a[8]*a[1]*a[14] + a[8]*a[2]*a[13] + a[12]*a[1]*a[10] - a[12]*a[2]*a[9])  * inv
+    b[2]  = ( a[1]*a[6]*a[15]  - a[1]*a[7]*a[14]  - a[5]*a[2]*a[15] + a[5]*a[3]*a[14] + a[13]*a[2]*a[7]  - a[13]*a[3]*a[6])  * inv
+    b[6]  = (-a[0]*a[6]*a[15]  + a[0]*a[7]*a[14]  + a[4]*a[2]*a[15] - a[4]*a[3]*a[14] - a[12]*a[2]*a[7]  + a[12]*a[3]*a[6])  * inv
+    b[10] = ( a[0]*a[5]*a[15]  - a[0]*a[7]*a[13]  - a[4]*a[1]*a[15] + a[4]*a[3]*a[13] + a[12]*a[1]*a[7]  - a[12]*a[3]*a[5])  * inv
+    b[14] = (-a[0]*a[5]*a[14]  + a[0]*a[6]*a[13]  + a[4]*a[1]*a[14] - a[4]*a[2]*a[13] - a[12]*a[1]*a[6]  + a[12]*a[2]*a[5])  * inv
+    b[3]  = (-a[1]*a[6]*a[11]  + a[1]*a[7]*a[10]  + a[5]*a[2]*a[11] - a[5]*a[3]*a[10] - a[9]*a[2]*a[7]   + a[9]*a[3]*a[6])   * inv
+    b[7]  = ( a[0]*a[6]*a[11]  - a[0]*a[7]*a[10]  - a[4]*a[2]*a[11] + a[4]*a[3]*a[10] + a[8]*a[2]*a[7]   - a[8]*a[3]*a[6])   * inv
+    b[11] = (-a[0]*a[5]*a[11]  + a[0]*a[7]*a[9]   + a[4]*a[1]*a[11] - a[4]*a[3]*a[9]  - a[8]*a[1]*a[7]   + a[8]*a[3]*a[5])   * inv
+    b[15] = ( a[0]*a[5]*a[10]  - a[0]*a[6]*a[9]   - a[4]*a[1]*a[10] + a[4]*a[2]*a[9]  + a[8]*a[1]*a[6]   - a[8]*a[2]*a[5])   * inv
+
+    # Apply remaining inv factor to first row
+    for i in (0,4,8,12):
+        b[i] *= inv
+
+    return _Mat4(b)
+
+def _mat4_det(m):
+    a = m._m
+    cf0 =  a[5]*a[10]*a[15] - a[5]*a[11]*a[14] - a[9]*a[6]*a[15] + a[9]*a[7]*a[14] + a[13]*a[6]*a[11] - a[13]*a[7]*a[10]
+    cf4 = -a[4]*a[10]*a[15] + a[4]*a[11]*a[14] + a[8]*a[6]*a[15] - a[8]*a[7]*a[14] - a[12]*a[6]*a[11] + a[12]*a[7]*a[10]
+    cf8 =  a[4]*a[9]*a[15]  - a[4]*a[11]*a[13] - a[8]*a[5]*a[15] + a[8]*a[7]*a[13] + a[12]*a[5]*a[11] - a[12]*a[7]*a[9]
+    cf12= -a[4]*a[9]*a[14]  + a[4]*a[10]*a[13] + a[8]*a[5]*a[14] - a[8]*a[6]*a[13] - a[12]*a[5]*a[10] + a[12]*a[6]*a[9]
+    return a[0]*cf0 + a[1]*cf4 + a[2]*cf8 + a[3]*cf12
+
+def _mat4_to_array(m):
+    return list(m._m)
+
+def _mat4_get(m, row, col):
+    return m._m[int(col)*4 + int(row)]
+
+register_module("mat4", _wrapmod({
+    # Constructors
+    "identity":    _mat4_identity,
+    "zero":        _mat4_zero,
+    "from_array":  _mat4_from_list,
+    # Transforms
+    "translate":   _mat4_translate,
+    "scale":       _mat4_scale,
+    "rotate_x":    _mat4_rotate_x,
+    "rotate_y":    _mat4_rotate_y,
+    "rotate_z":    _mat4_rotate_z,
+    "rotate_axis": _mat4_rotate_axis,
+    # Projections
+    "perspective": _mat4_perspective,
+    "ortho":       _mat4_ortho,
+    "look_at":     _mat4_look_at,
+    # Operations
+    "mul":         _mat4_mul,
+    "mul_vec4":    _mat4_mul_vec4,
+    "transpose":   _mat4_transpose,
+    "inverse":     _mat4_inverse,
+    "det":         _mat4_det,
+    "to_array":    _mat4_to_array,
+    "get":         _mat4_get,
+}, "mat4"))

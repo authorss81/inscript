@@ -7,21 +7,25 @@
 #   3. New repository secret → Name: PYPI_API_TOKEN → Value: paste token
 #
 # To publish:
-#   git tag -a v1.1.0 -m "InScript v1.1.0"
-#   git push origin v1.1.0
-#   → GitHub Actions builds and uploads to PyPI automatically
+#   git tag -a v1.2.0 -m "InScript v1.2.0"
+#   git push origin v1.2.0
+#   → GitHub Actions runs all tests, then uploads to PyPI automatically
 
 name: Publish to PyPI
 
 on:
   push:
     tags:
-      - 'v*.*.*'   # triggers on any version tag: v1.1.0, v1.2.0, etc.
+      - 'v*.*.*'   # triggers on any version tag: v1.2.0, v1.3.0, etc.
 
 jobs:
   test:
-    name: Run tests
+    name: Run tests before publish
     runs-on: ubuntu-latest
+    env:
+      PYTHONIOENCODING: utf-8
+      PYTHONUTF8: 1
+
     steps:
       - uses: actions/checkout@v4
 
@@ -30,16 +34,18 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install dependencies
+      - name: Install optional deps
         run: pip install pygame pygls
+        continue-on-error: true
 
-      - name: Run test suite
+      - name: Run full test suite
         working-directory: inscript_package
         run: |
           python test_phase6.py
           python test_phase7.py
           python test_audit.py
           python test_comprehensive.py
+          python test_v120.py
 
   build-and-publish:
     name: Build and publish to PyPI

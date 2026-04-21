@@ -2106,10 +2106,21 @@ class Interpreter(Visitor):
                     val = self.visit(param.default)
                 else:
                     val = None
-                # ── Phase 1.1: enforce param type annotation ──────────────
+                # ── Phase 1.1 + v1.2.0: enforce param type annotation / generics ──
                 if param.type_ann and val is not None:
-                    val = self._enforce_type(val, param.type_ann.name, line,
-                                             context=f"param '{param.name}' of fn '{fn.name}'")
+                    ann_name = param.type_ann.name
+                    if ann_name in generic_bindings:
+                        resolved = generic_bindings[ann_name]
+                        actual   = self._inscript_type_name(val)
+                        if actual != resolved:
+                            self._error(
+                                f"Generic type error: expected {resolved} (bound to {ann_name}), "
+                                f"got {actual} in param '{param.name}' of fn '{fn.name}'",
+                                line
+                            )
+                    else:
+                        val = self._enforce_type(val, ann_name, line,
+                                                 context=f"param '{param.name}' of fn '{fn.name}'")
                 call_env.define(param.name, val)
         else:
             for i, param in enumerate(fn.params):
@@ -2124,8 +2135,20 @@ class Interpreter(Visitor):
                     val = None
                 # ── Phase 1.1: enforce param type annotation ──────────────
                 if param.type_ann and val is not None:
-                    val = self._enforce_type(val, param.type_ann.name, line,
-                                             context=f"param '{param.name}' of fn '{fn.name}'")
+                    ann_name = param.type_ann.name
+                    # ── v1.2.0: Generic type enforcement ─────────────────
+                    if ann_name in generic_bindings:
+                        resolved = generic_bindings[ann_name]
+                        actual   = self._inscript_type_name(val)
+                        if actual != resolved:
+                            self._error(
+                                f"Generic type error: expected {resolved} (bound to {ann_name}), "
+                                f"got {actual} in param '{param.name}' of fn '{fn.name}'",
+                                line
+                            )
+                    else:
+                        val = self._enforce_type(val, ann_name, line,
+                                                 context=f"param '{param.name}' of fn '{fn.name}'")
                 call_env.define(param.name, val)
 
         # Execute body
