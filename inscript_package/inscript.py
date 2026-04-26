@@ -24,7 +24,7 @@ from errors   import (InScriptError, LexerError, ParseError,
                        SemanticError, InScriptRuntimeError,
                        MultiError, InScriptWarning)
 
-VERSION = "1.2.0"
+VERSION = "1.3.0"
 LANG    = "InScript"
 PACKAGES_DIR = os.path.join(os.path.expanduser("~"), ".inscript", "packages")
 REGISTRY_URL = "https://raw.githubusercontent.com/authorss81/inscript-packages/main/registry.json"
@@ -182,11 +182,53 @@ def run_file(path: str, type_check: bool = True) -> int:
     return run_source(source, filename=path, type_check=type_check)
 
 
+def _print_inscript_profile(pr, filename: str = "<script>"):
+    """v1.3.0: Print a human-readable InScript-level profile from a cProfile result."""
+    import pstats, io as _io
+    s = _io.StringIO()
+    ps = pstats.Stats(pr, stream=s).sort_stats('tottime')
+    ps.print_stats()
+    raw = s.getvalue()
+
+    # Extract lines that reference interpreter visit_ / _call_function
+    rows = []
+    for line in raw.split('\n'):
+        if 'visit_' in line or '_call_function' in line or 'visit_BinaryExpr' in line:
+            parts = line.split()
+            if len(parts) >= 6:
+                try:
+                    ncalls  = parts[0].split('/')[0]
+                    tottime = float(parts[1])
+                    name    = parts[-1]
+                    # prettify: visit_CallExpr → CallExpr
+                    label = name.replace('visit_', '').replace('_call_function', 'fn_dispatch')
+                    rows.append((tottime, int(ncalls), label))
+                except (ValueError, IndexError):
+                    pass
+
+    if not rows:
+        print("[InScript --profile] No hotspot data found.", file=sys.stderr)
+        return
+
+    rows.sort(reverse=True)
+    total_time = sum(t for t, _, _ in rows)
+    print(f"\n[InScript --profile] {filename}")
+    print(f"{'-'*58}")
+    print(f"  {'calls':>10}  {'time(s)':>8}  {'%':>5}  node/operation")
+    print(f"{'-'*58}")
+    for t, n, label in rows[:15]:
+        pct = (t / total_time * 100) if total_time > 0 else 0
+        print(f"  {n:>10,}  {t:>8.3f}  {pct:>4.1f}%  {label}")
+    print(f"{'-'*58}")
+    print(f"  {'':>10}  {total_time:>8.3f}  100.0%  TOTAL (hotspots)\n")
+
+
 def run_source(source: str, filename: str = "<stdin>",
                type_check: bool = True,
                no_warn: bool = False,
                no_warn_unused: bool = False,
-               warn_as_error: bool = False) -> int:
+               warn_as_error: bool = False,
+               profile: bool = False) -> int:
     """Lex, parse, analyze, and interpret InScript source code."""
     # ── 1. Lex ────────────────────────────────────────────────────────────
     try:
@@ -231,7 +273,15 @@ def run_source(source: str, filename: str = "<stdin>",
     # ── 4. Interpret — Phase 3: Python-leak guard ─────────────────────────
     try:
         interp = Interpreter(source.splitlines(), filename=filename)
-        interp.run(program)
+        if profile:
+            import cProfile, pstats, io as _io
+            pr = cProfile.Profile()
+            pr.enable()
+            interp.run(program)
+            pr.disable()
+            _print_inscript_profile(pr, filename)
+        else:
+            interp.run(program)
         return 0
     except InScriptError as e:
         print(e, file=sys.stderr)
@@ -428,6 +478,8 @@ Examples:
                         help="Suppress unused-variable warnings only")
     parser.add_argument("--warn-as-error", action="store_true",
                         help="Treat any warning as an error (CI strictness)")
+    parser.add_argument("--profile", action="store_true",
+                        help="Print per-function call count and timing after execution")
     parser.add_argument("--fmt",     action="store_true",
                         help="Format .ins files: inscript --fmt file.ins")
     parser.add_argument("--fmt-check", action="store_true",
@@ -627,12 +679,13 @@ Examples:
     no_warn       = getattr(args, "no_warn", False)
     no_warn_unused= getattr(args, "no_warn_unused", False)
     warn_as_error = getattr(args, "warn_as_error", False)
+    profile       = getattr(args, "profile", False)
 
     with open(args.file, "r", encoding="utf-8") as _f:
         _source = _f.read()
     return run_source(_source, filename=args.file, type_check=type_check,
                       no_warn=no_warn, no_warn_unused=no_warn_unused,
-                      warn_as_error=warn_as_error)
+                      warn_as_error=warn_as_error, profile=profile)
 
 
 if __name__ == "__main__":

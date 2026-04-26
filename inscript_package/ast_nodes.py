@@ -429,8 +429,14 @@ class Visitor:
     """
 
     def visit(self, node: Node) -> Any:
-        method = getattr(self, f"visit_{type(node).__name__}", self.generic_visit)
-        return method(node)
+        # v1.3.0: cache dispatch table per visitor class to avoid getattr on every call
+        cls = type(node)
+        try:
+            return self._dispatch[cls](node)
+        except KeyError:
+            method = getattr(self, f"visit_{cls.__name__}", self.generic_visit)
+            self._dispatch[cls] = method
+            return method(node)
 
     def generic_visit(self, node: Node) -> Any:
         raise NotImplementedError(

@@ -349,3 +349,9 @@ class YieldSignal(Exception):
 class PropagateSignal(Exception):
     def __init__(self, err_val):
         self.err_val = err_val
+
+class TailCallSignal(Exception):
+    """v1.3.0: raised by a self-recursive tail call to trampoline in _call_function."""
+    __slots__ = ("arg_vals",)
+    def __init__(self, arg_vals):
+        self.arg_vals = arg_vals

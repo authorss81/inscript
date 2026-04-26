@@ -217,11 +217,112 @@ class Compiler:
     def _patch_a(self, idx): self._scope.proto.code[idx].a = len(self._scope.proto.code)-idx-1
     def _patch_c(self, idx, val): self._scope.proto.code[idx].c = val
 
+    # v1.3.0: constant folding helpers ─────────────────────────────────────────
+    def _try_fold_literal(self, node):
+        """Return (node_type, python_value) if node is a compile-time constant, else None."""
+        from ast_nodes import (IntLiteralExpr, FloatLiteralExpr, StringLiteralExpr,
+                               BoolLiteralExpr, NullLiteralExpr, UnaryExpr)
+        if isinstance(node, IntLiteralExpr):   return ('int',   node.value)
+        if isinstance(node, FloatLiteralExpr): return ('float', node.value)
+        if isinstance(node, StringLiteralExpr):return ('str',   node.value)
+        if isinstance(node, BoolLiteralExpr):  return ('bool',  node.value)
+        if isinstance(node, NullLiteralExpr):  return ('nil',   None)
+        # Fold unary minus on literals: -5 → -5
+        if isinstance(node, UnaryExpr) and node.op == '-':
+            inner = self._try_fold_literal(node.operand)
+            if inner and inner[0] in ('int', 'float'):
+                return (inner[0], -inner[1])
+        return None
+
+    def _fold_op(self, left, op, right):
+        """Fold a binary operation on Python literals. Returns result or None if unsafe."""
+        try:
+            if op == '+':
+                if isinstance(left, str) or isinstance(right, str):
+                    return str(left) + str(right)
+                return left + right
+            if op == '-':  return left - right
+            if op == '*':  return left * right
+            if op == '/':
+                if right == 0: return None   # keep runtime div-by-zero error
+                return left / right
+            if op == '//':
+                if right == 0: return None
+                return int(left // right)
+            if op == '%':
+                if right == 0: return None
+                return left % right
+            if op == '**':
+                # guard against huge exponents
+                if isinstance(right, (int, float)) and right > 64: return None
+                return left ** right
+            if op == '==': return left == right
+            if op == '!=': return left != right
+            if op == '<':  return left <  right
+            if op == '>':  return left >  right
+            if op == '<=': return left <= right
+            if op == '>=': return left >= right
+            if op == '++':
+                return str(left) + str(right)
+        except Exception:
+            pass
+        return None
+
     # ── compile entry ─────────────────────────────────────────────────────────
     def compile(self, prog):
         for node in prog.body: self._stmt(node)
         self._e(Op.RETURN, NIL_REG)
+        self._eliminate_dead_code(self._proto)
         return self._proto
+
+    def _eliminate_dead_code(self, proto):
+        """v1.3.0: remove unreachable instructions after unconditional JUMP/RETURN."""
+        code = proto.code
+        reachable = set()
+        worklist = [0]
+        while worklist:
+            pc = worklist.pop()
+            if pc < 0 or pc >= len(code) or pc in reachable:
+                continue
+            reachable.add(pc)
+            ins = code[pc]
+
+            if ins.op == Op.RETURN:
+                continue  # terminal
+
+            if ins.op == Op.JUMP:
+                target = pc + 1 + ins.b
+                worklist.append(target)
+                continue   # unconditional — don't fall through
+
+            if ins.op in (Op.JUMP_IF_FALSE, Op.JUMP_IF_TRUE, Op.JUMP_IF_NIL):
+                worklist.append(pc + 1)          # fall-through
+                worklist.append(pc + 1 + ins.b)  # branch target
+                continue
+
+            # PUSH_HANDLER: exception can jump to (pc + 1 + a) at any time
+            if ins.op == Op.PUSH_HANDLER:
+                worklist.append(pc + 1)          # normal path continues
+                worklist.append(pc + 1 + ins.a)  # catch handler target
+                continue
+
+            # ITER_NEXT: on exhaustion jumps forward by c; otherwise falls through
+            if ins.op == Op.ITER_NEXT:
+                worklist.append(pc + 1)          # loop body
+                worklist.append(pc + 1 + ins.c)  # past the loop
+                continue
+
+            worklist.append(pc + 1)   # normal fall-through
+
+        # Replace unreachable instructions with NOP (MOVE r0,r0)
+        for i, ins in enumerate(code):
+            if i not in reachable:
+                ins.op = Op.MOVE; ins.a = 0; ins.b = 0; ins.c = 0
+
+        # Recurse into nested function protos
+        for c in proto.consts:
+            if hasattr(c, 'code'):   # it's a FnProto
+                self._eliminate_dead_code(c)
 
     # ── statements ────────────────────────────────────────────────────────────
     def _stmt(self, node):
@@ -902,6 +1003,18 @@ class Compiler:
     # ── binary ────────────────────────────────────────────────────────────────
     def _binary(self, node):
         op  = node.op; dst = self._alloc()
+
+        # v1.3.0: constant folding — evaluate at compile time if both operands are literals
+        if op not in ('&&', '||') and not op.endswith('='):
+            lv_node, rv_node = node.left, node.right
+            lv_lit = self._try_fold_literal(lv_node)
+            rv_lit = self._try_fold_literal(rv_node)
+            if lv_lit is not None and rv_lit is not None:
+                folded = self._fold_op(lv_lit[1], op, rv_lit[1])
+                if folded is not None:
+                    self._load_lit(folded, dst)
+                    return dst
+
         if op == '&&':
             l = self._expr(node.left); self._e(Op.MOVE, dst, l); self._free(l)
             jf = self._e(Op.JUMP_IF_FALSE, dst, 0)

@@ -191,6 +191,7 @@ class Analyzer(Visitor):
         self._warn_as_error = warn_as_error
         self._no_warn      = no_warn
         self._no_warn_unused = no_warn_unused
+        self._dispatch: dict = {}   # v1.3.0: cached dispatch
 
         # State for context-sensitive checks
         self._current_fn_return_type: Optional[InScriptType] = None

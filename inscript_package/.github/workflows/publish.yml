@@ -1,10 +1,17 @@
 # .github/workflows/publish.yml
 # Automatically publishes inscript-lang to PyPI when you push a version tag.
 #
-# Setup (one-time):
-#   1. Go to https://pypi.org/manage/account/token/ → Create API token (scope: entire account)
-#   2. Go to https://github.com/authorss81/inscript/settings/secrets/actions
-#   3. New repository secret → Name: PYPI_API_TOKEN → Value: paste token
+# Uses PyPI Trusted Publishers (OIDC) — NO API token or secret needed.
+#
+# ONE-TIME SETUP on PyPI:
+#   1. Go to https://pypi.org/manage/project/inscript-lang/settings/publishing/
+#   2. Click "Add a new publisher"
+#   3. Fill in exactly:
+#        Owner:         authorss81
+#        Repository:    inscript
+#        Workflow name: publish.yml
+#        Environment:   pypi
+#   4. Save — done. No token, no GitHub secret needed.
 #
 # To publish:
 #   git tag -a v1.2.0 -m "InScript v1.2.0"
@@ -47,16 +54,10 @@ jobs:
           python test_comprehensive.py
           python test_v120.py
 
-  build-and-publish:
-    name: Build and publish to PyPI
-    needs: test          # only runs if tests pass
+  build:
+    name: Build distribution
+    needs: test
     runs-on: ubuntu-latest
-    environment:
-      name: pypi
-      url: https://pypi.org/project/inscript-lang/
-
-    permissions:
-      id-token: write    # required for trusted publishing (OIDC)
 
     steps:
       - uses: actions/checkout@v4
@@ -67,15 +68,35 @@ jobs:
           python-version: '3.11'
 
       - name: Install build tools
-        run: pip install build twine
+        run: pip install build
 
       - name: Build wheel and sdist
         working-directory: inscript_package
         run: python -m build
 
+      - name: Upload dist artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-package-distributions
+          path: inscript_package/dist/
+
+  publish:
+    name: Publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/inscript-lang/
+
+    permissions:
+      id-token: write   # REQUIRED for OIDC Trusted Publishing
+
+    steps:
+      - name: Download dist artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: python-package-distributions
+          path: dist/
+
       - name: Publish to PyPI
-        working-directory: inscript_package
-        env:
-          TWINE_USERNAME: __token__
-          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
-        run: python -m twine upload dist/* --non-interactive
+        uses: pypa/gh-action-pypi-publish@release/v1

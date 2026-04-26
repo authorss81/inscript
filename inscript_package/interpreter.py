@@ -18,6 +18,7 @@ import stdlib as _stdlib  # loads all built-in modules
 from errors import (
     InScriptRuntimeError, NameError_, IndexError_,
     ReturnSignal, BreakSignal, ContinueSignal, YieldSignal, PropagateSignal,
+    TailCallSignal,
     InScriptCallStack, hint_for_name
 )
 
@@ -39,6 +40,11 @@ class Interpreter(Visitor):
         self._call_depth = 0
         self._MAX_CALL_DEPTH = 500
         self._call_stack = InScriptCallStack(filename)   # Phase 3.4
+
+        # v1.3.0: dispatch cache — build once, avoids getattr on every node visit
+        self._dispatch: dict = {}
+        # v1.3.0: TCO — name of the innermost executing function (for tail-call detection)
+        self._current_fn: object = None   # set to InScriptFunction during body execution
 
         self._register_builtins()
 
@@ -267,7 +273,7 @@ class Interpreter(Visitor):
             "random_int":  _random_int,
             # type conversion
             "int":    _to_int, "float": _to_float,
-            "string": _to_string, "bool": _to_bool,
+            "string": _to_string, "str": _to_string, "bool": _to_bool,
             # game types
             "Vec2":  _vec2, "Vec3":  _vec3,
             "Color": _color, "Rect": _rect,
@@ -530,9 +536,14 @@ class Interpreter(Visitor):
                 # builtins) then wire up only the fields _call_function etc. need.
                 gen_interp = object.__new__(Interpreter)
                 gen_interp._src           = main_interp._src
+                gen_interp._filename      = main_interp._filename
                 gen_interp._globals       = main_interp._globals   # shared globals
                 gen_interp._call_depth    = 0
                 gen_interp._MAX_CALL_DEPTH = main_interp._MAX_CALL_DEPTH
+                gen_interp._call_stack    = main_interp._call_stack
+                # v1.3.0: required by visit() dispatch cache and TCO
+                gen_interp._dispatch      = {}
+                gen_interp._current_fn    = None
 
                 # Fresh scope for this generator's local variables,
                 # chained to the caller's scope so closures work.
@@ -961,6 +972,19 @@ class Interpreter(Visitor):
         return None
 
     def visit_ReturnStmt(self, node: ReturnStmt) -> Any:
+        # v1.3.0: TCO — if this return is a direct self-recursive call, trampoline it
+        if (node.value is not None
+                and self._current_fn is not None
+                and not getattr(self._current_fn, 'is_method', False)):
+            from ast_nodes import CallExpr, IdentExpr
+            expr = node.value
+            if (isinstance(expr, CallExpr)
+                    and isinstance(expr.callee, IdentExpr)
+                    and expr.callee.name == self._current_fn.name
+                    and all(getattr(a, 'name', None) is None for a in expr.args)):
+                # Evaluate args BEFORE signalling (they may use current param values)
+                evaluated = [self.visit(a.value) for a in expr.args]
+                raise TailCallSignal(evaluated)
         val = self.visit(node.value) if node.value else None
         raise ReturnSignal(val)
 
@@ -1498,6 +1522,34 @@ class Interpreter(Visitor):
         if op == "||": return _is_truthy(left) or  _is_truthy(self.visit(node.right))
 
         right = self.visit(node.right)
+
+        # v1.3.0: fast path — skip all instance checks for plain int/float arithmetic
+        # This is the hot path for game loops and numerical code.
+        if type(left) in (int, float) and type(right) in (int, float):
+            if op == "+":  return left + right
+            if op == "-":  return left - right
+            if op == "*":  return left * right
+            if op == "==": return left == right
+            if op == "!=": return left != right
+            if op == "<":  return left <  right
+            if op == ">":  return left >  right
+            if op == "<=": return left <= right
+            if op == ">=": return left >= right
+            if op == "/":
+                if right == 0:
+                    import math as _m
+                    if isinstance(left, float) or isinstance(right, float):
+                        if left == 0: return float('nan')
+                        return _m.copysign(float('inf'), left * (1 if right >= 0 else -1))
+                    self._error("Division by zero", node.line)
+                return left / right
+            if op == "//":
+                if right == 0: self._error("Division by zero", node.line)
+                return int(left // right)
+            if op == "%":
+                if right == 0: self._error("Modulo by zero", node.line)
+                return left % right
+            # fall through to ** (needs overflow guard) and others
 
         # BUG-06 fix: operator overloading for InScriptInstance via OperatorDecl
         if isinstance(left, InScriptInstance):
@@ -2088,83 +2140,88 @@ class Interpreter(Visitor):
         # resolve type param names in param annotations and enforce
         generic_bindings = getattr(self_instance, '__generic_bindings__', {}) if self_instance else {}
 
-        # Bind parameters
-        if arg_names and any(n is not None for n in arg_names):
-            # Named args
-            name_to_val = {n: v for n, v in zip(arg_names, arg_vals) if n}
-            pos_vals    = [v for n, v in zip(arg_names, arg_vals) if n is None]
-            pos_idx     = 0
-            for i, param in enumerate(fn.params):
-                if getattr(param, 'is_variadic', False):
-                    call_env.define(param.name, pos_vals[pos_idx:])
-                    break
-                if param.name in name_to_val:
-                    val = name_to_val[param.name]
-                elif pos_idx < len(pos_vals):
-                    val = pos_vals[pos_idx]; pos_idx += 1
-                elif param.default:
-                    val = self.visit(param.default)
-                else:
-                    val = None
-                # ── Phase 1.1 + v1.2.0: enforce param type annotation / generics ──
-                if param.type_ann and val is not None:
-                    ann_name = param.type_ann.name
-                    if ann_name in generic_bindings:
-                        resolved = generic_bindings[ann_name]
-                        actual   = self._inscript_type_name(val)
-                        if actual != resolved:
-                            self._error(
-                                f"Generic type error: expected {resolved} (bound to {ann_name}), "
-                                f"got {actual} in param '{param.name}' of fn '{fn.name}'",
-                                line
-                            )
+        def _bind_args(env, avs, ans):
+            """Bind arg_vals/arg_names into env."""
+            if ans and any(n is not None for n in ans):
+                name_to_val = {n: v for n, v in zip(ans, avs) if n}
+                pos_vals    = [v for n, v in zip(ans, avs) if n is None]
+                pos_idx     = 0
+                for param in fn.params:
+                    if getattr(param, 'is_variadic', False):
+                        env.define(param.name, pos_vals[pos_idx:]); break
+                    if param.name in name_to_val:
+                        val = name_to_val[param.name]
+                    elif pos_idx < len(pos_vals):
+                        val = pos_vals[pos_idx]; pos_idx += 1
+                    elif param.default:
+                        val = self.visit(param.default)
                     else:
-                        val = self._enforce_type(val, ann_name, line,
-                                                 context=f"param '{param.name}' of fn '{fn.name}'")
-                call_env.define(param.name, val)
-        else:
-            for i, param in enumerate(fn.params):
-                if getattr(param, 'is_variadic', False):
-                    call_env.define(param.name, arg_vals[i:])
-                    break
-                if i < len(arg_vals):
-                    val = arg_vals[i]
-                elif param.default:
-                    val = self.visit(param.default)
-                else:
-                    val = None
-                # ── Phase 1.1: enforce param type annotation ──────────────
-                if param.type_ann and val is not None:
-                    ann_name = param.type_ann.name
-                    # ── v1.2.0: Generic type enforcement ─────────────────
-                    if ann_name in generic_bindings:
-                        resolved = generic_bindings[ann_name]
-                        actual   = self._inscript_type_name(val)
-                        if actual != resolved:
-                            self._error(
-                                f"Generic type error: expected {resolved} (bound to {ann_name}), "
-                                f"got {actual} in param '{param.name}' of fn '{fn.name}'",
-                                line
-                            )
-                    else:
-                        val = self._enforce_type(val, ann_name, line,
-                                                 context=f"param '{param.name}' of fn '{fn.name}'")
-                call_env.define(param.name, val)
+                        val = None
+                    if param.type_ann and val is not None:
+                        ann_name = param.type_ann.name
+                        if ann_name in generic_bindings:
+                            resolved = generic_bindings[ann_name]
+                            actual   = self._inscript_type_name(val)
+                            if actual != resolved:
+                                self._error(
+                                    f"Generic type error: expected {resolved} (bound to {ann_name}), "
+                                    f"got {actual} in param '{param.name}' of fn '{fn.name}'",
+                                    line
+                                )
+                        else:
+                            val = self._enforce_type(val, ann_name, line,
+                                                     context=f"param '{param.name}' of fn '{fn.name}'")
+                    env.define(param.name, val)
+            else:
+                for i, param in enumerate(fn.params):
+                    if getattr(param, 'is_variadic', False):
+                        env.define(param.name, avs[i:]); break
+                    val = avs[i] if i < len(avs) else (self.visit(param.default) if param.default else None)
+                    if param.type_ann and val is not None:
+                        ann_name = param.type_ann.name
+                        if ann_name in generic_bindings:
+                            resolved = generic_bindings[ann_name]
+                            actual   = self._inscript_type_name(val)
+                            if actual != resolved:
+                                self._error(
+                                    f"Generic type error: expected {resolved} (bound to {ann_name}), "
+                                    f"got {actual} in param '{param.name}' of fn '{fn.name}'",
+                                    line
+                                )
+                        else:
+                            val = self._enforce_type(val, ann_name, line,
+                                                     context=f"param '{param.name}' of fn '{fn.name}'")
+                    env.define(param.name, val)
 
-        # Execute body
+        _bind_args(call_env, arg_vals, arg_names)
+
+        # v1.3.0: TCO trampoline — self-recursive tail calls loop instead of recurse
         result = None
+        prev_fn = self._current_fn
+        self._current_fn = fn
         try:
-            for stmt in fn.body.body:
-                self.visit(stmt)
-        except ReturnSignal as r:
-            result = r.value
+            while True:
+                try:
+                    for stmt in fn.body.body:
+                        self.visit(stmt)
+                    break
+                except TailCallSignal as tcs:
+                    # Tail-recursive self-call: rebind params and loop
+                    call_env._store.clear()
+                    if self_instance is not None:
+                        call_env.define("self", self_instance)
+                    _bind_args(call_env, tcs.arg_vals, None)
+                    continue
+                except ReturnSignal as r:
+                    result = r.value
+                    break
         except PropagateSignal as sig:
-            # `?` operator hit an Err — return the Err dict from this function
             result = sig.err_val
         finally:
+            self._current_fn = prev_fn
             self._env = prev_env
             self._call_depth -= 1
-            self._call_stack.pop()   # Phase 3.4
+            self._call_stack.pop()
 
         return result
 
