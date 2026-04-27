@@ -217,7 +217,7 @@ Threading/Bench, Game Visual, Game IO, Game World, Game Systems, Utilities.
 
 ---
 
-## 📋 v1.1.0 — First Stable Release (Q2 2026)
+## ✅ v1.1.0 — First Stable Release (released)
 
 **Goal:** A developer can use InScript professionally. All tooling complete.
 **Gate:** v1.0.19 through v1.0.23 must all be done. Zero breaking changes.
@@ -260,31 +260,60 @@ Threading/Bench, Game Visual, Game IO, Game World, Game Systems, Utilities.
 
 ---
 
-## 🚀 v1.3.0 — Performance (Q4 2026)
 
-**Goal:** Fast enough for real game loops. 5–15× speedup via C extension.
+## ✅ v1.3.0 — Performance (released)
 
-- [ ] Profile real game loop to find bottlenecks
-- [ ] C extension for: env lookup, fn dispatch, integer arithmetic
-- [ ] `cffi` or `ctypes` (no compile step for user)
-- [ ] Tail call optimization (removes Python 1000-frame limit)
-- [ ] Bytecode optimization: constant folding, dead code elimination
-- [ ] Standalone binary via `pyinstaller` (one-click distribution)
-- [ ] WASM exploration via Pyodide
+- [x] Dispatch cache — `_dispatch` dict on Visitor; eliminates per-visit `getattr`
+- [x] Fast-path arithmetic — int/float hot path in `visit_BinaryExpr`
+- [x] Tail call optimization — `return f(args)` trampolined; `count(10000)` works
+- [x] Bytecode constant folding — `2+3` → `LOAD_INT 5` at compile time
+- [x] Bytecode dead code elimination — CFG pass; `PUSH_HANDLER` + `ITER_NEXT` handled
+- [x] `str()` builtin alias
+- [x] `--profile` flag — per-function timing table
+- [x] `test_v130.py` — 69 tests
 
----
+## ✅ v1.4.0 — Language Completeness (released)
 
-## 🌐 v2.0.0 — Ecosystem (2027)
+- [x] `defer` statement — runs at function exit, LIFO, fires even on throw/error
+- [x] `repeat..until` — do-while: body runs at least once
+- [x] Type-narrowing match arms — `case int x`, `case string s`, `case Vec2 v`
+- [x] Generic constraints — `fn max<T: Comparable>`, built-in + interface constraints
+- [x] `test_v140.py` — 28 tests
 
-- [ ] Package registry at `inscript-lang.dev/packages`
-- [ ] `inscript publish` / `inscript install <package>`
-- [ ] InScript Studio IDE (Electron/Tauri)
-- [ ] Godot plugin
-- [ ] Native binary output via Cython/Nuitka
-- [ ] Full WASM target (games in browser)
-- [ ] iOS/Android via WASM + PWA wrapper
+## 🔮 v1.5.0 — Standard Library Expansion
 
----
+**Goal:** Richer stdlib so games need fewer workarounds.
+
+- [ ] `string` module — `split()`, `join()`, `trim()`, `starts_with()`, `ends_with()`, `replace_all()`
+- [ ] `array` module — `sort()`, `sort_by()`, `flat_map()`, `zip()`, `chunk()`, `flatten()`, `group_by()`
+- [ ] `math` module additions — `lerp()`, `smoothstep()`, `sign()`, `wrap()`, `remap()`
+- [ ] `color` module — `from_hsv()`, `lerp()`, `darken()`, `lighten()`, `to_hex()`, `from_hex()`
+- [ ] `dict` module — `keys()`, `values()`, `entries()`, `merge()`, `filter_keys()`, `map_values()`
+- [ ] `io` module — `read_file()`, `write_file()`, `file_exists()`, `list_dir()`
+- [ ] `test_v150.py`
+
+## 🔮 v1.6.0 — Tooling & Developer Experience
+
+**Goal:** Make InScript pleasant in a real project.
+
+- [ ] `inscript check` — analyzer-only, exit 1 on errors
+- [ ] `inscript fmt --all` — recursively format all `.ins` files
+- [ ] Source maps — errors show original `.ins` line even when running bytecode
+- [ ] REPL improvements — multiline, history, tab completion
+- [ ] `--strict` mode — all warnings become errors, no implicit `any`
+- [ ] `test_v160.py`
+
+## 🔮 v2.0.0 — Production Ready
+
+**Goal:** First major stable release. Some breaking changes (announced in v1.9.0).
+
+- [ ] Full type inference — infer variable types from initializer
+- [ ] Recursive types — `struct Node { value: int; next: Node? = nil }`
+- [ ] True `async/await` via asyncio event loop
+- [ ] C extension hot path — cffi/ctypes for env lookup (5-15x target)
+- [ ] Package manager — `inscript install pkg`, `inscript.toml`
+- [ ] Breaking: remove deprecated `null` (use `nil`)
+- [ ] `test_v200.py`
 
 ## Timeline
 

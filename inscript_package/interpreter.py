@@ -43,8 +43,10 @@ class Interpreter(Visitor):
 
         # v1.3.0: dispatch cache — build once, avoids getattr on every node visit
         self._dispatch: dict = {}
-        # v1.3.0: TCO — name of the innermost executing function (for tail-call detection)
-        self._current_fn: object = None   # set to InScriptFunction during body execution
+        # v1.3.0: TCO — name of the innermost executing function
+        self._current_fn: object = None
+        # v1.4.0: defer stack — list of exprs to run at end of current function
+        self._deferred: list = []
 
         self._register_builtins()
 
@@ -499,14 +501,15 @@ class Interpreter(Visitor):
         return value
 
     def visit_FunctionDecl(self, node: FunctionDecl) -> Any:
-        # DESIGN-01: async fn is purely synchronous — REPL's static analysis pass handles the warning
-        # The interpreter only warns when running standalone (no REPL), tracked per-session
         fn = self._make_fn(
             name    = node.name,
             params  = node.params,
             body    = node.body,
             closure = self._env,
         )
+        # v1.4.0: preserve generic metadata for constraint checking at call time
+        fn.type_params  = getattr(node, 'type_params',  [])
+        fn.constraints  = getattr(node, 'constraints',  {})
         self._env.define(node.name, fn)
         return fn
 
@@ -1156,40 +1159,46 @@ class Interpreter(Visitor):
                                 # Named binding: case Circle(r: r) → bind r
                                 adt_bindings[arg.name] = subject[arg.name]
                 else:
-                    # ── ADT namespace pattern: case Shape.Circle or case Direction.North
-                    # The pattern node is a NamespaceAccessExpr or GetAttrExpr
-                    # We match by variant name WITHOUT evaluating (which gives a factory fn)
-                    # BUG-07 fix: NamespaceAccessExpr/GetAttrExpr already imported at top via *
-                    pat = arm.pattern
-                    variant_name = None
-                    if isinstance(pat, NamespaceAccessExpr):
-                        variant_name = pat.member
-                    elif isinstance(pat, GetAttrExpr):
-                        variant_name = pat.attr
-
-                    if (variant_name and isinstance(subject, dict)
-                            and "_variant" in subject):
-                        matched = subject["_variant"] == variant_name
+                    # ── v1.4.0: TypePattern — case int x { } / case Vec2 v { } ─
+                    from ast_nodes import TypePattern
+                    if isinstance(arm.pattern, TypePattern):
+                        tp = arm.pattern
+                        actual_type = self._inscript_type_name(subject)
+                        matched = actual_type == tp.type_name
+                        if not matched and isinstance(subject, InScriptInstance):
+                            matched = subject.struct_name == tp.type_name
                         if matched:
-                            # Auto-bind all ADT fields so `radius`, `w`, `h` etc work
-                            for k, v in subject.items():
-                                if not k.startswith("_"):
-                                    adt_bindings[k] = v
+                            adt_bindings[tp.var_name] = subject
+                        # TypePattern fully handled — skip ADT/eval branches below
                     else:
-                        pattern_val = self.visit(arm.pattern)
-                        # Range pattern: case 1..=10 { ... }
-                        if isinstance(pattern_val, InScriptRange):
-                            matched = subject in pattern_val
-                        # ADT variant matching via evaluated dict
-                        elif (isinstance(subject, dict) and "_variant" in subject
-                                and isinstance(pattern_val, dict) and "_variant" in pattern_val):
-                            matched = subject["_variant"] == pattern_val["_variant"]
+                        # ── ADT namespace pattern: case Shape.Circle / case Direction.North ──
+                        pat = arm.pattern
+                        variant_name = None
+                        if isinstance(pat, NamespaceAccessExpr):
+                            variant_name = pat.member
+                        elif isinstance(pat, GetAttrExpr):
+                            variant_name = pat.attr
+
+                        if (variant_name and isinstance(subject, dict)
+                                and "_variant" in subject):
+                            matched = subject["_variant"] == variant_name
                             if matched:
                                 for k, v in subject.items():
                                     if not k.startswith("_"):
                                         adt_bindings[k] = v
                         else:
-                            matched = subject == pattern_val
+                            pattern_val = self.visit(arm.pattern)
+                            if isinstance(pattern_val, InScriptRange):
+                                matched = subject in pattern_val
+                            elif (isinstance(subject, dict) and "_variant" in subject
+                                    and isinstance(pattern_val, dict) and "_variant" in pattern_val):
+                                matched = subject["_variant"] == pattern_val["_variant"]
+                                if matched:
+                                    for k, v in subject.items():
+                                        if not k.startswith("_"):
+                                            adt_bindings[k] = v
+                            else:
+                                matched = subject == pattern_val
 
             if not matched:
                 continue
@@ -1255,6 +1264,26 @@ class Interpreter(Visitor):
                 f"  Hint: add 'case _ {{ }}' to handle unmatched values",
                 node.line
             )
+        return None
+
+    def visit_DeferStmt(self, node) -> Any:
+        """v1.4.0: defer — register expression to run at end of current function."""
+        if not hasattr(self, '_deferred'):
+            self._deferred = []
+        self._deferred.append(node.expr)
+        return None
+
+    def visit_RepeatUntilStmt(self, node) -> Any:
+        """v1.4.0: repeat { body } until condition — do-while equivalent."""
+        while True:
+            try:
+                self.visit(node.body)
+            except BreakSignal:
+                break
+            except ContinueSignal:
+                pass
+            if _is_truthy(self.visit(node.condition)):
+                break
         return None
 
     def visit_ThrowStmt(self, node) -> Any:
@@ -1709,6 +1738,57 @@ class Interpreter(Visitor):
         if callable(val):           return "function"
         return type(val).__name__.lower()
 
+    # v1.4.0: generic constraint checking ─────────────────────────────────────
+    _BUILTIN_CONSTRAINTS = {
+        # Built-in constraint → set of primitive types that satisfy it
+        "Comparable": {"int", "float", "string", "bool"},
+        "Numeric":    {"int", "float"},
+        "Printable":  {"int", "float", "string", "bool"},
+        "Addable":    {"int", "float", "string"},
+        "Orderable":  {"int", "float", "string"},
+    }
+
+    def _satisfies_constraint(self, val, constraint: str, line: int) -> bool:
+        """Check whether val satisfies a generic constraint."""
+        type_name = self._inscript_type_name(val)
+
+        # Check built-in constraints for primitives
+        if constraint in self._BUILTIN_CONSTRAINTS:
+            if type_name in self._BUILTIN_CONSTRAINTS[constraint]:
+                return True
+            # Struct satisfies Comparable if it has compare() or __eq__ method
+            if isinstance(val, InScriptInstance):
+                struct_decl = None
+                try: struct_decl = self._env.get(val.struct_name, 0)
+                except Exception: pass
+                if struct_decl and hasattr(struct_decl, 'methods'):
+                    method_names = {m.name for m in struct_decl.methods}
+                    if constraint == "Comparable" and ("compare" in method_names
+                                                        or "__eq__" in method_names):
+                        return True
+            return False   # arrays, dicts, functions → fail built-in constraints
+
+        # Unknown constraint → look up as interface name in globals
+        try:
+            iface = self._globals._store.get(constraint)
+            if iface is None:
+                try: iface = self._env.get(constraint, 0)
+                except Exception: pass
+            # Interface stored as dict with _type="interface" and _methods
+            if (isinstance(iface, dict)
+                    and iface.get("_type") == "interface"
+                    and isinstance(val, InScriptInstance)):
+                required = set(iface.get("_methods", {}).keys())
+                struct_decl = self._globals._store.get(val.struct_name)
+                if struct_decl and hasattr(struct_decl, 'methods'):
+                    provided = {m.name for m in struct_decl.methods}
+                    return required.issubset(provided)
+                return False
+        except Exception:
+            pass
+
+        return False  # unknown constraint, non-primitive → fail safely
+
     def _enforce_type(self, value, type_name: str, line: int, context: str = "") -> object:
         """
         Enforce that 'value' matches 'type_name'.
@@ -2140,6 +2220,25 @@ class Interpreter(Visitor):
         # resolve type param names in param annotations and enforce
         generic_bindings = getattr(self_instance, '__generic_bindings__', {}) if self_instance else {}
 
+        # v1.4.0: function-level generic constraints — fn sort<T: Comparable>
+        # Build fn-level bindings from positional args and check constraints
+        fn_constraints = getattr(fn, 'constraints', {})
+        fn_type_params = getattr(fn, 'type_params', [])
+        if fn_type_params and fn_constraints and arg_vals:
+            for tp, constraint in fn_constraints.items():
+                for i, param in enumerate(fn.params):
+                    ann_name = getattr(getattr(param, 'type_ann', None), 'name', None)
+                    if ann_name == tp and i < len(arg_vals):
+                        val = arg_vals[i]
+                        if not self._satisfies_constraint(val, constraint, line):
+                            actual = self._inscript_type_name(val)
+                            self._error(
+                                f"Generic constraint error: type '{actual}' does not "
+                                f"satisfy '{constraint}' (required by {tp}: {constraint})",
+                                line
+                            )
+                        break
+
         def _bind_args(env, avs, ans):
             """Bind arg_vals/arg_names into env."""
             if ans and any(n is not None for n in ans):
@@ -2197,7 +2296,9 @@ class Interpreter(Visitor):
 
         # v1.3.0: TCO trampoline — self-recursive tail calls loop instead of recurse
         result = None
-        prev_fn = self._current_fn
+        prev_fn     = self._current_fn
+        prev_deferred = getattr(self, '_deferred', None)
+        self._deferred = []          # v1.4.0: fresh defer stack for this call
         self._current_fn = fn
         try:
             while True:
@@ -2218,8 +2319,15 @@ class Interpreter(Visitor):
         except PropagateSignal as sig:
             result = sig.err_val
         finally:
-            self._current_fn = prev_fn
-            self._env = prev_env
+            # v1.4.0: run deferred expressions (LIFO order, like Go's defer)
+            for deferred_expr in reversed(self._deferred):
+                try:
+                    self.visit(deferred_expr)
+                except Exception:
+                    pass   # deferred errors are swallowed (matches Go semantics)
+            self._deferred    = prev_deferred if prev_deferred is not None else []
+            self._current_fn  = prev_fn
+            self._env         = prev_env
             self._call_depth -= 1
             self._call_stack.pop()
 

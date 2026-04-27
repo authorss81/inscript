@@ -534,12 +534,19 @@ class Parser:
                 name = self.expect_ident("Expected function name after 'fn'")
 
         # Optional generic type params AFTER name: fn identity<T>(...)
-        fn_type_params = list(_pre_type_params)
+        fn_type_params  = list(_pre_type_params)
+        fn_constraints  = {}   # v1.4.0: {'T': 'Comparable', 'U': 'Printable'}
         if self.check(TT.LT):
             self.advance()  # consume <
-            fn_type_params.append(self.expect_ident("Expected type parameter"))
+            tp = self.expect_ident("Expected type parameter")
+            if self.match(TT.COLON):
+                fn_constraints[tp] = self.expect_ident("Expected constraint name after ':'")
+            fn_type_params.append(tp)
             while self.match(TT.COMMA):
-                fn_type_params.append(self.expect_ident("Expected type parameter"))
+                tp = self.expect_ident("Expected type parameter")
+                if self.match(TT.COLON):
+                    fn_constraints[tp] = self.expect_ident("Expected constraint name after ':'")
+                fn_type_params.append(tp)
             self.expect(TT.GT, "Expected '>' after type parameters")
 
         params = self.parse_param_list()
@@ -561,7 +568,8 @@ class Parser:
             line=line, col=col
         )
         decl.is_abstract = is_abstract
-        decl.type_params = fn_type_params
+        decl.type_params   = fn_type_params
+        decl.constraints   = fn_constraints   # v1.4.0: {'T': 'Comparable'}
         return decl
 
     def parse_rpc_fn(self) -> FunctionDecl:
@@ -1139,6 +1147,14 @@ class Parser:
         if tok.type == TT.THROW:
             return self.parse_throw()
 
+        # v1.4.0: defer
+        if tok.type == TT.DEFER:
+            return self.parse_defer()
+
+        # v1.4.0: repeat..until
+        if tok.type == TT.REPEAT:
+            return self.parse_repeat_until()
+
         # Enum (local enum)
         if tok.type == TT.ENUM:
             return self.parse_enum_decl()
@@ -1269,11 +1285,35 @@ class Parser:
         elif self.current.type == TT.IDENT and self.peek.type == TT.IF:
             binding = self.advance().value   # consume binding name 'h'
             pattern = None                   # binding matches anything
+        # v1.4.0: type-narrowing pattern — `case int x { }` or `case string s { }`
+        elif self.current.type in (TT.INT_TYPE, TT.FLOAT_TYPE,
+                                    TT.STRING_TYPE, TT.BOOL_TYPE):
+            type_tok = self.advance()
+            type_name = type_tok.value   # "int", "float", "string", "bool"
+            if self.current.type != TT.IDENT:
+                self._error(f"Expected variable name after type '{type_name}' in match arm",
+                            self.current.line, self.current.col)
+            var_name = self.advance().value
+            from ast_nodes import TypePattern
+            pattern = TypePattern(type_name=type_name, var_name=var_name,
+                                  line=type_tok.line, col=type_tok.col)
+            binding = None
+        # v1.4.0: struct type-narrowing — `case Vec2 v { }` (ident followed by ident)
+        elif (self.current.type == TT.IDENT
+              and self.peek is not None
+              and self.peek.type == TT.IDENT
+              and self.peek.value != "_"):
+            type_name = self.advance().value   # struct name
+            var_name  = self.advance().value   # binding variable
+            from ast_nodes import TypePattern
+            pattern = TypePattern(type_name=type_name, var_name=var_name,
+                                  line=line, col=col)
+            binding = None
         else:
             pattern = self.parse_expr()
             binding = None
 
-        # Optional guard: `if condition`  (TT.IF is the keyword token)
+        # Optional guard: `if condition`
         guard = None
         if self.check(TT.IF):
             self.advance()   # consume 'if'
@@ -1587,7 +1627,7 @@ class Parser:
                     TT.RETURN, TT.BREAK, TT.CONTINUE, TT.LET, TT.CONST, TT.FN,
                     TT.STRUCT, TT.ENUM, TT.IMPORT, TT.EXPORT, TT.FROM, TT.ASYNC,
                     TT.AWAIT, TT.ABSTRACT, TT.SELECT, TT.CASE, TT.TRY, TT.CATCH,
-                    TT.THROW, TT.BOOL,
+                    TT.THROW, TT.BOOL, TT.DEFER, TT.REPEAT, TT.UNTIL,
                     # Type-keyword tokens — needed for module.int, module.float etc.
                     TT.INT_TYPE, TT.FLOAT_TYPE, TT.STRING_TYPE, TT.BOOL_TYPE,
                     TT.VOID_TYPE,
@@ -2336,6 +2376,26 @@ class Parser:
         self.match(TT.SEMICOLON)
         from ast_nodes import ThrowStmt
         return ThrowStmt(value=value, line=line, col=col)
+
+    def parse_defer(self) -> "DeferStmt":
+        """v1.4.0: defer expr — runs at end of enclosing function scope"""
+        line, col = self._pos()
+        self.advance()   # consume 'defer'
+        expr = self.parse_expr()
+        self.match(TT.SEMICOLON)
+        from ast_nodes import DeferStmt
+        return DeferStmt(expr=expr, line=line, col=col)
+
+    def parse_repeat_until(self) -> "RepeatUntilStmt":
+        """v1.4.0: repeat { body } until condition"""
+        line, col = self._pos()
+        self.advance()   # consume 'repeat'
+        body = self.parse_block()
+        self.expect(TT.UNTIL, "Expected 'until' after repeat block")
+        condition = self.parse_expr()
+        self.match(TT.SEMICOLON)
+        from ast_nodes import RepeatUntilStmt
+        return RepeatUntilStmt(body=body, condition=condition, line=line, col=col)
 
     def parse_async_fn(self) -> "FunctionDecl":
         """async fn name(...) -> type { ... }"""

@@ -24,7 +24,7 @@ from errors   import (InScriptError, LexerError, ParseError,
                        SemanticError, InScriptRuntimeError,
                        MultiError, InScriptWarning)
 
-VERSION = "1.3.0"
+VERSION = "1.4.0"
 LANG    = "InScript"
 PACKAGES_DIR = os.path.join(os.path.expanduser("~"), ".inscript", "packages")
 REGISTRY_URL = "https://raw.githubusercontent.com/authorss81/inscript-packages/main/registry.json"

@@ -67,6 +67,9 @@ class TT(Enum):
     YIELD       = auto()       # yield value
     IS          = auto()       # is  (type check: x is int)
     DIV         = auto()       # div (floor division keyword: 10 div 3)
+    DEFER       = auto()       # v1.4.0: defer expr
+    REPEAT      = auto()       # v1.4.0: repeat { } until cond
+    UNTIL       = auto()       # v1.4.0: until (part of repeat)
 
     # ── Arithmetic ────────────────────────────────
     PLUS        = auto()
@@ -178,6 +181,9 @@ KEYWORDS: dict = {
     "as":        TT.AS,
     "is":        TT.IS,
     "div":       TT.DIV,
+    "defer":     TT.DEFER,
+    "repeat":    TT.REPEAT,
+    "until":     TT.UNTIL,
     "export":    TT.EXPORT,
     "try":       TT.TRY,
     "catch":     TT.CATCH,

@@ -345,6 +345,12 @@ class MatchArm(Node):
     binding:     Optional[str]  = None   # case h if h <= 0 { ... } — 'h' bound to subject
 
 @dataclass
+class TypePattern(Node):
+    """v1.4.0: type-narrowing match pattern — case int x { } or case Vec2 v { }"""
+    type_name: str          # "int", "float", "string", "bool", or struct name
+    var_name:  str          # variable bound to the narrowed value
+
+@dataclass
 class MatchStmt(Node):
     subject: Node
     arms:    List[MatchArm]
@@ -452,6 +458,17 @@ class Visitor:
 class ThrowStmt(Node):
     """throw ErrorExpr"""
     value: Node
+
+@dataclass
+class DeferStmt(Node):
+    """v1.4.0: defer expr_or_call — runs at end of enclosing function/block"""
+    expr: Node
+
+@dataclass
+class RepeatUntilStmt(Node):
+    """v1.4.0: repeat { body } until condition — do-while equivalent"""
+    body:      "BlockStmt"
+    condition: Node
 
 @dataclass
 class TryCatchStmt(Node):
