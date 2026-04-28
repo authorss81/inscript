@@ -1,29 +1,24 @@
 # .github/workflows/publish.yml
 # Automatically publishes inscript-lang to PyPI when you push a version tag.
 #
-# Uses PyPI Trusted Publishers (OIDC) — NO API token or secret needed.
-#
-# ONE-TIME SETUP on PyPI:
-#   1. Go to https://pypi.org/manage/project/inscript-lang/settings/publishing/
-#   2. Click "Add a new publisher"
-#   3. Fill in exactly:
-#        Owner:         authorss81
-#        Repository:    inscript
-#        Workflow name: publish.yml
-#        Environment:   pypi
-#   4. Save — done. No token, no GitHub secret needed.
+# SETUP (one-time):
+#   1. Go to https://pypi.org/manage/account/token/
+#      → Add API token → Name: inscript-github → Scope: Project: inscript-lang
+#      → Copy the token (starts with pypi-)
+#   2. Go to https://github.com/authorss81/inscript/settings/secrets/actions
+#      → New repository secret → Name: PYPI_API_TOKEN → paste token → Save
 #
 # To publish:
-#   git tag -a v1.2.0 -m "InScript v1.2.0"
-#   git push origin v1.2.0
-#   → GitHub Actions runs all tests, then uploads to PyPI automatically
+#   git tag -a v1.4.0 -m "InScript v1.4.0"
+#   git push origin v1.4.0
+#   → GitHub Actions: runs all tests → builds → uploads to PyPI
 
 name: Publish to PyPI
 
 on:
   push:
     tags:
-      - 'v*.*.*'   # triggers on any version tag: v1.2.0, v1.3.0, etc.
+      - 'v*.*.*'
 
 jobs:
   test:
@@ -53,6 +48,9 @@ jobs:
           python test_audit.py
           python test_comprehensive.py
           python test_v120.py
+          python test_v130.py
+          python test_v140.py
+          python test_v150.py
 
   build:
     name: Build distribution
@@ -84,12 +82,6 @@ jobs:
     name: Publish to PyPI
     needs: build
     runs-on: ubuntu-latest
-    environment:
-      name: pypi
-      url: https://pypi.org/project/inscript-lang/
-
-    permissions:
-      id-token: write   # REQUIRED for OIDC Trusted Publishing
 
     steps:
       - name: Download dist artifacts
@@ -100,3 +92,7 @@ jobs:
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          user: __token__
+          password: ${{ secrets.PYPI_API_TOKEN }}
+

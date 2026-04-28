@@ -43,6 +43,9 @@ jobs:
           python test_audit.py
           python test_comprehensive.py
           python test_v120.py
+          python test_v130.py
+          python test_v140.py
+          python test_v150.py
 
       - name: Run formatter smoke test (Unix only)
         working-directory: inscript_package

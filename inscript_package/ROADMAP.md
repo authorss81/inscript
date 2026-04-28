@@ -280,17 +280,17 @@ Threading/Bench, Game Visual, Game IO, Game World, Game Systems, Utilities.
 - [x] Generic constraints — `fn max<T: Comparable>`, built-in + interface constraints
 - [x] `test_v140.py` — 28 tests
 
-## 🔮 v1.5.0 — Standard Library Expansion
+## ✅ v1.5.0 — Standard Library Expansion (released)
 
 **Goal:** Richer stdlib so games need fewer workarounds.
 
-- [ ] `string` module — `split()`, `join()`, `trim()`, `starts_with()`, `ends_with()`, `replace_all()`
-- [ ] `array` module — `sort()`, `sort_by()`, `flat_map()`, `zip()`, `chunk()`, `flatten()`, `group_by()`
-- [ ] `math` module additions — `lerp()`, `smoothstep()`, `sign()`, `wrap()`, `remap()`
-- [ ] `color` module — `from_hsv()`, `lerp()`, `darken()`, `lighten()`, `to_hex()`, `from_hex()`
-- [ ] `dict` module — `keys()`, `values()`, `entries()`, `merge()`, `filter_keys()`, `map_values()`
-- [ ] `io` module — `read_file()`, `write_file()`, `file_exists()`, `list_dir()`
-- [ ] `test_v150.py`
+- [x] `string` module — `split()`, `join()`, `trim()`, `starts_with()`, `ends_with()`, `replace_all()`
+- [x] `array` module — `sort()`, `sort_by()`, `flat_map()`, `zip()`, `chunk()`, `flatten()`, `group_by()`
+- [x] `math` module additions — `lerp()`, `smoothstep()`, `sign()`, `wrap()`, `remap()`
+- [x] `color` module — `from_hsv()`, `lerp()`, `darken()`, `lighten()`, `to_hex()`, `from_hex()`
+- [x] `dict` module (new) — `keys()`, `values()`, `entries()`, `merge()`, `filter_keys()`, `map_values()`
+- [x] `io` module — `read_file()`, `write_file()`, `file_exists()`, `list_dir()`
+- [x] `test_v150.py` — 73 tests
 
 ## 🔮 v1.6.0 — Tooling & Developer Experience
 

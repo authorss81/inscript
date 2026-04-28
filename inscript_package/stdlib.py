@@ -85,6 +85,14 @@ register_module("math", {
     "gcd":    math.gcd,
     "hypot":  math.hypot,    "dist":   math.dist,
     "factorial": math.factorial,
+    # v1.5.0 additions
+    "wrap":   lambda v, lo, hi: lo + (v - lo) % (hi - lo) if hi != lo else lo,
+    "remap":  lambda v,a1,b1,a2,b2: a2 + (v-a1)/(b1-a1)*(b2-a2) if b1!=a1 else a2,
+    "ping_pong": lambda t, length: (lambda n: length - abs(n % (2*length) - length))(float(t)),
+    "nearest_pow2": lambda n: 1 << int(math.ceil(math.log2(max(n, 1)))),
+    "fract":  lambda x: x - math.floor(x),
+    "step":   lambda edge, x: 0.0 if x < edge else 1.0,
+    "is_approx": lambda a, b, eps=1e-6: abs(a-b) < eps,
 })
 
 
@@ -109,34 +117,43 @@ def _str_repeat(s: str, n: int) -> str:
     return str(s) * int(n)
 
 register_module("string", {
-    "format":     _str_format,
-    "pad_left":   _str_pad_left,
-    "pad_right":  _str_pad_right,
-    "repeat":     _str_repeat,
-    "reverse":    lambda s: s[::-1],
-    "is_digit":   lambda s: s.isdigit(),
-    "is_alpha":   lambda s: s.isalpha(),
-    "is_alnum":   lambda s: s.isalnum(),
-    "is_space":   lambda s: s.isspace(),
-    "is_upper":   lambda s: s.isupper(),
-    "is_lower":   lambda s: s.islower(),
-    "char_code":  lambda s: ord(s[0]) if s else 0,
-    "from_code":  lambda n: chr(int(n)),
-    "count":      lambda s, sub: s.count(sub),
-    "find":       lambda s, sub: s.find(sub),
-    "title":      lambda s: s.title(),
-    "upper":      lambda s: s.upper(),
-    "lower":      lambda s: s.lower(),
-    "trim":       lambda s: s.strip(),
-    "split":      lambda s, sep=None: s.split(sep),
-    "join":       lambda sep, lst: sep.join(str(x) for x in lst),
-    "replace":    lambda s, old, new: s.replace(old, new),
-    "starts_with":lambda s, p: s.startswith(p),
-    "ends_with":  lambda s, p: s.endswith(p),
-    "contains":   lambda s, sub: sub in s,
-    "to_int":     lambda s: int(s),
-    "to_float":   lambda s: float(s),
-    "substring":  lambda s, a, b: s[int(a):int(b)],
+    "format":      _str_format,
+    "pad_left":    _str_pad_left,
+    "pad_right":   _str_pad_right,
+    "repeat":      _str_repeat,
+    "reverse":     lambda s: s[::-1],
+    "is_digit":    lambda s: s.isdigit(),
+    "is_alpha":    lambda s: s.isalpha(),
+    "is_alnum":    lambda s: s.isalnum(),
+    "is_space":    lambda s: s.isspace(),
+    "is_upper":    lambda s: s.isupper(),
+    "is_lower":    lambda s: s.islower(),
+    "char_code":   lambda s: ord(s[0]) if s else 0,
+    "from_code":   lambda n: chr(int(n)),
+    "count":       lambda s, sub: s.count(sub),
+    "find":        lambda s, sub: s.find(sub),
+    "find_last":   lambda s, sub: s.rfind(sub),
+    "title":       lambda s: s.title(),
+    "upper":       lambda s: s.upper(),
+    "lower":       lambda s: s.lower(),
+    "trim":        lambda s: s.strip(),
+    "trim_start":  lambda s: s.lstrip(),
+    "trim_end":    lambda s: s.rstrip(),
+    "split":       lambda s, sep=None: s.split(sep),
+    "split_lines": lambda s: s.splitlines(),
+    "join":        lambda sep, lst: sep.join(str(x) for x in lst),
+    "replace":     lambda s, old, new: s.replace(old, new),
+    "replace_all": lambda s, old, new: s.replace(old, new),   # v1.5.0 alias
+    "remove":      lambda s, sub: s.replace(sub, ""),
+    "starts_with": lambda s, p: s.startswith(p),
+    "ends_with":   lambda s, p: s.endswith(p),
+    "contains":    lambda s, sub: sub in s,
+    "to_int":      lambda s: int(s),
+    "to_float":    lambda s: float(s),
+    "substring":   lambda s, a, b: s[int(a):int(b)],
+    "slice":       lambda s, a, b=None: s[int(a):int(b)] if b is not None else s[int(a):],
+    "index_of":    lambda s, sub: s.find(sub),
+    "truncate":    lambda s, n, ellipsis="...": s[:int(n)] + ellipsis if len(s) > int(n) else s,
 })
 
 
@@ -195,43 +212,55 @@ def _arr_range(start, stop=None, step=1):
     return list(range(int(start), int(stop), int(step)))
 
 register_module("array", {
-    "sort":     _arr_sort,
-    "unique":   _arr_unique,
-    "flatten":  _arr_flatten,
-    "zip":      _arr_zip,
-    "chunk":    _arr_chunk,
-    "sum":      _arr_sum,
-    "product":  _arr_product,
-    "average":  _arr_average,
-    "min":      _arr_min,
-    "max":      _arr_max,
-    "range":    _arr_range,
-    "reverse":  lambda lst: lst[::-1],
-    # fill(n, val) → new array of n copies of val
-    # fill(arr, val) → fill existing array in-place with val, return it
-    "fill":     lambda a, b: ([b] * int(a)) if isinstance(a, int) else (a.__setitem__(slice(None), [b]*len(a)) or a),
-    "repeat":   lambda lst, n: lst * int(n),
-    "count":    lambda lst, val: lst.count(val),
-    "index_of": lambda lst, val: lst.index(val) if val in lst else -1,
-    "includes": lambda lst, val: val in lst,
-    # push/pop as free functions (BUG-18: previously method-only)
-    "push":     lambda lst, val: lst.append(val) or lst,
-    "pop":      lambda lst: lst.pop() if lst else None,
-    "any":      lambda lst, fn: any(_call_fn(fn, x) for x in lst),
-    "all":      lambda lst, fn: all(_call_fn(fn, x) for x in lst),
-    "none":     lambda lst, fn: not any(_call_fn(fn, x) for x in lst),
-    "take":     lambda lst, n: lst[:int(n)],
-    "skip":     lambda lst, n: lst[int(n):],
-    "last":      lambda lst: lst[-1] if lst else None,
-    "first":     lambda lst: lst[0]  if lst else None,
-    "shuffle":   lambda arr: (lambda a: (__import__("random").shuffle(a), a)[1])(list(arr)),
+    "sort":       _arr_sort,
+    "unique":     _arr_unique,
+    "flatten":    _arr_flatten,
+    "zip":        _arr_zip,
+    "chunk":      _arr_chunk,
+    "sum":        _arr_sum,
+    "product":    _arr_product,
+    "average":    _arr_average,
+    "min":        _arr_min,
+    "max":        _arr_max,
+    "range":      _arr_range,
+    "reverse":    lambda lst: lst[::-1],
+    "fill":       lambda a, b: ([b] * int(a)) if isinstance(a, int) else (a.__setitem__(slice(None), [b]*len(a)) or a),
+    "repeat":     lambda lst, n: lst * int(n),
+    "count":      lambda lst, val: lst.count(val),
+    "index_of":   lambda lst, val: lst.index(val) if val in lst else -1,
+    "includes":   lambda lst, val: val in lst,
+    "push":       lambda lst, val: lst.append(val) or lst,
+    "pop":        lambda lst: lst.pop() if lst else None,
+    "any":        lambda lst, fn: any(_call_fn(fn, x) for x in lst),
+    "all":        lambda lst, fn: all(_call_fn(fn, x) for x in lst),
+    "none":       lambda lst, fn: not any(_call_fn(fn, x) for x in lst),
+    "take":       lambda lst, n: lst[:int(n)],
+    "skip":       lambda lst, n: lst[int(n):],
+    "last":       lambda lst: lst[-1] if lst else None,
+    "first":      lambda lst: lst[0]  if lst else None,
+    "shuffle":    lambda arr: (lambda a: (__import__("random").shuffle(a), a)[1])(list(arr)),
     "binary_search": lambda arr, val: next((i for i,x in enumerate(arr) if x==val), -1),
-    "zip_with":  lambda a, b, fn: [fn(x,y) for x,y in zip(a,b)],
-    "rotate":    lambda arr, n=1: (list(arr)[int(n)%len(arr):]+list(arr)[:int(n)%len(arr)]) if arr else [],
+    "zip_with":   lambda a, b, fn: [_call_fn(fn, x, y) for x, y in zip(a, b)],
+    "rotate":     lambda arr, n=1: (list(arr)[int(n)%len(arr):]+list(arr)[:int(n)%len(arr)]) if arr else [],
     "frequencies": lambda arr: (lambda d: [d.__setitem__(x,d.get(x,0)+1) for x in arr] and d)({}),
     "flatten_deep": lambda arr: (lambda f,a: [item for x in a for item in (f(f,x) if isinstance(x,list) else [x])])(lambda f,a: [item for x in a for item in (f(f,x) if isinstance(x,list) else [x])], arr),
-    "partition": lambda arr, fn: ([x for x in arr if fn(x)],[x for x in arr if not fn(x)]),
+    "partition":  lambda arr, fn: ([x for x in arr if _call_fn(fn,x)],[x for x in arr if not _call_fn(fn,x)]),
     "interleave": lambda a, b: [x for pair in zip(a,b) for x in pair],
+    # v1.5.0 additions
+    "sort_by":    lambda arr, fn: sorted(arr, key=lambda x: _call_fn(fn, x)),
+    "flat_map":   lambda arr, fn: [item for x in arr for item in _call_fn(fn, x)],
+    "group_by":   lambda arr, fn: (lambda d: [d.setdefault(str(_call_fn(fn,x)),[]).append(x) for x in arr] and d)({}),
+    "unzip":      lambda arr: [list(t) for t in zip(*arr)] if arr else [[], []],
+    "find_index": lambda arr, fn: next((i for i,x in enumerate(arr) if _call_fn(fn,x)), -1),
+    "find_last":  lambda arr, fn: next((x for x in reversed(arr) if _call_fn(fn,x)), None),
+    "window":     lambda arr, n: [arr[i:i+int(n)] for i in range(len(arr)-int(n)+1)],
+    "difference": lambda a, b: [x for x in a if x not in b],
+    "intersection": lambda a, b: [x for x in a if x in b],
+    "union":      lambda a, b: list(dict.fromkeys(a + b)),
+    "compact":    lambda arr: [x for x in arr if x is not None and x is not False],
+    "sum_by":     lambda arr, fn: sum(_call_fn(fn, x) for x in arr),
+    "max_by":     lambda arr, fn: max(arr, key=lambda x: _call_fn(fn, x)) if arr else None,
+    "min_by":     lambda arr, fn: min(arr, key=lambda x: _call_fn(fn, x)) if arr else None,
 })
 
 
@@ -263,6 +292,43 @@ def _append_file(path: str, content: str) -> None:
 def _read_lines(path: str):
     return _read_file(path).splitlines()
 
+# ─────────────────────────────────────────────────────────────────────────────
+# dict  — dictionary/map utilities  (v1.5.0)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _dict_map_values(d, fn):
+    return {k: _call_fn(fn, v) for k, v in d.items() if not str(k).startswith('_')}
+
+def _dict_filter_keys(d, fn):
+    return {k: v for k, v in d.items() if not str(k).startswith('_') and _call_fn(fn, k)}
+
+def _dict_merge(*dicts):
+    result = {}
+    for d in dicts:
+        if isinstance(d, dict):
+            result.update({k: v for k, v in d.items() if not str(k).startswith('_')})
+    return result
+
+register_module("dict", {
+    "keys":         lambda d: [k for k in d.keys() if not str(k).startswith('_')],
+    "values":       lambda d: [v for k, v in d.items() if not str(k).startswith('_')],
+    "entries":      lambda d: [[k, v] for k, v in d.items() if not str(k).startswith('_')],
+    "from_entries": lambda lst: {e[0]: e[1] for e in lst},
+    "merge":        _dict_merge,
+    "map_values":   _dict_map_values,
+    "filter_keys":  _dict_filter_keys,
+    "has":          lambda d, k: k in d,
+    "get":          lambda d, k, default=None: d.get(k, default),
+    "set":          lambda d, k, v: (d.__setitem__(k, v) or d),
+    "delete":       lambda d, k: (d.pop(k, None) or d),
+    "size":         lambda d: len([k for k in d if not str(k).startswith('_')]),
+    "is_empty":     lambda d: all(str(k).startswith('_') for k in d),
+    "pick":         lambda d, *keys: {k: d[k] for k in keys if k in d},
+    "omit":         lambda d, *keys: {k: v for k, v in d.items() if k not in keys and not str(k).startswith('_')},
+    "invert":       lambda d: {str(v): k for k, v in d.items() if not str(k).startswith('_')},
+    "copy":         lambda d: {k: v for k, v in d.items()},
+})
+
 register_module("io", {
     "read_file":   _read_file,
     "write_file":  _write_file,
@@ -275,6 +341,17 @@ register_module("io", {
     "join_path":   os.path.join,
     "basename":    os.path.basename,
     "dirname":     os.path.dirname,
+    # v1.5.0 additions
+    "make_dir":    lambda p, exist_ok=True: (os.makedirs(p, exist_ok=exist_ok), None)[1],
+    "copy_file":   lambda src, dst: (__import__("shutil").copy2(src, dst), None)[1],
+    "move_file":   lambda src, dst: (__import__("shutil").move(src, dst), None)[1],
+    "file_size":   lambda p: os.path.getsize(p) if os.path.exists(p) else -1,
+    "extension":   lambda p: os.path.splitext(p)[1],
+    "stem":        lambda p: os.path.splitext(os.path.basename(p))[0],
+    "is_dir":      os.path.isdir,
+    "is_file":     os.path.isfile,
+    "abs_path":    os.path.abspath,
+    "glob":        lambda pattern: __import__("glob").glob(pattern),
 })
 
 
@@ -424,6 +501,15 @@ register_module("color", {
     "invert":    _invert,
     "grayscale": _grayscale,
     "alpha":     lambda c, a: Color(c.r, c.g, c.b, a),
+    # v1.5.0 additions
+    "from_hsv":  _hsv,   # alias — from_hsv(h,s,v) identical to hsv(h,s,v)
+    "from_hsl":  _hsl,
+    "to_rgba_tuple": lambda c: [c.r, c.g, c.b, c.a],
+    "to_rgb255":     lambda c: [int(c.r*255), int(c.g*255), int(c.b*255)],
+    "complement":    lambda c: Color(1-c.r, 1-c.g, 1-c.b, c.a),
+    "is_dark":       lambda c: (0.299*c.r + 0.587*c.g + 0.114*c.b) < 0.5,
+    "is_light":      lambda c: (0.299*c.r + 0.587*c.g + 0.114*c.b) >= 0.5,
+    "brightness":    lambda c: 0.299*c.r + 0.587*c.g + 0.114*c.b,
     # Palette
     "RED":     Color.RED,   "GREEN":  Color.GREEN,  "BLUE":  Color.BLUE,
     "WHITE":   Color.WHITE, "BLACK":  Color.BLACK,  "YELLOW":Color.YELLOW,
