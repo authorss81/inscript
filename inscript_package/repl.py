@@ -40,7 +40,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 HISTORY_FILE = Path.home() / ".inscript" / "history"
 HISTORY_FILE.parent.mkdir(parents=True, exist_ok=True)
-VERSION = "1.5.0"
+VERSION = "1.6.0"
 
 # ── ANSI colours ──────────────────────────────────────────────────────────────
 def _c(code, text):
@@ -175,6 +175,8 @@ def _make_help():
         section("── Analysis ─────────────────────────────────────────"),
         cmd(".time <expr>",        "Measure execution time (10 runs)"),
         cmd(".bench <expr>",       "Statistical benchmark (100 runs)"),
+        cmd(".lint",               "v1.6.0: Run analyzer on session code"),
+        cmd(".strict",             "v1.6.0: Toggle strict mode (warn=error)"),
         cmd(".bytecode [expr]",    "Compact bytecode listing"),
         cmd(".asm [expr]",         "Full annotated assembly"),
         cmd(".vm",                 "Toggle VM / interpreter mode"),
@@ -929,6 +931,35 @@ class EnhancedREPL:
             self._use_vm = not self._use_vm
             mode = ORANGE("VM (bytecode)") if self._use_vm else CYAN("Interpreter (tree-walk)")
             print(f"  Execution mode: {mode}")
+
+        # v1.6.0: .lint — run analyzer on current session buffer
+        elif c == ".lint":
+            if not self._history:
+                print(ORANGE("  No session code to lint yet."))
+            else:
+                session_src = "\n".join(self._history)
+                try:
+                    from parser import parse as _parse
+                    from analyzer import Analyzer
+                    prog = _parse(session_src)
+                    a = Analyzer(session_src.splitlines(), multi_error=True)
+                    a.analyze(prog)
+                    if not a._warnings and not a._errors:
+                        print(GREEN("  No issues found."))
+                    for w in a._warnings:
+                        print(ORANGE(f"  WARN line {w.line}: {w.message}"))
+                    for e in a._errors:
+                        print(RED(f"  ERR  line {e.line}: {e.message}"))
+                except Exception as ex:
+                    print(ORANGE(f"  Lint error: {ex}"))
+
+        # v1.6.0: .strict — toggle strict mode (warn-as-error)
+        elif c == ".strict":
+            if not hasattr(self, '_strict'):
+                self._strict = False
+            self._strict = not self._strict
+            status = RED("ON  (warnings = errors)") if self._strict else CYAN("OFF")
+            print(f"  Strict mode: {status}")
 
         elif c == ".history":
             n = int(arg) if arg.isdigit() else 20

@@ -292,16 +292,16 @@ Threading/Bench, Game Visual, Game IO, Game World, Game Systems, Utilities.
 - [x] `io` module — `read_file()`, `write_file()`, `file_exists()`, `list_dir()`
 - [x] `test_v150.py` — 73 tests
 
-## 🔮 v1.6.0 — Tooling & Developer Experience
+## ✅ v1.6.0 — Tooling & Developer Experience (released)
 
 **Goal:** Make InScript pleasant in a real project.
 
-- [ ] `inscript check` — analyzer-only, exit 1 on errors
-- [ ] `inscript fmt --all` — recursively format all `.ins` files
-- [ ] Source maps — errors show original `.ins` line even when running bytecode
-- [ ] REPL improvements — multiline, history, tab completion
-- [ ] `--strict` mode — all warnings become errors, no implicit `any`
-- [ ] `test_v160.py`
+- [x] `inscript check` — analyzer-only, exit 1 on errors
+- [x] `inscript fmt --all` — recursively format all `.ins` files
+- [-] Source maps (deferred to v2.0.0) — errors show original `.ins` line even when running bytecode
+- [x] REPL improvements — multiline, history, tab completion
+- [x] `--strict` mode — all warnings become errors, no implicit `any`
+- [x] `test_v160.py` — 33 tests
 
 ## 🔮 v2.0.0 — Production Ready
 

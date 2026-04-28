@@ -24,7 +24,7 @@ from errors   import (InScriptError, LexerError, ParseError,
                        SemanticError, InScriptRuntimeError,
                        MultiError, InScriptWarning)
 
-VERSION = "1.5.0"
+VERSION = "1.6.0"
 LANG    = "InScript"
 PACKAGES_DIR = os.path.join(os.path.expanduser("~"), ".inscript", "packages")
 REGISTRY_URL = "https://raw.githubusercontent.com/authorss81/inscript-packages/main/registry.json"
@@ -180,6 +180,104 @@ def run_file(path: str, type_check: bool = True) -> int:
         source = f.read()
 
     return run_source(source, filename=path, type_check=type_check)
+
+
+# ─── v1.6.0 helpers ──────────────────────────────────────────────────────────
+
+def _find_ins_files(directory: str):
+    """Walk directory tree and yield all .ins file paths."""
+    import os
+    for root, _dirs, files in os.walk(directory):
+        for fname in sorted(files):
+            if fname.endswith(".ins"):
+                yield os.path.join(root, fname)
+
+
+def _check_all_files(directory: str, strict: bool = False) -> int:
+    """v1.6.0: Check all .ins files in directory. Returns exit code."""
+    import os
+    files = list(_find_ins_files(directory))
+    if not files:
+        print(f"[InScript check] No .ins files found in '{directory}'")
+        return 0
+
+    errors = 0
+    warnings = 0
+    checked = 0
+    for path in files:
+        checked += 1
+        try:
+            with open(path, encoding="utf-8") as f:
+                source = f.read()
+            prog = parse(source, path)
+            from analyzer import Analyzer
+            from errors import SemanticError, MultiError
+            a = Analyzer(source.splitlines(), multi_error=True,
+                         warn_as_error=strict, no_warn=False)
+            try:
+                a.analyze(prog)
+                n_warns = len(a._warnings)
+                warnings += n_warns
+                if n_warns:
+                    for w in a._warnings:
+                        print(f"  WARN  {path}: {w.message} (line {w.line})")
+                    if strict:
+                        errors += n_warns
+                else:
+                    print(f"  OK    {path}")
+            except (SemanticError, MultiError) as e:
+                errors += 1
+                print(f"  ERR   {path}: {e}", file=sys.stderr)
+        except (LexerError, ParseError) as e:
+            errors += 1
+            print(f"  ERR   {path}: {e}", file=sys.stderr)
+        except Exception as e:
+            errors += 1
+            print(f"  ERR   {path}: {e}", file=sys.stderr)
+
+    mode = " [strict]" if strict else ""
+    symbol = "-" * 50
+    print(f"\n{symbol}")
+    print(f"  Checked {checked} file{'s' if checked != 1 else ''}{mode}")
+    print(f"  {errors} error{'s' if errors != 1 else ''}, "
+          f"{warnings} warning{'s' if warnings != 1 else ''}")
+    print(symbol)
+    return 1 if errors else 0
+
+
+def _fmt_all_files(directory: str) -> int:
+    """v1.6.0: Format all .ins files in directory in-place. Returns exit code."""
+    files = list(_find_ins_files(directory))
+    if not files:
+        print(f"[InScript fmt] No .ins files found in '{directory}'")
+        return 0
+
+    from inscript_fmt import format_source
+    changed = 0
+    errors = 0
+    for path in files:
+        try:
+            with open(path, encoding="utf-8") as f:
+                original = f.read()
+            formatted = format_source(original)
+            if formatted != original:
+                with open(path, "w", encoding="utf-8") as f:
+                    f.write(formatted)
+                print(f"  FMT   {path}")
+                changed += 1
+            else:
+                print(f"  OK    {path}")
+        except Exception as e:
+            errors += 1
+            print(f"  ERR   {path}: {e}", file=sys.stderr)
+
+    symbol = "-" * 50
+    print(f"\n{symbol}")
+    print(f"  Formatted {changed} file{'s' if changed != 1 else ''}, "
+          f"{len(files) - changed - errors} already clean, "
+          f"{errors} error{'s' if errors != 1 else ''}")
+    print(symbol)
+    return 1 if errors else 0
 
 
 def _print_inscript_profile(pr, filename: str = "<script>"):
@@ -468,6 +566,10 @@ Examples:
     parser.add_argument("file",     nargs="?", help=".ins source file to run")
     parser.add_argument("--repl",   action="store_true", help="Start interactive REPL")
     parser.add_argument("--check",  action="store_true", help="Type-check only, don't run")
+    parser.add_argument("--check-all", metavar="DIR",
+                        help="v1.6.0: Check all .ins files in DIR recursively, exit 1 if any errors")
+    parser.add_argument("--strict", action="store_true",
+                        help="v1.6.0: Strict mode — all warnings become errors, no implicit any")
     parser.add_argument("--tokens", action="store_true", help="Print lexer token stream")
     parser.add_argument("--ast",    action="store_true", help="Print parsed AST")
     parser.add_argument("--no-typecheck", action="store_true",
@@ -482,6 +584,8 @@ Examples:
                         help="Print per-function call count and timing after execution")
     parser.add_argument("--fmt",     action="store_true",
                         help="Format .ins files: inscript --fmt file.ins")
+    parser.add_argument("--fmt-all", metavar="DIR",
+                        help="v1.6.0: Format all .ins files in DIR recursively")
     parser.add_argument("--fmt-check", action="store_true",
                         help="Check formatting without writing (exit 1 if unformatted)")
     parser.add_argument("--fmt-dry-run", action="store_true",
@@ -611,6 +715,13 @@ Examples:
         run_repl()
         return 0
 
+    # ── v1.6.0: directory commands — run before requiring a file ──────────────
+    if getattr(args, 'check_all', None):
+        return _check_all_files(args.check_all,
+                                strict=getattr(args, 'strict', False))
+    if getattr(args, 'fmt_all', None):
+        return _fmt_all_files(args.fmt_all)
+
     if not args.file:
         parser.print_help()
         return 0
@@ -665,7 +776,6 @@ Examples:
         return 0
 
     # --check
-    if args.check:
         try:
             prog = parse(source, args.file)
             analyze(prog, source)
@@ -678,7 +788,8 @@ Examples:
     type_check    = not args.no_typecheck
     no_warn       = getattr(args, "no_warn", False)
     no_warn_unused= getattr(args, "no_warn_unused", False)
-    warn_as_error = getattr(args, "warn_as_error", False)
+    strict        = getattr(args, "strict", False)
+    warn_as_error = getattr(args, "warn_as_error", False) or strict
     profile       = getattr(args, "profile", False)
 
     with open(args.file, "r", encoding="utf-8") as _f:
