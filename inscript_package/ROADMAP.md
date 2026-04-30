@@ -370,3 +370,106 @@ Migration from v0.6 to v1.0: syntax is **fully backward compatible** — no chan
 
 The package name stays `inscript-lang` (not `inscript` — already taken on PyPI by another project).
 `pip install inscript-lang` is the install command. The CLI entry point is `inscript`.
+
+---
+
+## 🔮 v2.1.0 — Security & Sandboxing
+
+**Goal:** Make InScript safe to embed in untrusted contexts (game modding, user scripts, plugins).
+
+- [ ] **Sandbox mode** — `inscript run --sandbox file.ins` restricts filesystem, network, subprocess access
+- [ ] **Capability system** — explicit `@allow(io, network)` annotations required for sensitive stdlib access
+- [ ] **Resource limits** — `--max-memory`, `--max-ops`, `--timeout` flags; hard-kill on breach
+- [ ] **Safe import whitelist** — `--allow-modules math,string,array` restricts which stdlib modules can be imported
+- [ ] **Code injection prevention** — harden `eval()`-style dynamic execution; disable `__builtins__` escape paths
+- [ ] **Audit log** — `--audit-log file.log` records every file/network access for intrusion detection
+- [ ] **Secret scanning** — `inscript check --secrets file.ins` warns on hardcoded tokens, passwords, keys
+- [ ] **Dependency integrity** — SHA-256 lockfile for packages (`inscript.lock`), verify on install
+- [ ] `test_v210.py`
+
+## 🔮 v2.2.0 — Language Enhancements
+
+**Goal:** Fill expressiveness gaps identified from real game projects.
+
+- [ ] **Operator overloading sugar** — `impl Add for Vec2 { fn +(other) }` syntax instead of `operator +`
+- [ ] **Destructuring in function params** — `fn f({x, y}: Vec2) { }` and `fn f([head, ...tail]: []) { }`
+- [ ] **Named return values** — `fn bounds() -> (min: float, max: float) { return (min: 0, max: 1) }`
+- [ ] **`with` expression** — `let v = with Vec2{x: 1} { .y = 2 }` — clone-and-modify pattern
+- [ ] **String templates (multiline)** — `let sql = """ SELECT * FROM ... """`
+- [ ] **Compile-time constants** — `const PI: float = 3.14159` evaluated at parse time, inlined in bytecode
+- [ ] **`is` type-check expression** — `if val is Vec2 { ... }` (complement to type-narrowing match)
+- [ ] **Chained comparisons** — `0 < x < 10` desugars to `0 < x && x < 10`
+- [ ] **Null-coalescing assignment** — `x ??= default_val`
+- [ ] **Labelled loops** — `outer: while true { inner: for i in 0..5 { break outer } }`
+- [ ] `test_v220.py`
+
+## 🔮 v2.3.0 — Concurrency & Async
+
+**Goal:** Real async support for networked games, servers, and IO-heavy scripts.
+
+- [ ] **`async/await`** — wire to Python asyncio; `async fn fetch(url)`, `await http.get(url)`
+- [ ] **`spawn` keyword** — `spawn fn()` creates a coroutine; returns a handle
+- [ ] **`channel<T>`** — typed message-passing: `let ch = channel<int>(capacity: 10)`
+- [ ] **`select` expression** — multiplex over channels: `select { case ch1 -> v { } case ch2 -> v { } }`
+- [ ] **Async iterators** — `async for item in stream { }` for event streams, WebSocket frames
+- [ ] **`mutex` and `rwlock`** — `let m = mutex(value); m.lock(fn(v) { v.count += 1 })`
+- [ ] **Timer builtins** — `timer.after(1000, fn() { })`, `timer.every(16, fn() { })`
+- [ ] `test_v230.py`
+
+## 🔮 v2.4.0 — Native & WebAssembly Targets
+
+**Goal:** Ship InScript games to web and native without Python runtime dependency.
+
+- [ ] **WASM compilation target** — `inscript build --target wasm file.ins` outputs `.wasm` + JS glue
+- [ ] **Native binary output** — compile to C via transpilation, then `gcc`/`clang`; no Python needed at runtime
+- [ ] **Pyodide bundle optimisation** — tree-shake stdlib, lazy-load modules; reduce playground load time from ~3s to <1s
+- [ ] **Ahead-of-time (AOT) compilation** — `inscript compile file.ins` → `.ibc` bytecode; `inscript run file.ibc`
+- [ ] **Incremental compilation** — cache `.ibc` per file, recompile only changed files
+- [ ] **Dead code elimination (IR level)** — whole-program DCE before code generation
+- [ ] **Inline caching** — monomorphic call sites cached at runtime for 2-4x method call speedup
+- [ ] `test_v240.py`
+
+## 🔮 v2.5.0 — IDE & Editor Integration
+
+**Goal:** First-class IDE support making InScript as pleasant as TypeScript to work with.
+
+- [ ] **LSP v2** — go-to-definition, find-all-references, rename symbol, document symbols
+- [ ] **Hover types** — hover any expression to see inferred type
+- [ ] **Inline diagnostics** — squiggly underlines for errors + warnings in real time
+- [ ] **Auto-import** — type `Vec2` → LSP offers `import "math" as math`
+- [ ] **Code actions** — quick fix: add missing interface method, rename to fix typo
+- [ ] **Semantic tokens** — richer syntax highlighting (function calls vs variable reads)
+- [ ] **VS Code extension v2** — publish to marketplace as `inscript-lang.inscript`
+- [ ] **Neovim plugin** — `inscript.nvim` via nvim-lspconfig
+- [ ] **Debugger (DAP)** — breakpoints, step-over/into/out, variable watch via Debug Adapter Protocol
+- [ ] `test_v250.py` (LSP integration tests)
+
+## 🔮 v2.6.0 — Package Ecosystem
+
+**Goal:** A real package registry so the community can share InScript libraries.
+
+- [ ] **`inscript.toml`** — project manifest: name, version, dependencies, scripts
+- [ ] **`inscript install pkg@1.0.0`** — download from registry, verify hash, add to `inscript.lock`
+- [ ] **`inscript publish`** — upload a package to registry (requires API key)
+- [ ] **Package registry** — hosted at `pkg.inscript.dev`; search by tag (game, math, physics, ui)
+- [ ] **Scoped packages** — `@authorss81/ecs`, `@community/pathfinding`
+- [ ] **`inscript audit`** — scan installed packages for known vulnerabilities
+- [ ] **Monorepo support** — `workspace = ["packages/*"]` in `inscript.toml`
+- [ ] **Private registries** — `inscript config set registry https://internal.example.com`
+- [ ] **Stdlib versioning** — pin stdlib version in `inscript.toml` for reproducible builds
+- [ ] `test_v260.py` (package manager integration tests)
+
+## 🔮 v3.0.0 — InScript Studio (Long-term)
+
+**Goal:** A complete game development environment built around InScript.
+
+- [ ] **InScript Studio** — Electron-based IDE with scene editor, asset browser, live preview
+- [ ] **Visual scripting** — node-based editor that compiles to InScript source
+- [ ] **Hot reload** — live-reload scripts in running game without restart
+- [ ] **Asset pipeline** — `@texture`, `@sound`, `@tilemap` annotations for auto-loading assets
+- [ ] **Scene system** — built-in scene tree, node lifecycle (`_ready`, `_update`, `_draw`)
+- [ ] **Physics integration** — first-class 2D/3D physics via Box2D/Jolt bindings
+- [ ] **Multiplayer stdlib** — `net.connect()`, `net.broadcast()`, `net.sync(state)`
+- [ ] **Mobile export** — iOS/Android via Kivy or BeeWare bridge
+- [ ] **Console export** — Nintendo Switch / PlayStation via platform SDK wrappers
+

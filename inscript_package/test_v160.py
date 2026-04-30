@@ -158,7 +158,7 @@ ok("_fmt_all_files: exits 0", rc == 0)
 section("5. REPL .lint and .strict present")
 
 # Check .lint and .strict appear in the REPL handler (not calling REPL directly)
-with open("repl.py") as f:
+with open("repl.py", encoding="utf-8") as f:
     repl_src = f.read()
 ok("repl.py has .lint handler", 'c == ".lint"' in repl_src)
 ok("repl.py has .strict handler", 'c == ".strict"' in repl_src)
