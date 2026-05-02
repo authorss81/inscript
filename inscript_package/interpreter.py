@@ -1487,12 +1487,14 @@ class Interpreter(Visitor):
     def visit_FloatLiteralExpr(self, n): return n.value
     def visit_StringLiteralExpr(self,n): return n.value
     def visit_BoolLiteralExpr(self,  n): return n.value
-    def visit_NullLiteralExpr(self,  n):
-        # DESIGN-06: 'null' is a deprecated alias for 'nil' — warn once per session
-        if not getattr(self, '_null_warned', False):
-            import sys
-            print("\033[33m[InScript] Warning: 'null' is deprecated — use 'nil' instead\033[0m", file=sys.stderr)
-            self._null_warned = True
+    def visit_NullLiteralExpr(self, n):
+        # v1.7.4: 'null' keyword is a hard error; 'nil' is fine
+        if getattr(n, '_is_null_keyword', False):
+            self._error(
+                "'null' was removed in v1.7.4 — use 'nil' instead. "
+                "Run: inscript migrate <file> to auto-fix.",
+                getattr(n, 'line', 0)
+            )
         return None
 
     def visit_IdentExpr(self, node: IdentExpr) -> Any:
@@ -3292,6 +3294,46 @@ def _maybe_copy_value(val):
     return val
 
 
+def _format_float(val: float) -> str:
+    """v1.7.1: Clean float display.
+    0.30000000000000004 → '0.3',  1.0 → '1.0',
+    1/3 → '0.3333333333333333',  sqrt(2) → '1.4142135623730951'
+    """
+    if math.isinf(val): return "Infinity" if val > 0 else "-Infinity"
+    if math.isnan(val): return "NaN"
+    if val == int(val) and abs(val) < 1e15:
+        return f"{int(val)}.0"
+
+    # Get the definitive repr (always round-trips correctly)
+    s_repr = repr(val)
+
+    # Try 15 sig figs — may produce a shorter/cleaner string for float-noise values
+    s15 = f"{val:.15g}"
+    try:
+        v15 = float(s15)
+        # Only use 15g result if it's strictly shorter than repr AND round-trips close enough
+        # "Shorter" means fewer significant digits → it genuinely simplified the value
+        denom = abs(val) if val != 0 else 1.0
+        rel_err = abs(v15 - val) / denom
+        if rel_err < 2e-15 and len(s15.rstrip('0').rstrip('.')) <= len(s_repr) - 2:
+            s = s15
+            if '.' in s and 'e' not in s and 'E' not in s:
+                s = s.rstrip('0')
+                if s.endswith('.'):
+                    s += '0'
+            return s
+    except Exception:
+        pass
+
+    # Use repr — strip redundant trailing zeros but keep all significant digits
+    s = s_repr
+    if '.' in s and 'e' not in s and 'E' not in s:
+        s = s.rstrip('0')
+        if s.endswith('.'):
+            s += '0'
+    return s
+
+
 def _inscript_str(val) -> str:
     if val is None:  return "nil"
     if val is True:  return "true"
@@ -3299,11 +3341,7 @@ def _inscript_str(val) -> str:
     if isinstance(val, list):
         return "[" + ", ".join(_inscript_repr(v) for v in val) + "]"
     if isinstance(val, float):
-        if math.isinf(val): return "Infinity" if val > 0 else "-Infinity"
-        if math.isnan(val): return "NaN"
-        if val == int(val):
-            return f"{int(val)}.0"
-        return str(val)
+        return _format_float(val)
     if isinstance(val, str):
         return val  # bare string — no quotes when printing top-level
     # InScript struct instance — show data fields only, no methods

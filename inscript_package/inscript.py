@@ -24,7 +24,7 @@ from errors   import (InScriptError, LexerError, ParseError,
                        SemanticError, InScriptRuntimeError,
                        MultiError, InScriptWarning)
 
-VERSION = "1.6.0"
+VERSION = "1.7.1"
 LANG    = "InScript"
 PACKAGES_DIR = os.path.join(os.path.expanduser("~"), ".inscript", "packages")
 REGISTRY_URL = "https://raw.githubusercontent.com/authorss81/inscript-packages/main/registry.json"
@@ -242,6 +242,51 @@ def _check_all_files(directory: str, strict: bool = False) -> int:
     print(f"  {errors} error{'s' if errors != 1 else ''}, "
           f"{warnings} warning{'s' if warnings != 1 else ''}")
     print(symbol)
+    return 1 if errors else 0
+
+
+def _migrate_files(path: str) -> int:
+    """v1.7.4: Auto-migrate deprecated InScript syntax in-place."""
+    import re, os
+    target = os.path.abspath(path)
+    files = []
+    if os.path.isfile(target):
+        files = [target]
+    elif os.path.isdir(target):
+        files = list(_find_ins_files(target))
+    else:
+        print(f"[InScript migrate] Not found: '{path}'", file=sys.stderr)
+        return 1
+
+    changed = errors = 0
+    for fpath in files:
+        try:
+            with open(fpath, encoding="utf-8") as f:
+                original = f.read()
+            src = original
+            # null → nil
+            src = re.sub(r'\bnull\b', 'nil', src)
+            # x div y → x // y  (only bare `div` between expressions)
+            src = re.sub(r'\bdiv\b', '//', src)
+            # bare [] type annotation → array  (e.g. `: []` → `: array`)
+            src = re.sub(r':\s*\[\]', ': array', src)
+            if src != original:
+                with open(fpath, "w", encoding="utf-8") as f:
+                    f.write(src)
+                print(f"  MIGRATED  {fpath}")
+                changed += 1
+            else:
+                print(f"  OK        {fpath}")
+        except Exception as e:
+            errors += 1
+            print(f"  ERR       {fpath}: {e}", file=sys.stderr)
+
+    sep = "-" * 50
+    print(f"\n{sep}")
+    print(f"  Migrated {changed} file{'s' if changed != 1 else ''}, "
+          f"{len(files)-changed-errors} already clean, "
+          f"{errors} error{'s' if errors != 1 else ''}")
+    print(sep)
     return 1 if errors else 0
 
 
@@ -568,6 +613,8 @@ Examples:
     parser.add_argument("--check",  action="store_true", help="Type-check only, don't run")
     parser.add_argument("--check-all", metavar="DIR",
                         help="v1.6.0: Check all .ins files in DIR recursively, exit 1 if any errors")
+    parser.add_argument("--migrate", metavar="DIR_OR_FILE",
+                        help="v1.7.4: Auto-migrate deprecated syntax (null→nil, div→//)")
     parser.add_argument("--strict", action="store_true",
                         help="v1.6.0: Strict mode — all warnings become errors, no implicit any")
     parser.add_argument("--tokens", action="store_true", help="Print lexer token stream")
@@ -721,6 +768,8 @@ Examples:
                                 strict=getattr(args, 'strict', False))
     if getattr(args, 'fmt_all', None):
         return _fmt_all_files(args.fmt_all)
+    if getattr(args, 'migrate', None):
+        return _migrate_files(args.migrate)
 
     if not args.file:
         parser.print_help()

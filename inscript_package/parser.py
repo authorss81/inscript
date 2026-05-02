@@ -887,7 +887,7 @@ class Parser:
         _type_starts = (TT.IDENT, TT.INT_TYPE, TT.FLOAT_TYPE, TT.BOOL_TYPE,
                         TT.STRING_TYPE, TT.VOID_TYPE, TT.LBRACE, TT.LPAREN)
         # Tokens that unambiguously start a literal default (not a type name)
-        _default_starts = (TT.NULL, TT.BOOL, TT.INT, TT.FLOAT, TT.STRING, TT.MINUS)
+        _default_starts = (TT.NIL, TT.NULL, TT.BOOL, TT.INT, TT.FLOAT, TT.STRING, TT.MINUS)
 
         if self.check(TT.LBRACKET):
             if self.peek.type != TT.RBRACKET:
@@ -1623,7 +1623,7 @@ class Parser:
                 attr_tok = self.current
                 # Accept any identifier OR keyword as attribute name (e.g. regex.match, uuid.nil)
                 _KEYWORD_TYPES = {
-                    TT.NULL, TT.MATCH, TT.IN, TT.FOR, TT.IF, TT.ELSE, TT.WHILE,
+                    TT.NIL, TT.NULL, TT.MATCH, TT.IN, TT.FOR, TT.IF, TT.ELSE, TT.WHILE,
                     TT.RETURN, TT.BREAK, TT.CONTINUE, TT.LET, TT.CONST, TT.FN,
                     TT.STRUCT, TT.ENUM, TT.IMPORT, TT.EXPORT, TT.FROM, TT.ASYNC,
                     TT.AWAIT, TT.ABSTRACT, TT.SELECT, TT.CASE, TT.TRY, TT.CATCH,
@@ -1634,7 +1634,7 @@ class Parser:
                 }
                 if attr_tok.type == TT.IDENT or attr_tok.type in _KEYWORD_TYPES:
                     # For NULL token use "nil"; for BOOL use the literal text ("true"/"false")
-                    if attr_tok.type == TT.NULL:
+                    if attr_tok.type in (TT.NIL, TT.NULL):
                         attr = "nil"
                     elif attr_tok.type == TT.BOOL:
                         attr = "true" if attr_tok.value else "false"
@@ -1694,7 +1694,7 @@ class Parser:
             # Propagate ? is followed by newline, }, ), ,, ;, EOF
             elif self.check(TT.QUESTION):
                 _EXPR_START = {
-                    TT.STRING, TT.INT, TT.FLOAT, TT.BOOL, TT.NULL,
+                    TT.STRING, TT.INT, TT.FLOAT, TT.BOOL, TT.NIL, TT.NULL,
                     TT.IDENT, TT.LPAREN, TT.LBRACKET, TT.LBRACE,
                     TT.BIT_OR, TT.OR, TT.NOT, TT.MINUS, TT.FSTRING,
                     TT.INT_TYPE, TT.FLOAT_TYPE, TT.STRING_TYPE, TT.BOOL_TYPE,
@@ -1735,7 +1735,7 @@ class Parser:
             _CHECK_TYPES = {
                 TT.INT_TYPE: "int", TT.FLOAT_TYPE: "float",
                 TT.STRING_TYPE: "string", TT.BOOL_TYPE: "bool",
-                TT.VOID_TYPE: "void", TT.NULL: "nil",
+                TT.VOID_TYPE: "void", TT.NULL: "nil", TT.NIL: "nil",
                 TT.IDENT: None,
             }
             if check_tok.type in _CHECK_TYPES:
@@ -1813,10 +1813,16 @@ class Parser:
             self.advance()
             return BoolLiteralExpr(value=tok.value, line=line, col=col)
 
-        # Null
-        if tok.type == TT.NULL:
+        # nil / null
+        if tok.type == TT.NIL:
             self.advance()
             return NullLiteralExpr(line=line, col=col)
+        if tok.type == TT.NULL:
+            self.advance()
+            # Keep the node but tag it as the removed 'null' keyword
+            node = NullLiteralExpr(line=line, col=col)
+            node._is_null_keyword = True   # interpreter will hard-error on this
+            return node
 
         # Grouped expression: (expr)  OR  Tuple: (expr, expr, ...)
         if tok.type == TT.LPAREN:

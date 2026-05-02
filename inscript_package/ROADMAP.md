@@ -315,6 +315,116 @@ Threading/Bench, Game Visual, Game IO, Game World, Game Systems, Utilities.
 - [ ] Breaking: remove deprecated `null` (use `nil`)
 - [ ] `test_v200.py`
 
+
+---
+
+## 🔮 v1.7.0 — Stability & Bug Fixes
+
+**Goal:** Fix the concrete correctness gaps that block v2.0.0. No new features.
+
+### ✅ v1.7.1 — Float & Integer Display (released)
+- [x] `_format_float()` — strip floating-point noise: `0.30000000000000004` → `0.3`; round to 14 significant figures, strip trailing zeros, keep `1.0` as `1.0` not `1`
+- [x] `print(0.1 + 0.2)` → `0.3`, `print(1.0 / 3.0)` → `0.3333333333333333`
+- [x] Integer division operator `//` — `10 // 3` → `3` (int); `div` keyword kept as alias
+- [x] `print(10 // 3)` → `3` (int, not `3.0`)
+- [x] null keyword hard error (removed from language) — float formatting + integer division edge cases
+
+### v1.7.2 — Recursive & Self-Referential Types
+- [ ] Struct field type resolution deferred — allow `struct Node { next: Node? = nil }` without infinite recursion during struct registration
+- [ ] Mutually recursive structs — `struct A { b: B? = nil }` / `struct B { a: A? = nil }` both defined in same scope
+- [ ] `let n = Node{value:1, next: Node{value:2}}; print(n.next.value)` → `2`
+- [ ] Linked list, binary tree, trie — all must work
+- [ ] `test_v172.py` — recursive type tests
+
+### v1.7.3 — Stack Traces & Error Quality
+- [ ] Full call chain in error output: `outer() → middle() → inner() → throw "err"` shows all 3 frames
+- [ ] Line numbers accurate in nested closures and lambdas
+- [ ] `InScriptCallStack.format()` shows file, function name, line, source snippet for each frame
+- [ ] Uncaught errors print stack trace to stderr by default (currently only shown with `--debug`)
+- [ ] `test_v173.py` — stack trace format and accuracy
+
+### v1.7.4 — REPL Stability
+- [ ] REPL error recovery — after runtime error, all previously-defined globals survive
+- [ ] REPL `let` re-definition — `let x = 1` then `let x = 2` in REPL re-binds instead of erroring
+- [ ] REPL multi-line paste — paste a full struct/fn block and REPL handles it atomically
+- [ ] `null` hard error — `null` emits `E0055: 'null' was removed in v1.7.4, use 'nil'`
+- [ ] `inscript migrate FILE` — rewrites `null` → `nil`, `x div y` → `x // y` in-place
+- [ ] `test_v174.py` — REPL stability + migration tool
+
+---
+
+## 🔮 v1.8.0 — Type System Foundations
+
+**Goal:** Complete the type system so v2.0.0 full inference has a solid base.
+
+### v1.8.1 — Union Types & Optionals
+- [ ] `int | string` union type — enforced in assignments, function params, return types
+- [ ] `int?` shorthand — complete alias for `int | nil` in all contexts: params, returns, generic args
+- [ ] Union narrowing in `if` — `if typeof(x) == "int" { /* x is int here */ }`
+- [ ] Assignment to union: `let x: int | string = 42; x = "hello"` — both must be valid
+- [ ] `test_v181.py`
+
+### v1.8.2 — Type Aliases & Literal Types
+- [ ] `type PlayerID = int` — type alias stored in scope, treated as equivalent type
+- [ ] `type Direction = "left" | "right" | "up" | "down"` — string literal union
+- [ ] `type Callback = fn(int) -> bool` — function type alias
+- [ ] Literal types in function params: `fn move(dir: "left" | "right") { }`
+- [ ] Analyzer enforces literals: `move("diagonal")` → type error
+- [ ] `test_v182.py`
+
+### v1.8.3 — Enum Exhaustiveness & Interface Enforcement
+- [ ] Enum exhaustiveness — analyzer warns when `match` on an enum misses a variant (no wildcard)
+- [ ] `struct Sprite implements Drawable { }` — check at struct declaration, not call site; error immediately if `draw()` missing
+- [ ] `never` return type — `fn crash() -> never { throw "fatal" }` — analyzer marks code after call as unreachable
+- [ ] `test_v183.py`
+
+### v1.8.4 — Type Inference for Method Chains
+- [ ] `arr.filter(fn(x)=>x>0)` infers `[int]` not `any`
+- [ ] `arr.map(fn(x)=>x*2)` preserves element type
+- [ ] Chained: `arr.filter(...).map(...).take(5)` — type flows through
+- [ ] Return type inference: `fn double(x: int) { return x * 2 }` infers `-> int` without annotation
+- [ ] `test_v184.py`
+
+---
+
+## 🔮 v1.9.0 — Pre-2.0 Migration & Spec Freeze
+
+**Goal:** Smooth upgrade path to v2.0.0. All deprecated features become hard errors. Spec frozen.
+
+### v1.9.1 — Deprecation Errors & Compat Tool
+- [ ] `inscript compat FILE` — report every v2.0.0 breaking change affecting the file
+- [ ] `inscript compat DIR` — report across all `.ins` files in directory
+- [ ] Hard errors (not warnings) for: `null`, bare `array` type without element type, `fn` without return type in strict mode
+- [ ] `--no-typecheck` flag deprecated — use `--unsafe-no-check`
+- [ ] `test_v191.py`
+
+### v1.9.2 — Package Manifest Foundation
+- [ ] `inscript init` — create `inscript.toml` in current directory
+- [ ] `inscript.toml` schema: `name`, `version`, `description`, `inscript`, `dependencies`
+- [ ] `inscript validate` — check `inscript.toml` is well-formed
+- [ ] Semantic version range parsing: `">=1.9.0"`, `"^1.8.0"`, `"~1.7.2"`
+- [ ] `inscript.lock` — generated lockfile pinning exact dependency versions with SHA-256
+- [ ] `test_v192.py`
+
+### v1.9.3 — Documentation Generation
+- [ ] `inscript doc FILE` — extract `///` doc comments from `.ins` files, output Markdown
+- [ ] `inscript doc DIR` — generate docs for entire project into `docs/api/`
+- [ ] Doc comment format: `/// Description
+/// @param name type desc
+/// @returns type desc`
+- [ ] Playground integration — doc pages include runnable examples
+- [ ] `test_v193.py`
+
+### v1.9.4 — Spec Freeze & Final Polish
+- [ ] Language spec document published at `docs.inscript.dev/spec`
+- [ ] No new syntax after this version — only bug fixes until v2.0.0
+- [ ] All stdlib functions documented with type signature, example, edge cases
+- [ ] Error code catalogue — all E0001–E0055 documented at `docs.inscript.dev/errors/`
+- [ ] `inscript changelog v1.6.0..v1.9.4` — generates human-readable changelog
+- [ ] Performance baseline published — benchmark suite results for fib(30), game_loop_10k, struct_heavy
+- [ ] `test_v194.py`
+
+
 ## Timeline
 
 ```

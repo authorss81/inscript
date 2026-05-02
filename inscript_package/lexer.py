@@ -15,7 +15,8 @@ class TT(Enum):
     FLOAT       = auto()
     STRING      = auto()
     BOOL        = auto()
-    NULL        = auto()
+    NULL        = auto()   # null (removed — hard error)
+    NIL         = auto()   # nil  (the correct nil literal)
 
     # ── Identifiers & Keywords ────────────────────
     IDENT       = auto()
@@ -175,7 +176,7 @@ KEYWORDS: dict = {
     "true":      TT.BOOL,
     "false":     TT.BOOL,
     "null":      TT.NULL,
-    "nil":       TT.NULL,   # alias for null
+    "nil":       TT.NIL,
     "import":    TT.IMPORT,
     "from":      TT.FROM,
     "as":        TT.AS,
@@ -291,16 +292,26 @@ class Lexer:
         if ch in (" ", "\t", "\r", "\n"):
             return
 
-        # // — floor-division or line comment
-        # Floor division: `10 // 3`, `x // 2`, `(a+b) // c`
-        # Comment:        `let x = 5 // this is a comment`
-        # Key rule: look at what comes AFTER the second /
-        #   - digit or ( → always floor division
-        #   - letter/word → always comment
-        # Phase 1.2: // is now ALWAYS a line comment. Floor division uses 'div' keyword.
+        # // — floor-division operator or line comment
+        # v1.7.1: `//` is now the integer division operator (10 // 3 → 3)
+        # Line comment: `let x = 5   // this is a comment` — space before //
+        # Floor division: `10 // 3`, `x//2`, `(a+b) // c`
+        # Rule: if the character BEFORE // was a digit, ), ], or identifier char → floor div
+        #        otherwise → line comment
         if ch == "/" and self.current == "/":
             self.advance()  # consume second /
-            self._skip_line_comment()
+            # Determine: floor-div or line comment?
+            # Rule: the character IMMEDIATELY before first '/' (no whitespace allowed)
+            # must be digit/identifier/closing bracket to be floor-div.
+            # Any space/tab before the // → line comment.
+            first_slash_pos = self.pos - 2
+            prev = self.source[first_slash_pos - 1] if first_slash_pos > 0 else ''
+            if prev and (prev.isdigit() or prev.isalpha() or prev in ')]}'):
+                # `10//3`, `x//2`, `(a+b)//c` — no space → floor division
+                self._emit(TT.SLASH_SLASH, "//", sl, sc)
+            else:
+                # `10 // 3` with spaces, `5 // comment`, `// standalone` → comment
+                self._skip_line_comment()
             return
         if ch == "/" and self.current == "*":
             self._skip_block_comment(sl, sc); return
@@ -497,7 +508,8 @@ class Lexer:
         text = "".join(chars)
         tt   = KEYWORDS.get(text, TT.IDENT)
         if tt == TT.BOOL:   value = (text == "true")
-        elif tt == TT.NULL: value = None
+        elif tt == TT.NIL:  value = None   # nil literal → Python None
+        elif tt == TT.NULL: value = None   # null (removed keyword — still lex it so error can fire)
         else:               value = text
         self._emit(tt, value, sl, sc)
 
@@ -522,8 +534,8 @@ class Lexer:
             elif self.match("="): emit(TT.STAR_EQ,  "*=")
             else:               emit(TT.STAR,         "*")
         elif ch == "/":
-            if self.match("="): emit(TT.SLASH_EQ,  "/=")
-            else:               emit(TT.SLASH,       "/")
+            if self.match("="):   emit(TT.SLASH_EQ,    "/=")
+            else:                 emit(TT.SLASH,         "/")
         elif ch == "%":
             if self.match("="): emit(TT.PERCENT_EQ, "%=")
             else:               emit(TT.PERCENT,     "%")

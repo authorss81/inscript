@@ -71,7 +71,7 @@ run("typeof fn",            'fn f(){}; print(typeof(f))', "function")
 run("typeof generator",     'fn* g(){yield 1}; print(typeof(g()))', "generator")
 run("typeof array",         'print(typeof([1,2,3]))', "array")
 run("typeof dict",          'print(typeof({"a":1}))', "dict")
-run("null deprecated warns", 'let x=null; print(x)') # warns but doesn't fail
+run("null removed error",    'let x=null; print(x)', expect_err=True) # v1.7.4: hard error
 
 # ══════════════════════════════════════════════════════════════════
 # SECTION 2: ARITHMETIC & OPERATORS
@@ -429,7 +429,7 @@ warn_check("async fn",         'async fn fetch(){}', "synchronous")
 warn_check("non-exhaustive",   'enum D{N S E W}; match D.N{case D.N{print("n")}}', "exhaustive")
 warn_check("float truncation", 'fn f(x:int){return x}; f(3.7)', "truncated")
 warn_check("unqualified import",'import "math"', "without alias")
-warn_check("null deprecated",  'let x=null', "deprecated")
+run("null removed error2",     'let x=null', expect_err=True) # v1.7.4: hard error
 
 # ══════════════════════════════════════════════════════════════════
 # SECTION 17: VM PARITY
