@@ -40,7 +40,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 HISTORY_FILE = Path.home() / ".inscript" / "history"
 HISTORY_FILE.parent.mkdir(parents=True, exist_ok=True)
-VERSION = "1.7.1"
+VERSION = "1.7.3"
 
 # ── ANSI colours ──────────────────────────────────────────────────────────────
 def _c(code, text):
@@ -434,6 +434,9 @@ class EnhancedREPL:
         self._history: List[str] = []
         self._session: List[str] = []
         self._last_src: str = ""
+        # v1.7.4: mark the root env as REPL-mode so `let` re-declarations
+        # silently re-bind instead of erroring ("let x=1" then "let x=2" works)
+        self._interp._env._repl_mode = True
         self._setup_readline()
 
     def _setup_readline(self):
@@ -457,6 +460,13 @@ class EnhancedREPL:
         from parser import Parser
         from errors import InScriptError
         t0 = time.perf_counter()
+
+        # v1.7.4: snapshot the top-level env so a runtime error can't corrupt
+        # previously-defined globals.  On error we restore the snapshot, which
+        # means any partial defines from the failed block are rolled back —
+        # already-defined names from prior REPL lines are always preserved.
+        env_snapshot = dict(self._interp._env._store)
+
         try:
             tokens  = Lexer(source).tokenize()
             program = Parser(tokens).parse()
@@ -474,8 +484,11 @@ class EnhancedREPL:
                 result = self._interp.run(program)
             return result, None, (time.perf_counter() - t0) * 1000
         except InScriptError as e:
+            # v1.7.4: restore globals so surviving names are untouched
+            self._interp._env._store = env_snapshot
             return None, _format_error(str(e), source), (time.perf_counter() - t0) * 1000
         except Exception as e:
+            self._interp._env._store = env_snapshot
             import traceback as _tb
             return None, f"Internal error: {e}\n{_tb.format_exc()}", (time.perf_counter() - t0) * 1000
 

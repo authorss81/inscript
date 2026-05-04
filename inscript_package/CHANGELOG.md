@@ -4,6 +4,42 @@ All notable changes are documented here. Follows [Semantic Versioning](https://s
 
 ---
 
+## [1.7.4] — 2026-05-03
+
+### REPL Stability
+
+- **Error recovery** — after a runtime error all previously-defined globals survive; partial side-effects from the failed block are rolled back via an env snapshot/restore on every `_eval()` call
+- **`let` re-definition** — `let x = 1` followed by `let x = 2` in the REPL re-binds without error (`_repl_mode` flag on the root environment)
+- **`null` hard error** — `null` now emits `E0055` with an explicit error code, consistent with the full error-code registry
+- **`inscript migrate FILE`** — rewrites `null → nil`, `div → //`, `: [] → : array` in-place; was wired in v1.7.3, now promoted and fully documented
+
+### Bug Fixes
+- `E0055` added to `ERROR_CODES` registry in `errors.py`
+- `visit_NullLiteralExpr` raises `InScriptRuntimeError(code="E0055")` directly instead of routing through `_error()` so the code is always stamped correctly
+
+---
+
+## [1.7.3] — 2026-05-03
+
+### Stack Traces — Full Call Chain in Error Output
+
+- **Source snippets per frame** — every call-stack frame now shows the exact source line being executed, matching Python's traceback style:
+  ```
+  Call stack (most recent last):
+    File "<script>", line 9, in outer
+      middle()
+    File "<script>", line 6, in middle
+      inner()
+    File "<script>", line 3, in inner
+      throw "deep error"
+  ```
+- **Accurate line numbers in nested closures and lambdas** — `Interpreter.visit()` now overrides `Visitor.visit()` and calls `_call_stack.update_top_line(node.line)` on every node dispatch; frames track the *currently executing* line, not just the call-site
+- **`InScriptCallStack` enhanced** — accepts `src_lines` at construction; `push()` stores the source snippet for each frame; `update_top_line()` updates both line and snippet as execution proceeds
+- **`CallFrame` upgraded** — `source_line: str` slot added; `as_tuple()` unchanged for backwards compatibility
+- **Stack trace shown by default** — already printed via `InScriptError._format()` / `call_trace`; now includes source snippets without requiring `--debug`
+
+---
+
 ## [1.0.0] — 2026-03-04
 
 **First stable release.** The language, standard library, LSP server, and package manager are all considered production-ready.

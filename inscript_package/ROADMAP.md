@@ -329,27 +329,27 @@ Threading/Bench, Game Visual, Game IO, Game World, Game Systems, Utilities.
 - [x] `print(10 // 3)` → `3` (int, not `3.0`)
 - [x] null keyword hard error (removed from language) — float formatting + integer division edge cases
 
-### v1.7.2 — Recursive & Self-Referential Types
-- [ ] Struct field type resolution deferred — allow `struct Node { next: Node? = nil }` without infinite recursion during struct registration
-- [ ] Mutually recursive structs — `struct A { b: B? = nil }` / `struct B { a: A? = nil }` both defined in same scope
-- [ ] `let n = Node{value:1, next: Node{value:2}}; print(n.next.value)` → `2`
-- [ ] Linked list, binary tree, trie — all must work
-- [ ] `test_v172.py` — recursive type tests
+### ✅ v1.7.2 — Recursive & Self-Referential Types (released)
+- [x] Struct field type resolution deferred — allow `struct Node { next: Node? = nil }` without infinite recursion during struct registration
+- [x] Mutually recursive structs — `struct A { b: B? = nil }` / `struct B { a: A? = nil }` both defined in same scope
+- [x] `let n = Node{value:1, next: Node{value:2}}; print(n.next.value)` → `2`
+- [x] Linked list, binary tree, trie — all must work
+- [x] `test_v172.py` — recursive type tests
 
-### v1.7.3 — Stack Traces & Error Quality
-- [ ] Full call chain in error output: `outer() → middle() → inner() → throw "err"` shows all 3 frames
-- [ ] Line numbers accurate in nested closures and lambdas
-- [ ] `InScriptCallStack.format()` shows file, function name, line, source snippet for each frame
-- [ ] Uncaught errors print stack trace to stderr by default (currently only shown with `--debug`)
-- [ ] `test_v173.py` — stack trace format and accuracy
+### ✅ v1.7.3 — Stack Traces & Error Quality (released)
+- [x] Full call chain in error output: `outer() → middle() → inner() → throw "err"` shows all 3 frames
+- [x] Line numbers accurate in nested closures and lambdas
+- [x] `InScriptCallStack.format()` shows file, function name, line, source snippet for each frame
+- [x] Uncaught errors print stack trace to stderr by default (currently only shown with `--debug`)
+- [x] `test_v173.py` — stack trace format and accuracy
 
-### v1.7.4 — REPL Stability
-- [ ] REPL error recovery — after runtime error, all previously-defined globals survive
-- [ ] REPL `let` re-definition — `let x = 1` then `let x = 2` in REPL re-binds instead of erroring
-- [ ] REPL multi-line paste — paste a full struct/fn block and REPL handles it atomically
-- [ ] `null` hard error — `null` emits `E0055: 'null' was removed in v1.7.4, use 'nil'`
-- [ ] `inscript migrate FILE` — rewrites `null` → `nil`, `x div y` → `x // y` in-place
-- [ ] `test_v174.py` — REPL stability + migration tool
+### ✅ v1.7.4 — REPL Stability (released)
+- [x] REPL error recovery — after runtime error, all previously-defined globals survive
+- [x] REPL `let` re-definition — `let x = 1` then `let x = 2` in REPL re-binds instead of erroring
+- [x] REPL multi-line paste — paste a full struct/fn block and REPL handles it atomically
+- [x] `null` hard error — `null` emits `E0055: 'null' was removed in v1.7.4, use 'nil'`
+- [x] `inscript migrate FILE` — rewrites `null` → `nil`, `x div y` → `x // y` in-place
+- [x] `test_v174.py` — REPL stability + migration tool
 
 ---
 

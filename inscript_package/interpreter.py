@@ -39,7 +39,7 @@ class Interpreter(Visitor):
         self._env     = self._globals
         self._call_depth = 0
         self._MAX_CALL_DEPTH = 500
-        self._call_stack = InScriptCallStack(filename)   # Phase 3.4
+        self._call_stack = InScriptCallStack(filename, src_lines=source_lines)   # v1.7.3
 
         # v1.3.0: dispatch cache — build once, avoids getattr on every node visit
         self._dispatch: dict = {}
@@ -74,6 +74,22 @@ class Interpreter(Visitor):
         self._env = self._env.parent
 
     # ── entry point ───────────────────────────────────────────────────────────
+
+    # v1.7.3: Override Visitor.visit() to track current execution line in the
+    # top call-stack frame.  This makes stack-trace line numbers point to the
+    # exact statement that was executing when an error occurred, rather than
+    # the call-site where the function was entered.
+    def visit(self, node) -> Any:
+        line = getattr(node, 'line', 0)
+        if line:
+            self._call_stack.update_top_line(line)
+        cls = type(node)
+        try:
+            return self._dispatch[cls](node)
+        except KeyError:
+            method = getattr(self, f"visit_{cls.__name__}", self.generic_visit)
+            self._dispatch[cls] = method
+            return method(node)
 
     def run(self, program: Program) -> Any:
         """Execute a full program."""
@@ -1288,16 +1304,18 @@ class Interpreter(Visitor):
 
     def visit_ThrowStmt(self, node) -> Any:
         val = self.visit(node.value)
-        # BUG-11 fix: tag error with the InScript type name of the thrown value
-        # so that `catch e: string` can match when `throw "hello"` is used
         if isinstance(val, str):     etype = 'string'
         elif isinstance(val, bool):  etype = 'bool'
         elif isinstance(val, int):   etype = 'int'
         elif isinstance(val, float): etype = 'float'
         else:                         etype = 'Error'
-        err = InScriptRuntimeError(str(val), node.line)
-        err.error_type = etype
-        err.thrown_value = val
+        # v1.7.3: capture full call stack at throw time
+        trace = self._call_stack.snapshot()
+        err = InScriptRuntimeError(str(val), node.line,
+                                   source_line=self._src_line(node.line),
+                                   call_trace=trace)
+        err.error_type    = etype
+        err.thrown_value  = val
         raise err
 
     def visit_TryExpr(self, node) -> Any:
@@ -1488,12 +1506,13 @@ class Interpreter(Visitor):
     def visit_StringLiteralExpr(self,n): return n.value
     def visit_BoolLiteralExpr(self,  n): return n.value
     def visit_NullLiteralExpr(self, n):
-        # v1.7.4: 'null' keyword is a hard error; 'nil' is fine
+        # v1.7.4: 'null' keyword is a hard error; 'nil' is correct
         if getattr(n, '_is_null_keyword', False):
-            self._error(
+            raise InScriptRuntimeError(
                 "'null' was removed in v1.7.4 — use 'nil' instead. "
                 "Run: inscript migrate <file> to auto-fix.",
-                getattr(n, 'line', 0)
+                getattr(n, 'line', 0),
+                code="E0055",
             )
         return None
 

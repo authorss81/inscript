@@ -53,6 +53,9 @@ ERROR_CODES = {
     "MatchError":              "E0047",
     "PropertyError":           "E0048",
     "NilAccess":               "E0049",
+
+    # Deprecated-keyword hard errors (v1.7.4)
+    "NullKeyword":             "E0055",
 }
 
 DOCS_BASE = "https://docs.inscript.dev/errors"
@@ -103,11 +106,15 @@ class InScriptError(Exception):
         if self.hint:
             parts.append(f"  Hint: {self.hint}")
 
-        # Call trace (runtime only)
+        # Call trace (runtime only) — v1.7.3: entries are (fn, file, line, src) 4-tuples
         if self.call_trace:
             parts.append("\nCall stack (most recent last):")
-            for fn, file, ln in self.call_trace:
+            for entry in self.call_trace:
+                fn, file, ln = entry[0], entry[1], entry[2]
+                src = entry[3] if len(entry) > 3 else ""
                 parts.append(f"  File \"{file}\", line {ln}, in {fn}")
+                if src:
+                    parts.append(f"    {src}")
 
         # Docs link
         parts.append(f"  See: {DOCS_BASE}/{code}")
@@ -222,11 +229,12 @@ class InScriptWarning:
 # ─────────────────────────────────────────────────────────────────────────────
 
 class CallFrame:
-    __slots__ = ("fn_name", "file", "line")
-    def __init__(self, fn_name: str, file: str, line: int):
-        self.fn_name = fn_name
-        self.file    = file
-        self.line    = line
+    __slots__ = ("fn_name", "file", "line", "source_line")
+    def __init__(self, fn_name: str, file: str, line: int, source_line: str = ""):
+        self.fn_name     = fn_name
+        self.file        = file
+        self.line        = line
+        self.source_line = source_line   # v1.7.3: source snippet at this frame
 
     def as_tuple(self) -> Tuple[str, str, int]:
         return (self.fn_name, self.file, self.line)
@@ -239,40 +247,54 @@ class InScriptCallStack:
     """
     MAX_FRAMES = 200
 
-    def __init__(self, filename: str = "<script>"):
+    def __init__(self, filename: str = "<script>", src_lines: list = None):
         self._frames: List[CallFrame] = []
         self._file   = filename
+        self._src    = src_lines or []   # v1.7.3: source lines for per-frame snippets
+
+    def _lookup_src(self, line: int) -> str:
+        """Return stripped source line, or '' if unavailable."""
+        if self._src and 0 < line <= len(self._src):
+            return self._src[line - 1].strip()
+        return ""
 
     def push(self, fn_name: str, line: int):
         if len(self._frames) < self.MAX_FRAMES:
-            self._frames.append(CallFrame(fn_name, self._file, line))
+            self._frames.append(
+                CallFrame(fn_name, self._file, line, self._lookup_src(line))
+            )
 
     def pop(self):
         if self._frames:
             self._frames.pop()
 
     def snapshot(self) -> List[Tuple[str, str, int]]:
-        """Return a copy of current frames as list of (fn, file, line) tuples."""
-        return [f.as_tuple() for f in self._frames]
+        """Return a copy of current frames as (fn, file, line, source_line) 4-tuples.
+        Backwards-compatible: consumers that only unpack 3 elements still work."""
+        return [(f.fn_name, f.file, f.line, f.source_line) for f in self._frames]
 
     def update_top_line(self, line: int):
-        """Keep top frame's line number current as execution proceeds."""
-        if self._frames:
-            self._frames[-1].line = line
+        """v1.7.3: Keep top frame's line number AND source snippet current during execution."""
+        if self._frames and line:
+            f             = self._frames[-1]
+            f.line        = line
+            f.source_line = self._lookup_src(line)
 
     def format(self) -> str:
         if not self._frames:
             return ""
-        lines = ["Call stack (most recent last):"]
-        shown = self._frames
+        lines     = ["Call stack (most recent last):"]
+        shown     = self._frames
         truncated = 0
         if len(shown) > 20:
             truncated = len(shown) - 20
-            shown = shown[-20:]
+            shown     = shown[-20:]
         if truncated:
             lines.append(f"  ... {truncated} earlier frame(s) ...")
         for f in shown:
             lines.append(f'  File "{f.file}", line {f.line}, in {f.fn_name}')
+            if f.source_line:                        # v1.7.3: source snippet per frame
+                lines.append(f"    {f.source_line}")
         return "\n".join(lines)
 
 

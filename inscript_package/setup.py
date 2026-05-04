@@ -11,7 +11,7 @@ from setuptools import setup, find_packages
 
 setup(
     name             = "inscript-lang",
-    version          = "1.7.1",
+    version          = "1.7.2",
     author           = "Shreyasi Sarkar",
     description      = "InScript — a game-focused scripting language for 2D games",
     long_description = open("README.md", encoding="utf-8").read(),

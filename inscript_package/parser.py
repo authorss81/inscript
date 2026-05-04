@@ -444,6 +444,9 @@ class Parser:
                             TT.STRING_TYPE, TT.VOID_TYPE, TT.IDENT):
                 name = tok.value
                 self.advance()
+            elif tok.type == TT.NIL:   # v1.7.2: nil as type annotation
+                name = "nil"
+                self.advance()
             else:
                 self._error(f"Expected type name, got '{tok.value}'")
             ann = TypeAnnotation(name=name, line=line, col=col)
@@ -885,9 +888,11 @@ class Parser:
         # e.g.  items: []   or  count: 0   or  value: nil
         type_ann = None
         _type_starts = (TT.IDENT, TT.INT_TYPE, TT.FLOAT_TYPE, TT.BOOL_TYPE,
-                        TT.STRING_TYPE, TT.VOID_TYPE, TT.LBRACE, TT.LPAREN)
+                        TT.STRING_TYPE, TT.VOID_TYPE, TT.LBRACE, TT.LPAREN,
+                        TT.NIL)   # v1.7.2: nil is a valid type (nullable/any)
         # Tokens that unambiguously start a literal default (not a type name)
-        _default_starts = (TT.NIL, TT.NULL, TT.BOOL, TT.INT, TT.FLOAT, TT.STRING, TT.MINUS)
+        # Note: TT.NIL removed — could be type OR default; handled by _type_starts
+        _default_starts = (TT.NULL, TT.BOOL, TT.INT, TT.FLOAT, TT.STRING, TT.MINUS)
 
         if self.check(TT.LBRACKET):
             if self.peek.type != TT.RBRACKET:

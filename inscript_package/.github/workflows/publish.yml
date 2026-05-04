@@ -52,6 +52,7 @@ jobs:
           python test_v140.py
           python test_v150.py
           python test_v160.py
+          python test_v172.py
 
   build:
     name: Build distribution
