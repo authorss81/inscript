@@ -357,7 +357,7 @@ Threading/Bench, Game Visual, Game IO, Game World, Game Systems, Utilities.
 
 **Goal:** Complete the type system so v2.0.0 full inference has a solid base.
 
-### v1.8.1 — Union Types & Optionals
+### ✅ v1.8.1 — Union Types & Optionals (released)
 - [ ] `int | string` union type — enforced in assignments, function params, return types
 - [ ] `int?` shorthand — complete alias for `int | nil` in all contexts: params, returns, generic args
 - [ ] Union narrowing in `if` — `if typeof(x) == "int" { /* x is int here */ }`

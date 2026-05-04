@@ -87,6 +87,31 @@ def array_type(elem: InScriptType) -> InScriptType:
 def dict_type(key: InScriptType, val: InScriptType) -> InScriptType:
     return InScriptType("Dict", [key, val])
 
+def union_type(*members: InScriptType) -> InScriptType:
+    """v1.8.1: Create a Union type from two or more member types.
+    Flattens nested unions; deduplicates; single-member unions collapse."""
+    flat = []
+    seen = set()
+    for m in members:
+        if m.name == "Union":
+            for p in m.params:
+                if p not in seen:
+                    flat.append(p); seen.add(p)
+        else:
+            if m not in seen:
+                flat.append(m); seen.add(m)
+    if len(flat) == 1:
+        return flat[0]
+    return InScriptType("Union", flat)
+
+def optional_type(inner: InScriptType) -> InScriptType:
+    """v1.8.1: `T?` is sugar for `T | nil`."""
+    return union_type(inner, T_NULL)
+
+def union_members(t: InScriptType) -> list:
+    """v1.8.1: Return list of member types (works on non-unions too)."""
+    return t.params if t.name == "Union" else [t]
+
 def is_numeric(t: InScriptType) -> bool:
     return t in (T_INT, T_FLOAT)
 
@@ -104,8 +129,17 @@ def types_compatible(expected: InScriptType, got: InScriptType) -> bool:
     if expected == got: return True
     # int can widen to float
     if expected == T_FLOAT and got == T_INT: return True
-    # null can be assigned to any type
-    if got == T_NULL: return True
+    # null/nil can be assigned to any nullable or union containing nil
+    if got == T_NULL:
+        if expected == T_NULL: return True
+        if expected.name == "Union" and T_NULL in expected.params: return True
+        return False
+    # v1.8.1: if expected is a Union, got must be a member (or compatible with one)
+    if expected.name == "Union":
+        return any(types_compatible(m, got) for m in expected.params)
+    # v1.8.1: if got is a Union, every member must be compatible with expected
+    if got.name == "Union":
+        return all(types_compatible(expected, m) for m in got.params)
     # Array<X> compatible with Array<any> and vice versa
     if expected.name == "Array" and got.name == "Array": return True
     # Dict<K,V> compatible with Dict<any,any>
@@ -290,6 +324,18 @@ class Analyzer(Visitor):
             k = self._resolve_type_ann(ann.key_type) if ann.key_type else T_STRING
             v = self._resolve_type_ann(ann.generics[0]) if ann.generics else T_ANY
             return dict_type(k, v)
+
+        # v1.8.1: `T?` — nullable shorthand, parsed as TypeAnnotation(name="Optional",
+        # is_nullable=True, generics=[T])
+        if ann.is_nullable or ann.name == "Optional":
+            inner = self._resolve_type_ann(ann.generics[0]) if ann.generics else T_ANY
+            return optional_type(inner)
+
+        # v1.8.1: `A | B | C` — union type, parsed as TypeAnnotation(name="Union",
+        # generics=[A, B, C])
+        if ann.name == "Union":
+            members = [self._resolve_type_ann(g) for g in ann.generics]
+            return union_type(*members)
 
         if ann.name in BUILTIN_TYPES:
             return BUILTIN_TYPES[ann.name]
@@ -727,6 +773,36 @@ class Analyzer(Visitor):
             self._error("'continue' outside of loop", node.line, node.col)
         return T_VOID
 
+    def _extract_typeof_narrowing(self, condition) -> tuple:
+        """v1.8.1: If condition is `typeof(x) == "T"` return (var_name, narrowed_type).
+        Returns (None, None) if the condition is not that pattern."""
+        if not (hasattr(condition, 'op') and condition.op == "=="):
+            return (None, None)
+        left, right = condition.left, condition.right
+        # Support both sides for the string literal
+        if (hasattr(right, 'args') and isinstance(getattr(right, 'callee', None), object)
+                and hasattr(left, 'value') and isinstance(left.value, str)):
+            left, right = right, left
+        # left must be a CallExpr(callee=IdentExpr("typeof"|"type"), args=[IdentExpr])
+        if not hasattr(left, 'callee') or not hasattr(left, 'args'):
+            return (None, None)
+        callee_name = getattr(left.callee, 'name', None)
+        if callee_name not in ("typeof", "type"):
+            return (None, None)
+        if not left.args:
+            return (None, None)
+        arg0 = left.args[0]
+        arg_val = getattr(arg0, 'value', arg0)  # Argument node wraps value
+        var_name = getattr(arg_val, 'name', None)
+        if var_name is None:
+            return (None, None)
+        # right must be a StringLiteralExpr
+        if not hasattr(right, 'value') or not isinstance(right.value, str):
+            return (None, None)
+        type_name = right.value
+        narrow_to = BUILTIN_TYPES.get(type_name, InScriptType(type_name))
+        return (var_name, narrow_to)
+
     def visit_IfStmt(self, node: IfStmt) -> InScriptType:
         cond_type = self.visit(node.condition)
         if cond_type not in (T_BOOL, T_ANY):
@@ -735,7 +811,29 @@ class Analyzer(Visitor):
                 f"non-bool conditions will be truthy/falsy at runtime",
                 node.line
             )
-        self.visit(node.then_branch)
+
+        # v1.8.1: union narrowing — `if typeof(x) == "int" { }` narrows x to int
+        var_name, narrow_to = self._extract_typeof_narrowing(node.condition)
+        if var_name and narrow_to:
+            # Push a scope, inject narrowed binding, then visit the BODY STATEMENTS
+            # directly so the narrowed type is visible for the entire then-branch.
+            self._push_scope("block")
+            sym = self._scope.parent.lookup(var_name) if self._scope.parent else None
+            if sym:
+                narrowed_sym = Symbol(var_name, narrow_to, sym.kind,
+                                      line=sym.line, col=sym.col)
+                narrowed_sym.used = True
+                self._define(narrowed_sym)
+            # Visit body stmts without letting visit_BlockStmt push another scope
+            from ast_nodes import BlockStmt
+            body = node.then_branch
+            stmts = body.body if isinstance(body, BlockStmt) else [body]
+            for stmt in stmts:
+                self.visit(stmt)
+            self._pop_scope()
+        else:
+            self.visit(node.then_branch)
+
         if node.else_branch:
             self.visit(node.else_branch)
         return T_VOID
@@ -1023,6 +1121,20 @@ class Analyzer(Visitor):
                             f"Too many arguments: '{node.callee.name}' expects at most "
                             f"{n_total} arg(s), got {n_args}",
                             node.line
+                        )
+                # v1.8.1: check argument types against declared param types
+                for i, arg in enumerate(node.args):
+                    if i >= len(params):
+                        break
+                    p_type = self._resolve_type_ann(params[i].type_ann)
+                    if p_type == T_ANY:
+                        continue
+                    arg_type = self.visit(arg.value)
+                    if not types_compatible(p_type, arg_type):
+                        self._error(
+                            f"Argument {i+1} to '{node.callee.name}': "
+                            f"expected '{p_type}', got '{arg_type}'",
+                            getattr(arg.value, 'line', node.line)
                         )
                 return self._resolve_type_ann(fn.return_type)
             if sym:

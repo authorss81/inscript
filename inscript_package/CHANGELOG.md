@@ -4,7 +4,23 @@ All notable changes are documented here. Follows [Semantic Versioning](https://s
 
 ---
 
-## [1.7.4] — 2026-05-03
+## [1.8.1] — 2026-05-04
+
+### Union Types & Optionals
+
+- **`int | string` union type** — declared in `let`, `const`, function params, return types, and struct fields; enforced at static analysis time
+- **`T?` optional shorthand** — `int?` is full sugar for `int | nil` in all positions
+- **Union assignment** — both member types are accepted; non-members are a `SemanticError`
+- **Argument type checking** — `visit_CallExpr` now validates each argument against its declared param type (union-aware); previously only arg *count* was checked
+- **Union narrowing** — `if typeof(x) == "int" { }` narrows `x` to `int` inside the then-branch; uses a scope shadow so the narrowed binding is visible to all body statements
+- **Nested union flattening** — `union_type((int|string), bool)` → `Union<int, string, bool>`; single-member unions collapse to the plain type
+- **`types_compatible` upgraded** — handles `Union` on both sides, `T?` nil-check, int→float widening inside unions
+- **`union_type()`, `optional_type()`, `union_members()`** — new helpers in `analyzer.py`
+- **`E0055` in `BUILTIN_TYPES`** — `null` and `nil` both resolve to `T_NULL` cleanly
+
+---
+
+
 
 ### REPL Stability
 
