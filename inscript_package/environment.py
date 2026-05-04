@@ -16,9 +16,16 @@ class Environment:
         self.name:    str                    = name
         self._store:   Dict[str, Any]         = {}
         self._consts: set                    = set()   # names that cannot be reassigned
+        # v1.7.4: when True, `let` re-declarations silently re-bind (REPL mode)
+        self._repl_mode: bool                = False
 
     # ── Define ────────────────────────────────────────────────────────────────
     def define(self, name: str, value: Any, is_const: bool = False) -> None:
+        # v1.7.4: in REPL mode, re-declaring an existing non-const `let` just
+        # re-binds it.  Attempting to re-declare a const is still an error.
+        if self._repl_mode and name in self._store and name in self._consts:
+            raise InScriptRuntimeError(
+                f"Cannot re-declare constant '{name}' in REPL", 0)
         self._store[name]   = value
         if is_const:
             self._consts.add(name)
