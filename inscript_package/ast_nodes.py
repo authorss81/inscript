@@ -49,6 +49,11 @@ class TypeAnnotation(Node):
     is_nullable: bool = False
     key_type:  Optional["TypeAnnotation"] = None
     nullable:  bool = False
+    # v1.8.2: for string literal types `"left"` in unions / params
+    literal_value: Optional[str] = None   # set when name == "__literal__"
+    # v1.8.2: for fn type aliases `fn(int) -> bool`
+    fn_params:     Optional[list] = None  # list of TypeAnnotation
+    fn_return:     Optional["TypeAnnotation"] = None
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -717,9 +722,10 @@ class DecoratedDecl(Node):
 
 @dataclass
 class TypeAliasDecl(Node):
-    """type ID = ExistingType — type alias (annotation only at runtime)."""
-    name:   str
-    target: str
+    """type ID = ExistingType | fn(...)->T | "lit1"|"lit2" — type alias."""
+    name:        str
+    target:      str          # kept for backwards compat with interpreter
+    type_ann:    object = None  # TypeAnnotation (None for legacy string-only aliases)
 
 @dataclass
 class SelectStmt(Node):

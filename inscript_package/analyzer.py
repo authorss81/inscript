@@ -112,6 +112,20 @@ def union_members(t: InScriptType) -> list:
     """v1.8.1: Return list of member types (works on non-unions too)."""
     return t.params if t.name == "Union" else [t]
 
+def literal_type(value: str) -> InScriptType:
+    """v1.8.2: A string-literal type like `"left"` or `"right"`."""
+    return InScriptType("__literal__", [value])   # params[0] is the string value
+
+def fn_type(param_types: list, return_type: InScriptType) -> InScriptType:
+    """v1.8.2: A function type `fn(int,string)->bool`."""
+    return InScriptType("__fn__", param_types + [return_type])
+
+def is_literal_type(t: InScriptType) -> bool:
+    return t.name == "__literal__"
+
+def literal_value(t: InScriptType) -> str:
+    return t.params[0] if t.params else ""
+
 def is_numeric(t: InScriptType) -> bool:
     return t in (T_INT, T_FLOAT)
 
@@ -140,6 +154,25 @@ def types_compatible(expected: InScriptType, got: InScriptType) -> bool:
     # v1.8.1: if got is a Union, every member must be compatible with expected
     if got.name == "Union":
         return all(types_compatible(expected, m) for m in got.params)
+    # v1.8.2: string literal type — `"left"` is compatible with string
+    if is_literal_type(expected):
+        # Expected a specific literal: got must be the same literal
+        if is_literal_type(got):
+            return literal_value(expected) == literal_value(got)
+        # A plain string variable can fill a literal slot (runtime check)
+        return got == T_STRING
+    if is_literal_type(got):
+        # A literal can always fill a plain string slot
+        if expected == T_STRING: return True
+        # A literal can fill a Union<string, ...> slot
+        if expected.name == "Union":
+            return any(types_compatible(m, got) for m in expected.params)
+        return False
+    # v1.8.2: fn types — compatible if same signature, or got is T_ANY/Function (lambda)
+    if expected.name == "__fn__":
+        if got == T_ANY: return True
+        if got.name in ("Function", "__fn__"): return True
+        return False
     # Array<X> compatible with Array<any> and vice versa
     if expected.name == "Array" and got.name == "Array": return True
     # Dict<K,V> compatible with Dict<any,any>
@@ -233,6 +266,7 @@ class Analyzer(Visitor):
         self._in_scene:    bool = False
         self._in_match_arm: bool = False
         self._struct_defs: Dict[str, StructDecl] = {}
+        self._type_aliases: Dict[str, "InScriptType"] = {}  # v1.8.2: registered aliases
 
         # Pre-register built-in global functions
         self._register_builtins()
@@ -325,20 +359,32 @@ class Analyzer(Visitor):
             v = self._resolve_type_ann(ann.generics[0]) if ann.generics else T_ANY
             return dict_type(k, v)
 
-        # v1.8.1: `T?` — nullable shorthand, parsed as TypeAnnotation(name="Optional",
-        # is_nullable=True, generics=[T])
+        # v1.8.1: `T?` — nullable shorthand
         if ann.is_nullable or ann.name == "Optional":
             inner = self._resolve_type_ann(ann.generics[0]) if ann.generics else T_ANY
             return optional_type(inner)
 
-        # v1.8.1: `A | B | C` — union type, parsed as TypeAnnotation(name="Union",
-        # generics=[A, B, C])
+        # v1.8.1: `A | B | C` — union type
         if ann.name == "Union":
             members = [self._resolve_type_ann(g) for g in ann.generics]
             return union_type(*members)
 
+        # v1.8.2: string literal type — `"left"`
+        if ann.name == "__literal__":
+            return literal_type(ann.literal_value or "")
+
+        # v1.8.2: fn type — `fn(int) -> bool`
+        if ann.name == "__fn__":
+            params = [self._resolve_type_ann(p) for p in (ann.fn_params or [])]
+            ret    = self._resolve_type_ann(ann.fn_return) if ann.fn_return else T_ANY
+            return fn_type(params, ret)
+
         if ann.name in BUILTIN_TYPES:
             return BUILTIN_TYPES[ann.name]
+
+        # v1.8.2: registered type aliases
+        if ann.name in self._type_aliases:
+            return self._type_aliases[ann.name]
 
         # Check user-defined structs
         if ann.name in self._struct_defs:
@@ -474,7 +520,9 @@ class Analyzer(Visitor):
         return self._scope.symbols
 
     def _hoist_top_level(self, program: Program):
-        """Register structs, scenes, and top-level functions before checking bodies."""
+        """Register structs, scenes, top-level functions, and type aliases before checking bodies."""
+        from ast_nodes import TypeAliasDecl
+        # First sub-pass: register type aliases and structs (order-independent)
         for node in program.body:
             if isinstance(node, StructDecl):
                 self._struct_defs[node.name] = node
@@ -483,7 +531,21 @@ class Analyzer(Visitor):
                     kind="struct", struct_node=node,
                     line=node.line, col=node.col
                 )
-            elif isinstance(node, FunctionDecl):
+            elif isinstance(node, TypeAliasDecl):
+                # v1.8.2: register alias immediately so functions can use it
+                type_ann = getattr(node, 'type_ann', None)
+                if type_ann is not None:
+                    resolved = self._resolve_type_ann(type_ann)
+                else:
+                    resolved = BUILTIN_TYPES.get(node.target, InScriptType(node.target))
+                self._type_aliases[node.name] = resolved
+                self._scope.symbols[node.name] = Symbol(
+                    node.name, resolved, kind="type",
+                    line=node.line, col=node.col
+                )
+        # Second sub-pass: hoist functions, scenes, enums (can now reference aliases)
+        for node in program.body:
+            if isinstance(node, FunctionDecl):
                 ret  = self._resolve_type_ann(node.return_type)
                 self._scope.symbols[node.name] = Symbol(
                     node.name, ret, kind="fn", fn_node=node,
@@ -497,7 +559,7 @@ class Analyzer(Visitor):
             elif isinstance(node, EnumDecl):
                 self._scope.symbols[node.name] = Symbol(
                     node.name, InScriptType(node.name), kind="enum",
-                    fn_node=node,  # store EnumDecl for exhaustiveness checks
+                    fn_node=node,
                     line=node.line, col=node.col
                 )
 
@@ -694,6 +756,19 @@ class Analyzer(Visitor):
                 line=variant.line, col=variant.col
             )
         return enum_type
+
+    def visit_TypeAliasDecl(self, node) -> InScriptType:
+        """v1.8.2: Register a type alias so annotations can reference it by name."""
+        if hasattr(node, 'type_ann') and node.type_ann is not None:
+            resolved = self._resolve_type_ann(node.type_ann)
+        else:
+            # Legacy alias with only a target string
+            resolved = BUILTIN_TYPES.get(node.target, InScriptType(node.target))
+        self._type_aliases[node.name] = resolved
+        # Also register in scope so the name is "used" and not flagged undefined
+        self._scope.symbols[node.name] = Symbol(node.name, resolved, kind="type",
+                                                 line=node.line, col=node.col)
+        return T_VOID
 
     def visit_ImportDecl(self, node: ImportDecl) -> InScriptType:
         """Register imported symbols so the type checker knows about them."""
@@ -952,7 +1027,9 @@ class Analyzer(Visitor):
 
     def visit_IntLiteralExpr(self, node: IntLiteralExpr)   -> InScriptType: return T_INT
     def visit_FloatLiteralExpr(self, node: FloatLiteralExpr) -> InScriptType: return T_FLOAT
-    def visit_StringLiteralExpr(self, node: StringLiteralExpr) -> InScriptType: return T_STRING
+    def visit_StringLiteralExpr(self, node: StringLiteralExpr) -> InScriptType:
+        # v1.8.2: return a specific literal type so union-of-literals is enforced
+        return literal_type(node.value)
     def visit_BoolLiteralExpr(self, node: BoolLiteralExpr) -> InScriptType: return T_BOOL
     def visit_NullLiteralExpr(self, node: NullLiteralExpr) -> InScriptType: return T_NULL
 

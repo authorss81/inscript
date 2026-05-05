@@ -143,3 +143,18 @@ All notable changes are documented here. Follows [Semantic Versioning](https://s
 - Full standard library (first 13 modules)
 - VS Code extension (syntax highlighting + snippets)
 - REPL with tab completion and session history
+
+## [1.8.2] — 2026-05-04
+
+### Type Aliases, Literal Types & fn Types
+
+- **`type ID = T`** — type aliases fully enforced in `let`, `const`, function params, return types, and struct fields; aliases are hoisted in a pre-pass so functions can reference an alias declared after them
+- **`type Dir = "left" | "right"`** — union-of-string-literals; passing any non-member literal is a `SemanticError`
+- **`type Pred = fn(int) -> bool`** — function type aliases; any `fn` literal or named function is accepted at the call site
+- **Inline literal types** — `fn move(d: "left" | "right")` works directly without a named alias; invalid string arguments are caught statically
+- **`visit_StringLiteralExpr` returns `literal_type()`** — string literals now carry their value as a type so literal-union checking is exact
+- **Chained aliases** — `type UID = PlayerID` where `PlayerID` is itself an alias resolves correctly
+- **`_hoist_top_level` two-pass** — aliases and structs registered first, functions second; eliminates "Unknown type" errors when a function's return type references an alias declared earlier in the file
+- **New helpers** — `literal_type()`, `fn_type()`, `is_literal_type()`, `literal_value()` in `analyzer.py`
+- **`TypeAnnotation`** — gained `literal_value`, `fn_params`, `fn_return` fields
+- **`TypeAliasDecl`** — gained `type_ann: TypeAnnotation` field (backwards-compatible; `target: str` kept)

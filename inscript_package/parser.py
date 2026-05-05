@@ -216,23 +216,17 @@ class Parser:
     # ─────────────────────────────────────────────
 
     def parse_type_alias(self):
-        """type ID = ExistingType — type alias declaration (annotation only)."""
+        """type ID = TypeAnnotation — supports simple, union, literal union, fn types."""
         line, col = self.current.line, self.current.col
         self.advance()  # consume 'type'
         name = self.expect(TT.IDENT, "Expected alias name after 'type'").value
         self.expect(TT.ASSIGN, "Expected '=' in type alias")
-        # Consume the type expression (could be int, string, ident, etc.)
-        target_tok = self.current
-        target_name = target_tok.value or target_tok.type.name
-        self.advance()
-        # Handle qualified names like MyModule.MyType
-        while self.check(TT.DOT):
-            self.advance()
-            target_name += "." + (self.current.value or "")
-            self.advance()
-        # Return a simple VarDecl so the interpreter stores name in env as a type tag
+        # v1.8.2: parse a full type annotation (including string literal unions, fn types)
+        type_ann = self.parse_type_annotation()
+        # target: for backwards compat with interpreter, derive a string name
+        target = type_ann.name if type_ann.name not in ("__literal__", "__fn__", "Union") else name
         from ast_nodes import TypeAliasDecl
-        return TypeAliasDecl(name=name, target=target_name, line=line, col=col)
+        return TypeAliasDecl(name=name, target=target, type_ann=type_ann, line=line, col=col)
 
     def parse_import(self) -> ImportDecl:
         """
@@ -447,6 +441,40 @@ class Parser:
             elif tok.type == TT.NIL:   # v1.7.2: nil as type annotation
                 name = "nil"
                 self.advance()
+            # v1.8.2: string literal type — `"left"` in union / param
+            elif tok.type == TT.STRING:
+                lit = tok.value
+                self.advance()
+                ann = TypeAnnotation(name="__literal__", literal_value=lit,
+                                     line=line, col=col)
+                # Union suffix handled below — return early for nullable/union
+                if self.current.type == TT.QUESTION:
+                    self.advance()
+                    ann = TypeAnnotation(name="Optional", is_nullable=True,
+                                        generics=[ann], line=line, col=col)
+                if self.current.type == TT.BIT_OR:
+                    union_types = [ann]
+                    while self.current.type == TT.BIT_OR:
+                        self.advance()
+                        union_types.append(self.parse_type_annotation())
+                    ann = TypeAnnotation(name="Union", generics=union_types, line=line, col=col)
+                return ann
+            # v1.8.2: fn type alias — `fn(int, string) -> bool`
+            elif tok.type == TT.FN:
+                self.advance()   # consume 'fn'
+                self.expect(TT.LPAREN, "Expected '(' in fn type")
+                fn_params = []
+                if not self.check(TT.RPAREN):
+                    fn_params.append(self.parse_type_annotation())
+                    while self.match(TT.COMMA):
+                        fn_params.append(self.parse_type_annotation())
+                self.expect(TT.RPAREN, "Expected ')' in fn type")
+                fn_return = None
+                if self.match(TT.ARROW):
+                    fn_return = self.parse_type_annotation()
+                ann = TypeAnnotation(name="__fn__", fn_params=fn_params,
+                                     fn_return=fn_return, line=line, col=col)
+                return ann
             else:
                 self._error(f"Expected type name, got '{tok.value}'")
             ann = TypeAnnotation(name=name, line=line, col=col)

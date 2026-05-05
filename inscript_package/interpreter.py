@@ -937,9 +937,13 @@ class Interpreter(Visitor):
         return iface
 
     def visit_TypeAliasDecl(self, node) -> Any:
-        """type ID = ExistingType — store alias so type annotations can reference it."""
-        # Runtime effect: register the alias name so it can be used in is/as checks
-        self._env.define(node.name, {"__type_alias__": True, "__target__": node.target})
+        """v1.8.2: Register alias so it can be used in typeof/is checks at runtime."""
+        type_ann = getattr(node, 'type_ann', None)
+        self._env.define(node.name, {
+            "__type_alias__": True,
+            "__target__":     node.target,
+            "__type_ann__":   type_ann,
+        })
         return None
 
     def visit_ImplDecl(self, node) -> Any:
