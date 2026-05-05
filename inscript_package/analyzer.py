@@ -635,6 +635,17 @@ class Analyzer(Visitor):
     def visit_FunctionDecl(self, node: FunctionDecl) -> InScriptType:
         ret_type = self._resolve_type_ann(node.return_type)
 
+        # v1.8.4: return type inference — if no annotation and body has a single
+        # unambiguous return type, infer it automatically
+        if node.return_type is None and ret_type == T_ANY and node.body:
+            inferred = self._infer_fn_return_type(node)
+            if inferred not in (T_ANY, T_VOID, T_NULL):
+                ret_type = inferred
+                # Update the hoisted symbol's type to the inferred one
+                existing = self._scope.lookup(node.name)
+                if existing and existing.kind == "fn":
+                    existing.type_ = ret_type
+
         # Register in current scope (if not already hoisted)
         if not self._scope.lookup_local(node.name):
             self._define(Symbol(
@@ -1290,8 +1301,288 @@ class Analyzer(Visitor):
                 return sym.type_
 
         if isinstance(node.callee, GetAttrExpr):
+            # v1.8.4: infer return types of array method chains
+            obj_type = self.visit(node.callee.obj)
+            # v1.8.2 literal_type("hello") → dispatch as T_STRING
+            if is_literal_type(obj_type):
+                obj_type = T_STRING
+            method   = node.callee.attr
+            return self._infer_method_call_type(obj_type, method, node)
+
+        return T_ANY
+
+    def _infer_method_call_type(self, obj_type: InScriptType,
+                                 method: str, call_node) -> InScriptType:
+        """
+        v1.8.4: Infer the return type of a method call based on the receiver's type.
+
+        Array methods:
+          .map(fn)      → Array<T> where T = inferred return type of fn
+          .filter(fn)   → Array<elem>  (same element type, just fewer items)
+          .flatMap(fn)  → Array<T>
+          .take(n)      → Array<elem>
+          .skip(n)      → Array<elem>
+          .slice(a,b)   → Array<elem>
+          .sorted()     → Array<elem>
+          .reversed()   → Array<elem>
+          .unique()     → Array<elem>
+          .len()        → int
+          .count()      → int
+          .sum()        → int | float
+          .first()      → elem?   (optional)
+          .last()       → elem?
+          .find(fn)     → elem?
+          .any(fn)      → bool
+          .all(fn)      → bool
+          .reduce(fn,i) → any (can't infer accumulator type without annotation)
+          .join(sep)    → string
+          .push(v)      → void
+          .pop()        → elem?
+          .contains(v)  → bool
+          .index_of(v)  → int?
+
+        String methods:
+          .split(sep)   → Array<string>
+          .trim()       → string
+          .upper()      → string
+          .lower()      → string
+          .replace(...) → string
+          .starts_with()→ bool
+          .ends_with()  → bool
+          .contains()   → bool
+          .len()        → int
+          .chars()      → Array<string>
+        """
+        # ── Array method inference ────────────────────────────────────────────
+        if obj_type.name == "Array":
+            elem = obj_type.params[0] if obj_type.params else T_ANY
+
+            # Methods that return Array<same-elem>
+            if method in ("filter", "take", "skip", "slice", "sorted",
+                          "reversed", "unique", "shuffle", "concat"):
+                return array_type(elem)
+
+            # .map(fn) / .flatMap(fn) → infer fn return type
+            if method in ("map", "flatMap"):
+                fn_ret = self._infer_fn_arg_return(call_node, arg_index=0, param_type=elem)
+                inner  = fn_ret if fn_ret != T_ANY else T_ANY
+                if method == "flatMap" and inner.name == "Array":
+                    inner = inner.params[0] if inner.params else T_ANY
+                return array_type(inner)
+
+            # Scalar reductions
+            if method in ("len", "count", "index_of"):
+                return T_INT
+            if method == "sum":
+                return elem if elem in (T_INT, T_FLOAT) else T_INT
+            if method in ("any", "all", "contains", "is_empty"):
+                return T_BOOL
+            if method == "join":
+                return T_STRING
+            if method in ("push", "append", "extend", "clear", "insert",
+                          "remove", "remove_at"):
+                return T_VOID
+
+            # Optional-returning methods
+            if method in ("first", "last", "pop", "find", "get"):
+                return optional_type(elem)
+
+            # .reduce → T_ANY (accumulator type unknown without annotation)
+            if method == "reduce":
+                return T_ANY
+
+            # .each(fn) → void (side-effect traversal)
+            if method in ("each", "for_each"):
+                return T_VOID
+
+        # ── String method inference ───────────────────────────────────────────
+        if obj_type == T_STRING:
+            if method in ("trim", "upper", "lower", "replace", "strip",
+                          "lstrip", "rstrip", "pad_left", "pad_right",
+                          "repeat", "reverse", "slice"):
+                return T_STRING
+            if method in ("len", "count", "index_of", "find"):
+                return T_INT
+            if method in ("starts_with", "ends_with", "contains", "is_empty",
+                          "matches"):
+                return T_BOOL
+            if method == "split":
+                return array_type(T_STRING)
+            if method == "chars":
+                return array_type(T_STRING)
+            if method == "to_int":
+                return optional_type(T_INT)
+            if method == "to_float":
+                return optional_type(T_FLOAT)
+
+        # ── Int / Float methods ───────────────────────────────────────────────
+        if obj_type in (T_INT, T_FLOAT):
+            if method in ("abs", "floor", "ceil", "round", "sqrt",
+                          "clamp", "min", "max"):
+                return obj_type
+            if method == "to_string":
+                return T_STRING
+
+        # ── Struct method return type ─────────────────────────────────────────
+        if obj_type.name in self._struct_defs:
+            struct = self._struct_defs[obj_type.name]
+            for m in (struct.methods or []):
+                if m.name == method:
+                    return self._resolve_type_ann(m.return_type)
+
+        return T_ANY
+
+    def _infer_fn_return_type(self, node) -> InScriptType:
+        """
+        v1.8.4: Infer a function's return type from its body when no annotation exists.
+        Only infers when ALL return paths agree on the same concrete type.
+        Falls back to T_ANY if ambiguous.
+        NOTE: errors are suppressed — inference is best-effort, never raises.
+        """
+        from ast_nodes import ReturnStmt, BlockStmt
+
+        if not node.body:
+            return T_VOID
+
+        # Stash and suppress the real error list — inference must never pollute it
+        saved_errors = self._errors
+        self._errors  = []
+
+        try:
+            # Push a temporary scope with params typed per their annotations
+            self._push_scope("infer-fn")
+            for p in (node.params or []):
+                p_type = self._resolve_type_ann(getattr(p, 'type_ann', None))
+                pname  = getattr(p, 'name', None)
+                if pname:
+                    self._scope.symbols[pname] = Symbol(
+                        pname, p_type, kind="var",
+                        line=getattr(p, 'line', 0), col=getattr(p, 'col', 0)
+                    )
+                    self._scope.symbols[pname].used = True
+
+            # Collect return types from first-level stmts + if/else branches
+            types_seen = set()
+            stmts = node.body.body if isinstance(node.body, BlockStmt) else [node.body]
+            for stmt in stmts:
+                if isinstance(stmt, ReturnStmt) and stmt.value is not None:
+                    try:
+                        t = self.visit(stmt.value)
+                        if is_literal_type(t): t = T_STRING
+                        types_seen.add(t)
+                    except Exception:
+                        types_seen.add(T_ANY)
+                for branch_attr in ('then_branch', 'else_branch'):
+                    branch = getattr(stmt, branch_attr, None)
+                    if branch is None:
+                        continue
+                    inner = getattr(branch, 'body', [branch])
+                    if not isinstance(inner, list):
+                        inner = [inner]
+                    for s in inner:
+                        if isinstance(s, ReturnStmt) and s.value is not None:
+                            try:
+                                t = self.visit(s.value)
+                                if is_literal_type(t): t = T_STRING
+                                types_seen.add(t)
+                            except Exception:
+                                types_seen.add(T_ANY)
+
+            self._pop_scope()
+
+            if not types_seen:
+                return T_VOID
+            non_any = {t for t in types_seen if t != T_ANY}
+            if len(non_any) == 1:
+                return next(iter(non_any))
+            if non_any == {T_INT, T_FLOAT}:
+                return T_FLOAT
             return T_ANY
 
+        except Exception:
+            return T_ANY
+        finally:
+            # Always restore the real error list
+            self._errors = saved_errors
+
+    def _infer_fn_arg_return(self, call_node, arg_index: int,
+                              param_type: InScriptType) -> InScriptType:
+        """
+        v1.8.4: Given a CallExpr and an argument position that expects a fn,
+        try to infer that fn's return type by visiting its body with a temporary
+        scope that binds the param to param_type.
+        Returns T_ANY if inference fails.
+        """
+        from ast_nodes import FunctionDecl, LambdaExpr
+        if arg_index >= len(call_node.args):
+            return T_ANY
+        fn_arg = call_node.args[arg_index].value
+
+        # Handle both lambda `fn(x) { return x * 2 }` and named refs
+        params = None; body = None
+        if isinstance(fn_arg, FunctionDecl) or isinstance(fn_arg, LambdaExpr):
+            params = getattr(fn_arg, 'params', [])
+            body   = getattr(fn_arg, 'body', None)
+        else:
+            return T_ANY
+
+        # Stash and suppress the real error list
+        saved_errors  = self._errors
+        self._errors   = []
+
+        try:
+            # Push a temporary scope, bind first param to elem type
+            self._push_scope("infer")
+            if params:
+                p0 = params[0]
+                p_name = getattr(p0, 'name', None)
+                if p_name:
+                    self._scope.symbols[p_name] = Symbol(
+                        p_name, param_type, kind="var",
+                        line=getattr(p0, 'line', 0), col=getattr(p0, 'col', 0)
+                    )
+                    self._scope.symbols[p_name].used = True
+
+            inferred = T_ANY
+            if body is not None:
+                inferred = self._infer_block_return_type(body)
+
+            self._pop_scope()
+            return inferred
+        except Exception:
+            return T_ANY
+        finally:
+            self._errors = saved_errors
+
+    def _infer_block_return_type(self, block) -> InScriptType:
+        """
+        v1.8.4: Walk a block/expression to find the first return statement's type.
+        Also handles single-expression lambdas.
+        """
+        from ast_nodes import BlockStmt, ReturnStmt
+        stmts = []
+        if isinstance(block, BlockStmt):
+            stmts = block.body
+        elif hasattr(block, '__iter__'):
+            stmts = list(block)
+        else:
+            # Single expression (arrow lambda)
+            try:
+                return self.visit(block)
+            except Exception:
+                return T_ANY
+
+        for stmt in stmts:
+            if isinstance(stmt, ReturnStmt) and stmt.value is not None:
+                try:
+                    return self.visit(stmt.value)
+                except Exception:
+                    return T_ANY
+            # Recurse into if/while bodies for early returns
+            if hasattr(stmt, 'then_branch'):
+                t = self._infer_block_return_type(stmt.then_branch)
+                if t != T_ANY:
+                    return t
         return T_ANY
 
     def visit_NamespaceAccessExpr(self, node: NamespaceAccessExpr) -> InScriptType:
