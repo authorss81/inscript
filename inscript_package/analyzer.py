@@ -64,10 +64,13 @@ T_TRANSFORM2D = InScriptType("Transform2D")
 T_TRANSFORM3D = InScriptType("Transform3D")
 T_TEXTURE = InScriptType("Texture")
 
+T_NEVER  = InScriptType("never")   # v1.8.3: bottom type — function never returns normally
+
 BUILTIN_TYPES: Dict[str, InScriptType] = {
     # canonical names
     "int": T_INT, "float": T_FLOAT, "bool": T_BOOL,
     "string": T_STRING, "void": T_VOID, "null": T_NULL, "any": T_ANY,
+    "never": T_NEVER,                                   # v1.8.3
     # common aliases
     "str": T_STRING, "boolean": T_BOOL, "number": T_FLOAT,
     "nil": T_NULL, "object": T_ANY, "auto": T_ANY,
@@ -141,6 +144,8 @@ def types_compatible(expected: InScriptType, got: InScriptType) -> bool:
     """True if `got` can be used where `expected` is required."""
     if expected == T_ANY or got == T_ANY: return True
     if expected == got: return True
+    # v1.8.3: `never` is the bottom type — compatible with any expected type
+    if got == T_NEVER: return True
     # int can widen to float
     if expected == T_FLOAT and got == T_INT: return True
     # null/nil can be assigned to any nullable or union containing nil
@@ -266,7 +271,8 @@ class Analyzer(Visitor):
         self._in_scene:    bool = False
         self._in_match_arm: bool = False
         self._struct_defs: Dict[str, StructDecl] = {}
-        self._type_aliases: Dict[str, "InScriptType"] = {}  # v1.8.2: registered aliases
+        self._type_aliases: Dict[str, "InScriptType"] = {}  # v1.8.2
+        self._interfaces:   Dict[str, dict] = {}             # v1.8.3: name → {method: (params, ret)}
 
         # Pre-register built-in global functions
         self._register_builtins()
@@ -521,8 +527,8 @@ class Analyzer(Visitor):
 
     def _hoist_top_level(self, program: Program):
         """Register structs, scenes, top-level functions, and type aliases before checking bodies."""
-        from ast_nodes import TypeAliasDecl
-        # First sub-pass: register type aliases and structs (order-independent)
+        from ast_nodes import TypeAliasDecl, InterfaceDecl
+        # First sub-pass: register type aliases, structs, and interfaces
         for node in program.body:
             if isinstance(node, StructDecl):
                 self._struct_defs[node.name] = node
@@ -532,7 +538,6 @@ class Analyzer(Visitor):
                     line=node.line, col=node.col
                 )
             elif isinstance(node, TypeAliasDecl):
-                # v1.8.2: register alias immediately so functions can use it
                 type_ann = getattr(node, 'type_ann', None)
                 if type_ann is not None:
                     resolved = self._resolve_type_ann(type_ann)
@@ -541,6 +546,19 @@ class Analyzer(Visitor):
                 self._type_aliases[node.name] = resolved
                 self._scope.symbols[node.name] = Symbol(
                     node.name, resolved, kind="type",
+                    line=node.line, col=node.col
+                )
+            elif isinstance(node, InterfaceDecl):
+                # v1.8.3: register interface so structs can reference it
+                iface_methods = {}
+                for m in getattr(node, 'methods', []):
+                    ret    = self._resolve_type_ann(getattr(m, 'return_type', None))
+                    params = [self._resolve_type_ann(getattr(p, 'type_ann', None))
+                              for p in getattr(m, 'params', [])]
+                    iface_methods[m.name] = (params, ret)
+                self._interfaces[node.name] = iface_methods
+                self._scope.symbols[node.name] = Symbol(
+                    node.name, T_ANY, kind="interface",
                     line=node.line, col=node.col
                 )
         # Second sub-pass: hoist functions, scenes, enums (can now reference aliases)
@@ -637,12 +655,20 @@ class Analyzer(Visitor):
                 ret_type.name not in ("void", "nil", "any", "") and
                 not node.is_native if hasattr(node, 'is_native') else True):
             if node.body and not self._body_always_returns(node.body):
-                self._warn(
-                    "missing-return",
-                    f"Function '{node.name}' declares return type '{ret_type.name}' "
-                    f"but not all code paths return a value",
-                    node.line
-                )
+                if ret_type == T_NEVER:
+                    # v1.8.3: `-> never` functions MUST always throw / diverge
+                    self._error(
+                        f"Function '{node.name}' is declared '-> never' "
+                        f"but not all code paths throw or diverge",
+                        node.line
+                    )
+                else:
+                    self._warn(
+                        "missing-return",
+                        f"Function '{node.name}' declares return type '{ret_type.name}' "
+                        f"but not all code paths return a value",
+                        node.line
+                    )
 
         # Analyze body in a new scope
         self._push_scope("fn")
@@ -713,6 +739,26 @@ class Analyzer(Visitor):
         for method in node.methods:
             self.visit_FunctionDecl(method)
 
+        # v1.8.3: interface enforcement — check every declared interface is satisfied
+        struct_method_names = {m.name for m in node.methods}
+        # Also include methods from static_methods
+        struct_method_names |= {m.name for m in (node.static_methods or [])}
+        for iface_name in (node.interfaces or []):
+            required = self._interfaces.get(iface_name)
+            if required is None:
+                self._error(
+                    f"Struct '{node.name}' implements unknown interface '{iface_name}'",
+                    node.line
+                )
+                continue
+            missing_methods = sorted(required.keys() - struct_method_names)
+            if missing_methods:
+                self._error(
+                    f"Struct '{node.name}' implements '{iface_name}' "
+                    f"but is missing method(s): {missing_methods}",
+                    node.line
+                )
+
         self._pop_scope()
         return struct_type
 
@@ -756,6 +802,21 @@ class Analyzer(Visitor):
                 line=variant.line, col=variant.col
             )
         return enum_type
+
+    def visit_InterfaceDecl(self, node) -> InScriptType:
+        """v1.8.3: Register interface method signatures for implementation checking."""
+        iface_methods = {}
+        for m in getattr(node, 'methods', []):
+            ret  = self._resolve_type_ann(getattr(m, 'return_type', None))
+            params = [self._resolve_type_ann(getattr(p, 'type_ann', None))
+                      for p in getattr(m, 'params', [])]
+            iface_methods[m.name] = (params, ret)
+        self._interfaces[node.name] = iface_methods
+        self._scope.symbols[node.name] = Symbol(
+            node.name, T_ANY, kind="interface",
+            line=node.line, col=node.col
+        )
+        return T_VOID
 
     def visit_TypeAliasDecl(self, node) -> InScriptType:
         """v1.8.2: Register a type alias so annotations can reference it by name."""
@@ -965,47 +1026,56 @@ class Analyzer(Visitor):
 
     def _check_match_exhaustiveness(self, node: MatchStmt) -> None:
         """
-        If the match subject is a typed variable whose type is a known enum,
-        warn when not all variants are covered and there is no wildcard arm.
+        v1.8.3: Enum exhaustiveness is now a SemanticError (not a warning).
+        If the match subject is a variable typed as a known enum and no wildcard
+        is present, every variant must be explicitly covered.
         """
-        subject = node.subject
+        subject  = node.subject
         enum_name = None
 
         if isinstance(subject, IdentExpr):
             sym = self._scope.lookup(subject.name)
-            if sym and sym.type_ and sym.type_.name in self._scope.symbols:
-                candidate = self._scope.symbols[sym.type_.name]
-                if candidate.kind == "enum":
-                    enum_name = sym.type_.name
+            if sym and sym.type_:
+                t = sym.type_
+                # Resolve via the full scope chain, not just current scope
+                cand = self._scope.lookup(t.name)
+                if cand and cand.kind == "enum":
+                    enum_name = t.name
 
         if enum_name is None:
-            return  # can't determine enum — skip
+            return  # subject is not a typed enum variable — skip
 
-        enum_sym = self._scope.symbols.get(enum_name)
+        enum_sym = self._scope.lookup(enum_name)
         if not enum_sym or enum_sym.fn_node is None:
             return
-        enum_decl = enum_sym.fn_node
+        enum_decl  = enum_sym.fn_node
         all_variants = {v.name for v in getattr(enum_decl, 'variants', [])}
         if not all_variants:
             return
 
-        # Collect explicitly covered variants: case EnumName.Variant
+        # Collect explicitly covered variants
+        # `case Dir::Left` → NamespaceAccessExpr(namespace="Dir", member="Left")
+        # `case Dir.Left`  → GetAttrExpr(obj=IdentExpr("Dir"), attr="Left")  (legacy)
         covered = set()
         for arm in node.arms:
             p = arm.pattern
             if p is None:
-                return  # wildcard — exhaustive
-            if (isinstance(p, GetAttrExpr)
+                return  # wildcard — exhaustive by definition
+            # Primary form: Dir::Variant
+            if (hasattr(p, 'namespace') and hasattr(p, 'member')
+                    and p.namespace == enum_name):
+                covered.add(p.member)
+            # Legacy form: Dir.Variant
+            elif (isinstance(p, GetAttrExpr)
                     and isinstance(p.obj, IdentExpr)
                     and p.obj.name == enum_name):
                 covered.add(p.attr)
 
         missing = sorted(all_variants - covered)
         if missing:
-            self._warn(
-                "exhaustive_match",
+            self._error(
                 f"Non-exhaustive match on '{enum_name}': "
-                f"variants {missing} not covered. Add missing cases or a wildcard 'case _'",
+                f"missing variant(s) {missing}. Add the missing cases or a wildcard arm 'case _'",
                 node.line
             )
 

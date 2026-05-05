@@ -182,11 +182,16 @@ test("1.5 computed getter (no setter): area = pi*r^2", t_property_computed)
 
 # 1.6 Match exhaustiveness
 def t_match_exhaustiveness_warn():
+    # v1.8.3: non-exhaustive enum match is now a SemanticError (not a warning)
     src = 'enum Dir { North, South, East }\nlet d: Dir = Dir.North\nmatch d { case Dir.North { print(1) } }'
-    a = analyze(src)
-    kinds = [w.kind for w in a._warnings]
-    assert "exhaustive_match" in kinds, f"Warning missing: {kinds}"
-test("1.6 match exhaustiveness: non-exhaustive enum match warns", t_match_exhaustiveness_warn)
+    try:
+        a = analyze(src)
+        # Should raise — if it doesn't, the error check below will catch it
+        assert False, "Expected SemanticError for non-exhaustive match"
+    except Exception as e:
+        assert "exhaustive" in str(e).lower() or "missing" in str(e).lower() or "Non-exhaustive" in str(e), \
+            f"Expected exhaustiveness error, got: {e}"
+test("1.6 match exhaustiveness: non-exhaustive enum match is an error", t_match_exhaustiveness_warn)
 
 def t_match_wildcard_no_warn():
     src = 'enum Dir { North, South }\nlet d: Dir = Dir.North\nmatch d { case Dir.North { } case _ { } }'
@@ -427,10 +432,15 @@ def t_warning_no_return_ann():
 test("3.6 warning: missing return type annotation on public fn", t_warning_no_return_ann)
 
 def t_warning_exhaustive_match():
+    # v1.8.3: promoted from warning to SemanticError — verify it raises
     src = 'enum Color { Red, Green, Blue }\nlet c: Color = Color.Red\nmatch c { case Color.Red {} }\n'
-    a = analyze(src)
-    assert "exhaustive_match" in [w.kind for w in a._warnings]
-test("3.6 warning: non-exhaustive enum match", t_warning_exhaustive_match)
+    try:
+        a = analyze(src)
+        assert False, "Expected SemanticError for non-exhaustive match"
+    except Exception as e:
+        assert "exhaustive" in str(e).lower() or "missing" in str(e).lower() or "Non-exhaustive" in str(e), \
+            f"Expected exhaustiveness error, got: {e}"
+test("3.6 non-exhaustive enum match is a SemanticError (v1.8.3)", t_warning_exhaustive_match)
 
 def t_no_warn_flag():
     src = "fn foo() { let x = 1 }\n"
