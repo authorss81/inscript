@@ -43,6 +43,9 @@ jobs:
       - name: Run full test suite
         working-directory: inscript_package
         run: |
+          python test_lexer.py
+          python test_parser.py
+          python test_analyzer.py
           python test_phase6.py
           python test_phase7.py
           python test_audit.py

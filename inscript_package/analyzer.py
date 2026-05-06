@@ -616,7 +616,8 @@ class Analyzer(Visitor):
                 )
         # Infer type from initializer if no annotation
         if declared_type == T_ANY and node.initializer:
-            declared_type = init_type
+            # v1.8.2: literal_type("hello") is a string value — store as T_STRING
+            declared_type = T_STRING if is_literal_type(init_type) else init_type
 
         self._define(Symbol(
             node.name, declared_type,
@@ -1154,6 +1155,10 @@ class Analyzer(Visitor):
         left  = self.visit(node.left)
         right = self.visit(node.right)
         op    = node.op
+
+        # v1.8.2: literal string types act as T_STRING in all operations
+        if is_literal_type(left):  left  = T_STRING
+        if is_literal_type(right): right = T_STRING
 
         # Comparison operators always return bool
         if op in ("==", "!=", "<", ">", "<=", ">="):
