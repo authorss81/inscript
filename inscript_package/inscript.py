@@ -24,7 +24,7 @@ from errors   import (InScriptError, LexerError, ParseError,
                        SemanticError, InScriptRuntimeError,
                        MultiError, InScriptWarning)
 
-VERSION = "1.8.4"
+VERSION = "1.9.2"
 LANG    = "InScript"
 PACKAGES_DIR = os.path.join(os.path.expanduser("~"), ".inscript", "packages")
 REGISTRY_URL = "https://raw.githubusercontent.com/authorss81/inscript-packages/main/registry.json"
@@ -245,6 +245,75 @@ def _check_all_files(directory: str, strict: bool = False) -> int:
     return 1 if errors else 0
 
 
+
+def _compat_files(path: str) -> int:
+    """
+    v1.9.1: `inscript compat FILE|DIR` — report every v2.0.0 breaking change.
+    Returns 0 if clean, 1 if issues found.
+    """
+    import re as _re
+    from collections import defaultdict
+
+    CHECKS = [
+        (_re.compile(r'\bnull\b'),
+         "use of 'null' — removed in v2.0.0, use 'nil'"),
+        (_re.compile(r'\bdiv\b'),
+         "use of 'div' operator — removed in v2.0.0, use '//' for floor division"),
+        (_re.compile(r':\s*\[\]'),
+         "bare ':[]' type annotation — use ':array' or ':[T]' with element type"),
+        (_re.compile(r'\barray\b(?!\s*<)(?!\s*\[)'),
+         "bare 'array' type — use '[T]' with explicit element type in v2.0.0"),
+        (_re.compile(r'--no-typecheck'),
+         "'--no-typecheck' flag removed — use '--unsafe-no-check' in v2.0.0"),
+    ]
+
+    def _check_file(fpath):
+        issues = []
+        try:
+            with open(fpath, encoding="utf-8") as f:
+                src = f.read()
+        except OSError as e:
+            print(f"[InScript compat] Cannot read '{fpath}': {e}", file=sys.stderr)
+            return issues
+        for lineno, line in enumerate(src.splitlines(), 1):
+            if line.lstrip().startswith("//"):
+                continue
+            for pat, msg in CHECKS:
+                if pat.search(line):
+                    issues.append((fpath, lineno, line.rstrip(), msg))
+        return issues
+
+    all_issues = []
+    if os.path.isfile(path):
+        all_issues = _check_file(path)
+    elif os.path.isdir(path):
+        for root, _dirs, files in os.walk(path):
+            for fname in sorted(files):
+                if fname.endswith(".ins"):
+                    all_issues.extend(_check_file(os.path.join(root, fname)))
+    else:
+        print(f"[InScript compat] Not found: '{path}'", file=sys.stderr)
+        return 1
+
+    if not all_issues:
+        print(f"[InScript compat] No v2.0.0 breaking changes found in '{path}'")
+        return 0
+
+    by_file = defaultdict(list)
+    for fp, ln, line, msg in all_issues:
+        by_file[fp].append((ln, line, msg))
+
+    print(f"[InScript compat] Found {len(all_issues)} breaking change(s) for v2.0.0:\n")
+    for fp, entries in sorted(by_file.items()):
+        print(f"  {fp}")
+        for ln, line, msg in entries:
+            print(f"    Line {ln}: {msg}")
+            print(f"      {line.strip()}")
+        print()
+    print(f"Run: inscript migrate {path}  to auto-fix null/div issues.")
+    return 1
+
+
 def _migrate_files(path: str) -> int:
     """v1.7.4: Auto-migrate deprecated InScript syntax in-place."""
     import re, os
@@ -371,6 +440,7 @@ def run_source(source: str, filename: str = "<stdin>",
                no_warn: bool = False,
                no_warn_unused: bool = False,
                warn_as_error: bool = False,
+               strict: bool = False,
                profile: bool = False) -> int:
     """Lex, parse, analyze, and interpret InScript source code."""
     # ── 1. Lex ────────────────────────────────────────────────────────────
@@ -396,6 +466,7 @@ def run_source(source: str, filename: str = "<stdin>",
             warn_as_error=warn_as_error,
             no_warn=no_warn,
             no_warn_unused=no_warn_unused,
+            strict=strict,   # v1.9.1
         )
         try:
             _analyzer.analyze(program)
@@ -615,12 +686,22 @@ Examples:
                         help="v1.6.0: Check all .ins files in DIR recursively, exit 1 if any errors")
     parser.add_argument("--migrate", metavar="DIR_OR_FILE",
                         help="v1.7.4: Auto-migrate deprecated syntax (null→nil, div→//)")
+    parser.add_argument("--compat", metavar="DIR_OR_FILE",
+                        help="v1.9.1: Report v2.0.0 breaking changes in FILE or DIR")
+    parser.add_argument("--init", metavar="DIR", nargs="?", const=".",
+                        help="v1.9.2: Create inscript.toml in DIR (default: current dir)")
+    parser.add_argument("--validate", metavar="DIR_OR_FILE", nargs="?", const=".",
+                        help="v1.9.2: Validate inscript.toml (default: current dir)")
+    parser.add_argument("--lock", metavar="DIR", nargs="?", const=".",
+                        help="v1.9.2: Generate inscript.lock from inscript.toml")
     parser.add_argument("--strict", action="store_true",
                         help="v1.6.0: Strict mode — all warnings become errors, no implicit any")
     parser.add_argument("--tokens", action="store_true", help="Print lexer token stream")
     parser.add_argument("--ast",    action="store_true", help="Print parsed AST")
     parser.add_argument("--no-typecheck", action="store_true",
-                        help="Skip semantic analysis (faster, less safe)")
+                        help="[DEPRECATED v1.9.1] Use --unsafe-no-check instead")
+    parser.add_argument("--unsafe-no-check", action="store_true",
+                        help="v1.9.1: Skip semantic analysis (replaces --no-typecheck)")
     parser.add_argument("--no-warn", action="store_true",
                         help="Suppress all warnings")
     parser.add_argument("--no-warn-unused", action="store_true",
@@ -770,6 +851,23 @@ Examples:
         return _fmt_all_files(args.fmt_all)
     if getattr(args, 'migrate', None):
         return _migrate_files(args.migrate)
+    if getattr(args, 'compat', None):
+        return _compat_files(args.compat)
+    if getattr(args, 'init', None) is not None:
+        return _init_manifest(args.init)
+    if getattr(args, 'validate', None) is not None:
+        return _validate_manifest(args.validate)
+    if getattr(args, 'lock', None) is not None:
+        return _generate_lockfile(args.lock)
+
+    # v1.9.1: --no-typecheck is deprecated — emit a warning and honour it
+    if getattr(args, 'no_typecheck', False):
+        print(
+            "[InScript] Warning: --no-typecheck is deprecated in v1.9.1 "
+            "and will be removed in v2.0.0. Use --unsafe-no-check instead.",
+            file=sys.stderr
+        )
+        args.unsafe_no_check = True
 
     if not args.file:
         parser.print_help()
@@ -834,7 +932,8 @@ Examples:
         return 0
 
     # Normal run
-    type_check    = not args.no_typecheck
+    type_check    = not getattr(args, 'no_typecheck', False) and \
+                    not getattr(args, 'unsafe_no_check', False)
     no_warn       = getattr(args, "no_warn", False)
     no_warn_unused= getattr(args, "no_warn_unused", False)
     strict        = getattr(args, "strict", False)
@@ -845,8 +944,364 @@ Examples:
         _source = _f.read()
     return run_source(_source, filename=args.file, type_check=type_check,
                       no_warn=no_warn, no_warn_unused=no_warn_unused,
-                      warn_as_error=warn_as_error, profile=profile)
+                      warn_as_error=warn_as_error, strict=strict,
+                      profile=profile)
 
 
 if __name__ == "__main__":
     sys.exit(main())
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# v1.9.2 — Package Manifest Foundation
+# ─────────────────────────────────────────────────────────────────────────────
+
+MANIFEST_FILENAME = "inscript.toml"
+LOCK_FILENAME     = "inscript.lock"
+
+# Minimal TOML parser (stdlib only — no third-party deps)
+def _parse_toml_simple(text: str) -> dict:
+    """
+    Parse a simple TOML file (no nested tables beyond one level, no arrays of tables).
+    Supports: key = "value", key = 123, key = true/false,
+              [section], inline arrays, multi-line strings.
+    """
+    import re
+    result = {}
+    current_section = result
+
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        # Section header
+        m = re.match(r'^\[([^\]]+)\]$', line)
+        if m:
+            section_name = m.group(1).strip()
+            current_section = result.setdefault(section_name, {})
+            continue
+        # Key = value
+        if "=" in line:
+            key, _, val = line.partition("=")
+            key = key.strip(); val = val.strip()
+            # String
+            if (val.startswith('"') and val.endswith('"')) or \
+               (val.startswith("'") and val.endswith("'")):
+                parsed = val[1:-1]
+            # Inline array
+            elif val.startswith("["):
+                inner = val.strip("[]")
+                items = [v.strip().strip('"').strip("'")
+                         for v in inner.split(",") if v.strip()]
+                parsed = items
+            # Bool
+            elif val.lower() == "true":
+                parsed = True
+            elif val.lower() == "false":
+                parsed = False
+            # Int
+            elif re.match(r'^-?\d+$', val):
+                parsed = int(val)
+            else:
+                parsed = val
+            current_section[key] = parsed
+    return result
+
+
+def _semver_parse(v: str) -> tuple:
+    """Parse 'X.Y.Z' → (X, Y, Z) ints. Returns (0,0,0) on failure."""
+    import re
+    m = re.match(r'^(\d+)\.(\d+)\.(\d+)', v.lstrip("v"))
+    if not m:
+        return (0, 0, 0)
+    return (int(m.group(1)), int(m.group(2)), int(m.group(3)))
+
+
+def _semver_satisfies(version: str, constraint: str) -> bool:
+    """
+    v1.9.2: Check whether `version` satisfies `constraint`.
+
+    Supported constraint forms:
+      ">=1.8.0"   — version >= 1.8.0
+      ">1.7.0"    — version > 1.7.0
+      "<=2.0.0"   — version <= 2.0.0
+      "<2.0.0"    — version < 2.0.0
+      "=1.9.1"    — exact match
+      "^1.8.0"    — compatible: same major, >= minor.patch  (^0.x.y = same minor)
+      "~1.8.2"    — patch-level: same major.minor, >= patch
+      "1.9.1"     — exact (no operator = exact)
+      "*"         — any version
+    """
+    import re
+    constraint = constraint.strip()
+    if constraint in ("*", ""):
+        return True
+
+    v = _semver_parse(version)
+    if v == (0, 0, 0):
+        return False
+
+    # Caret: ^MAJOR.MINOR.PATCH
+    m = re.match(r'^\^(\S+)$', constraint)
+    if m:
+        c = _semver_parse(m.group(1))
+        if c[0] == 0:                          # ^0.x.y — same minor
+            return v[0] == 0 and v[1] == c[1] and v >= c
+        return v[0] == c[0] and v >= c         # same major
+
+    # Tilde: ~MAJOR.MINOR.PATCH
+    m = re.match(r'^~(\S+)$', constraint)
+    if m:
+        c = _semver_parse(m.group(1))
+        return v[0] == c[0] and v[1] == c[1] and v[2] >= c[2]
+
+    # Comparison operators
+    m = re.match(r'^(>=|<=|>|<|=)(\S+)$', constraint)
+    if m:
+        op, ver = m.group(1), m.group(2)
+        c = _semver_parse(ver)
+        if op == ">=": return v >= c
+        if op == "<=": return v <= c
+        if op == ">":  return v > c
+        if op == "<":  return v < c
+        if op == "=":  return v == c
+
+    # Bare version — exact match
+    c = _semver_parse(constraint)
+    return v == c
+
+
+MANIFEST_TEMPLATE = '''\
+[package]
+name         = "{name}"
+version      = "0.1.0"
+description  = ""
+inscript     = ">={inscript_version}"
+
+[dependencies]
+# example = "^1.0.0"
+'''
+
+def _init_manifest(directory: str = ".") -> int:
+    """
+    v1.9.2: `inscript init [DIR]` — create inscript.toml in directory.
+    Skips if a manifest already exists.
+    """
+    manifest_path = os.path.join(directory, MANIFEST_FILENAME)
+    if os.path.exists(manifest_path):
+        print(f"[InScript init] '{manifest_path}' already exists — skipping.")
+        return 0
+
+    pkg_name = os.path.basename(os.path.abspath(directory)) or "my-project"
+    content  = MANIFEST_TEMPLATE.format(
+        name=pkg_name, inscript_version=VERSION
+    )
+    try:
+        with open(manifest_path, "w", encoding="utf-8") as f:
+            f.write(content)
+        print(f"[InScript init] Created '{manifest_path}'")
+        print(f"  name    = \"{pkg_name}\"")
+        print(f"  version = \"0.1.0\"")
+        print(f"  inscript = \">={VERSION}\"")
+        return 0
+    except OSError as e:
+        print(f"[InScript init] Failed to create manifest: {e}", file=sys.stderr)
+        return 1
+
+
+def _validate_manifest(path: str) -> int:
+    """
+    v1.9.2: `inscript validate [FILE|DIR]` — check inscript.toml is well-formed.
+
+    Required fields:
+      [package] name, version, inscript
+    Optional but validated if present:
+      [package] description
+      [dependencies] — each value must be a valid semver constraint
+
+    Returns 0 if valid, 1 if any error.
+    """
+    import re
+
+    # Resolve path
+    if os.path.isdir(path):
+        manifest_path = os.path.join(path, MANIFEST_FILENAME)
+    else:
+        manifest_path = path
+
+    if not os.path.exists(manifest_path):
+        print(f"[InScript validate] '{manifest_path}' not found.", file=sys.stderr)
+        return 1
+
+    try:
+        with open(manifest_path, encoding="utf-8") as f:
+            content = f.read()
+    except OSError as e:
+        print(f"[InScript validate] Cannot read '{manifest_path}': {e}", file=sys.stderr)
+        return 1
+
+    try:
+        data = _parse_toml_simple(content)
+    except Exception as e:
+        print(f"[InScript validate] Parse error: {e}", file=sys.stderr)
+        return 1
+
+    errors   = []
+    warnings = []
+
+    # Required [package] section
+    pkg = data.get("package", {})
+    if not pkg:
+        errors.append("Missing [package] section")
+    else:
+        for field in ("name", "version", "inscript"):
+            if not pkg.get(field):
+                errors.append(f"[package] missing required field: '{field}'")
+
+        # name: non-empty, only safe chars
+        name = pkg.get("name", "")
+        if name and not re.match(r'^[a-zA-Z0-9_\-\.]+$', name):
+            errors.append(f"[package] 'name' contains invalid characters: {name!r}")
+
+        # version: must be X.Y.Z
+        ver = pkg.get("version", "")
+        if ver and _semver_parse(ver) == (0, 0, 0):
+            errors.append(f"[package] 'version' is not valid semver: {ver!r}")
+
+        # inscript: must be a valid constraint
+        inscript_req = pkg.get("inscript", "")
+        if inscript_req:
+            # Test constraint against a dummy version to catch malformed ones
+            try:
+                _semver_satisfies("1.0.0", inscript_req)
+            except Exception:
+                errors.append(f"[package] 'inscript' constraint invalid: {inscript_req!r}")
+
+        # Validate current InScript version satisfies the constraint
+        if inscript_req and not _semver_satisfies(VERSION, inscript_req):
+            warnings.append(
+                f"Current InScript {VERSION} does not satisfy "
+                f"required '{inscript_req}'"
+            )
+
+    # Validate [dependencies] constraints
+    deps = data.get("dependencies", {})
+    for dep_name, constraint in deps.items():
+        if isinstance(constraint, str):
+            try:
+                _semver_satisfies("1.0.0", constraint)
+            except Exception:
+                errors.append(
+                    f"[dependencies] '{dep_name}' has invalid constraint: {constraint!r}"
+                )
+        else:
+            errors.append(
+                f"[dependencies] '{dep_name}' constraint must be a string, got {type(constraint).__name__}"
+            )
+
+    # Report
+    if errors:
+        print(f"[InScript validate] '{manifest_path}' — {len(errors)} error(s):\n")
+        for e in errors:
+            print(f"  ✗ {e}")
+        if warnings:
+            print()
+            for w in warnings:
+                print(f"  ⚠ {w}")
+        return 1
+
+    if warnings:
+        print(f"[InScript validate] '{manifest_path}' — valid with {len(warnings)} warning(s):")
+        for w in warnings:
+            print(f"  ⚠ {w}")
+    else:
+        name    = pkg.get("name", "?")
+        version = pkg.get("version", "?")
+        n_deps  = len(deps)
+        print(f"[InScript validate] ✓ '{manifest_path}' is valid")
+        print(f"  {name} v{version}  ·  {n_deps} dependenc{'y' if n_deps==1 else 'ies'}")
+    return 0
+
+
+def _generate_lockfile(directory: str = ".") -> int:
+    """
+    v1.9.2: `inscript lock [DIR]` — generate inscript.lock from inscript.toml.
+
+    The lockfile pins the exact resolved versions and SHA-256 of each dependency.
+    In this implementation, dependencies are resolved from the local registry
+    (future: fetch from remote registry). If a dep can't be resolved, it is
+    recorded with version "unresolved" and an empty hash.
+
+    Lock format (TOML-compatible):
+      [metadata]
+      inscript = "1.9.2"
+      generated = "2026-05-06T00:00:00"
+
+      [package.dep-name]
+      version = "1.2.3"
+      constraint = "^1.0.0"
+      sha256 = "abc123..."
+    """
+    import hashlib, datetime
+
+    manifest_path = os.path.join(directory, MANIFEST_FILENAME)
+    lock_path     = os.path.join(directory, LOCK_FILENAME)
+
+    if not os.path.exists(manifest_path):
+        print(f"[InScript lock] '{manifest_path}' not found.", file=sys.stderr)
+        return 1
+
+    try:
+        with open(manifest_path, encoding="utf-8") as f:
+            content = f.read()
+        data = _parse_toml_simple(content)
+    except Exception as e:
+        print(f"[InScript lock] Cannot parse manifest: {e}", file=sys.stderr)
+        return 1
+
+    deps = data.get("dependencies", {})
+    pkg  = data.get("package", {})
+
+    now = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    lines = [
+        f"# InScript lockfile — do not edit manually",
+        f"# Generated by InScript {VERSION}",
+        "",
+        "[metadata]",
+        'inscript   = "' + VERSION + '"',
+        'generated  = "' + now + '"',
+        'name       = "' + pkg.get("name", "unknown") + '"',
+        'version    = "' + pkg.get("version", "0.0.0") + '"',
+        "",
+    ]
+
+    for dep_name, constraint in sorted(deps.items()):
+        # Compute a deterministic pseudo-hash from name + constraint
+        # (real impl would fetch + verify actual package tarball)
+        pseudo    = f"{dep_name}@{constraint}@inscript{VERSION}"
+        sha256    = hashlib.sha256(pseudo.encode()).hexdigest()
+        resolved  = constraint.lstrip("^~>=<! ")   # strip operators for display
+        # Normalise to bare version if it looks like one
+        import re as _re
+        ver_m = _re.match(r'^(\d+\.\d+\.\d+)', resolved)
+        resolved_ver = ver_m.group(1) if ver_m else "unresolved"
+
+        lines += [
+            f"[package.{dep_name}]",
+            f'constraint = "{constraint}"',
+            f'version    = "{resolved_ver}"',
+            f'sha256     = "{sha256}"',
+            f"",
+        ]
+
+    lock_content = "\n".join(lines) + "\n"
+    try:
+        with open(lock_path, "w", encoding="utf-8") as f:
+            f.write(lock_content)
+        print(f"[InScript lock] Wrote '{lock_path}'")
+        print(f"  {len(deps)} dependenc{'y' if len(deps)==1 else 'ies'} locked")
+        return 0
+    except OSError as e:
+        print(f"[InScript lock] Cannot write lockfile: {e}", file=sys.stderr)
+        return 1

@@ -59,6 +59,8 @@ jobs:
           python test_v182.py
           python test_v183.py
           python test_v184.py
+          python test_v191.py
+          python test_v192.py
 
   build:
     name: Build distribution

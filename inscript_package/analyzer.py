@@ -82,6 +82,8 @@ BUILTIN_TYPES: Dict[str, InScriptType] = {
     "Texture": T_TEXTURE,
     # tuple / array shorthand
     "Tuple": T_ANY, "List": T_ANY, "Dict": T_ANY, "Map": T_ANY,
+    # v1.9.1: bare 'array' without element type (deprecated — use [T] in v2.0.0)
+    "array": InScriptType("Array", [T_ANY]),
 }
 
 def array_type(elem: InScriptType) -> InScriptType:
@@ -254,7 +256,8 @@ class Analyzer(Visitor):
                  multi_error: bool = True,
                  warn_as_error: bool = False,
                  no_warn: bool = False,
-                 no_warn_unused: bool = False):
+                 no_warn_unused: bool = False,
+                 strict: bool = False):
         self._src         = source_lines or []
         self._scope       = Scope(kind="global")
         self._errors:   List[SemanticError]    = []   # collected (multi-error)
@@ -263,6 +266,7 @@ class Analyzer(Visitor):
         self._warn_as_error = warn_as_error
         self._no_warn      = no_warn
         self._no_warn_unused = no_warn_unused
+        self._strict       = strict   # v1.9.1: enables extra v2.0.0-readiness errors
         self._dispatch: dict = {}   # v1.3.0: cached dispatch
 
         # State for context-sensitive checks
@@ -386,7 +390,15 @@ class Analyzer(Visitor):
             return fn_type(params, ret)
 
         if ann.name in BUILTIN_TYPES:
-            return BUILTIN_TYPES[ann.name]
+            t = BUILTIN_TYPES[ann.name]
+            # v1.9.1: bare `array` without element type is a hard error in strict mode
+            if ann.name == "array" and not ann.generics and self._strict:
+                self._error(
+                    "Bare 'array' type without element type is a breaking change in v2.0.0. "
+                    "Use '[T]' (e.g. '[int]') or annotate the element type.",
+                    ann.line, ann.col
+                )
+            return t
 
         # v1.8.2: registered type aliases
         if ann.name in self._type_aliases:
