@@ -4,14 +4,26 @@ InScript — setup.py
 pyproject.toml is the canonical config for v1.0.23+
 This file is kept for compatibility with older pip versions.
 
-Upgrade from v1.0.0: pip install --upgrade inscript-lang
-Publish: python -m build && python -m twine upload dist/*
+VERSION is read dynamically from inscript.py so setup.py, pyproject.toml,
+and inscript.py always agree — no more manual sync needed.
 """
-from setuptools import setup, find_packages
+import re
+from pathlib import Path
+from setuptools import setup
+
+def _read_version():
+    src = Path(__file__).parent / "inscript.py"
+    m   = re.search(r'^VERSION\s*=\s*["\']([^"\']+)["\']',
+                    src.read_text(encoding="utf-8"), re.M)
+    if not m:
+        raise RuntimeError("VERSION not found in inscript.py")
+    return m.group(1)
+
+VERSION = _read_version()
 
 setup(
     name             = "inscript-lang",
-    version          = "1.7.2",
+    version          = VERSION,
     author           = "Shreyasi Sarkar",
     description      = "InScript — a game-focused scripting language for 2D games",
     long_description = open("README.md", encoding="utf-8").read(),
@@ -24,6 +36,9 @@ setup(
         "Intended Audience :: Developers",
         "License :: OSI Approved :: MIT License",
         "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
         "Topic :: Games/Entertainment",
         "Topic :: Software Development :: Interpreters",
     ],
