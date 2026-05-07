@@ -35,12 +35,23 @@ def t_int():    assert last("42") == 42
 def t_float():  assert last("3.14") == 3.14
 def t_string(): assert last('"hello"') == "hello"
 def t_bool():   assert last("true") is True
-def t_null():   assert last("null") is None
+def t_null():
+    # v1.7.4: `null` is a hard error (E0055) — use `nil` instead
+    assert last("nil") is None
+
+def t_null_keyword_error():
+    # v1.7.4: `null` raises E0055
+    try:
+        last("null")
+        assert False, "Expected E0055 error for null keyword"
+    except Exception as e:
+        assert "E0055" in str(e) or "null" in str(e), f"Expected E0055, got: {e}"
 test("Int literal",    t_int)
 test("Float literal",  t_float)
 test("String literal", t_string)
 test("Bool literal",   t_bool)
-test("Null literal",   t_null)
+test("Null literal (nil)",         t_null)
+test("null keyword → E0055",       t_null_keyword_error)
 
 # ── Variables ──────────────────────────────────────────────────────────────
 def t_let():

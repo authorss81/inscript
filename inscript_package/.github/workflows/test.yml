@@ -41,6 +41,7 @@ jobs:
           python test_lexer.py
           python test_parser.py
           python test_analyzer.py
+          python test_interpreter.py
           python test_phase6.py
           python test_phase7.py
           python test_audit.py
@@ -59,6 +60,7 @@ jobs:
           python test_v184.py
           python test_v191.py
           python test_v192.py
+          python test_v193.py
 
       - name: Run formatter smoke test (Unix only)
         working-directory: inscript_package

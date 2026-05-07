@@ -24,7 +24,7 @@ from errors   import (InScriptError, LexerError, ParseError,
                        SemanticError, InScriptRuntimeError,
                        MultiError, InScriptWarning)
 
-VERSION = "1.9.2"
+VERSION = "1.9.3"
 LANG    = "InScript"
 PACKAGES_DIR = os.path.join(os.path.expanduser("~"), ".inscript", "packages")
 REGISTRY_URL = "https://raw.githubusercontent.com/authorss81/inscript-packages/main/registry.json"
@@ -435,6 +435,303 @@ def _print_inscript_profile(pr, filename: str = "<script>"):
     print(f"  {'':>10}  {total_time:>8.3f}  100.0%  TOTAL (hotspots)\n")
 
 
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# v1.9.3 — Documentation Generation
+# ─────────────────────────────────────────────────────────────────────────────
+
+import re as _re
+
+# ── Doc comment parser ────────────────────────────────────────────────────────
+
+def _parse_doc_comments(source: str) -> list:
+    """
+    v1.9.3: Extract doc-comment blocks from InScript source.
+
+    A doc block is one or more consecutive `///` lines immediately followed
+    by a `fn`, `struct`, `enum`, `interface`, or `type` declaration.
+
+    Returns a list of dicts:
+      {
+        "kind":        "fn"|"struct"|"enum"|"interface"|"type",
+        "name":        str,
+        "description": str,          # first non-tag lines joined
+        "params":      [{"name":str, "type":str, "desc":str}],
+        "returns":     {"type":str, "desc":str} | None,
+        "examples":    [str],        # code blocks from @example tags
+        "deprecated":  str | None,   # message from @deprecated
+        "since":       str | None,   # version string from @since
+        "raw_tags":    [{"tag":str, "text":str}],  # all unrecognized tags
+        "line":        int,
+      }
+    """
+    lines   = source.splitlines()
+    results = []
+    i = 0
+
+    DECL_RE = _re.compile(
+        r'^\s*(?:pub\s+)?(?:async\s+)?'
+        r'(fn|struct|enum|interface|type)\s+(\w+)'
+    )
+
+    while i < len(lines):
+        # Collect consecutive /// lines
+        if not lines[i].lstrip().startswith("///"):
+            i += 1
+            continue
+
+        block_start = i
+        raw_comment = []
+        while i < len(lines) and lines[i].lstrip().startswith("///"):
+            stripped = lines[i].lstrip()
+            text = stripped[3:].lstrip(" ")   # strip leading "/// "
+            raw_comment.append(text)
+            i += 1
+
+        # Skip blank lines between doc block and declaration
+        j = i
+        while j < len(lines) and not lines[j].strip():
+            j += 1
+
+        if j >= len(lines):
+            continue
+
+        m = DECL_RE.match(lines[j])
+        if not m:
+            continue    # doc block not followed by a declaration
+
+        kind = m.group(1)
+        name = m.group(2)
+
+        # Parse the doc block
+        description_lines = []
+        params    = []
+        returns   = None
+        examples  = []
+        deprecated = None
+        since      = None
+        raw_tags   = []
+        example_buf = []
+        in_example  = False
+
+        for raw in raw_comment:
+            if raw.startswith("@example"):
+                in_example = True
+                example_buf = []
+                continue
+            if in_example:
+                if raw.startswith("@"):
+                    examples.append("\n".join(example_buf).strip())
+                    example_buf = []
+                    in_example  = False
+                    # fall through to process this @tag
+                else:
+                    example_buf.append(raw)
+                    continue
+            if raw.startswith("@param "):
+                rest   = raw[7:].strip()
+                parts  = rest.split(None, 2)
+                pname  = parts[0] if len(parts) > 0 else ""
+                ptype  = parts[1] if len(parts) > 1 else ""
+                pdesc  = parts[2] if len(parts) > 2 else ""
+                # strip optional type wrapping like (int) or [int]
+                ptype  = ptype.strip("()[]")
+                params.append({"name": pname, "type": ptype, "desc": pdesc})
+            elif raw.startswith("@returns ") or raw.startswith("@return "):
+                rest  = raw.split(None, 1)[1].strip() if " " in raw else ""
+                parts = rest.split(None, 1)
+                rtype = parts[0].strip("()[]") if parts else ""
+                rdesc = parts[1] if len(parts) > 1 else ""
+                returns = {"type": rtype, "desc": rdesc}
+            elif raw.startswith("@deprecated"):
+                deprecated = raw[11:].strip()
+            elif raw.startswith("@since "):
+                since = raw[7:].strip()
+            elif raw.startswith("@"):
+                tag_parts = raw.split(None, 1)
+                raw_tags.append({
+                    "tag":  tag_parts[0][1:],
+                    "text": tag_parts[1] if len(tag_parts) > 1 else ""
+                })
+            else:
+                description_lines.append(raw)
+
+        if in_example and example_buf:
+            examples.append("\n".join(example_buf).strip())
+
+        results.append({
+            "kind":        kind,
+            "name":        name,
+            "description": "\n".join(description_lines).strip(),
+            "params":      params,
+            "returns":     returns,
+            "examples":    examples,
+            "deprecated":  deprecated,
+            "since":       since,
+            "raw_tags":    raw_tags,
+            "line":        block_start + 1,
+        })
+        i = j + 1
+
+    return results
+
+
+# ── Markdown renderer ─────────────────────────────────────────────────────────
+
+def _render_doc_markdown(entries: list, source_file: str = "") -> str:
+    """
+    v1.9.3: Render extracted doc entries as Markdown.
+
+    Format:
+      # API Reference — filename
+      ## `fn name`
+      Description
+      ### Parameters / Returns / Examples / Deprecated
+    """
+    fname = os.path.basename(source_file) if source_file else "API"
+    stem  = fname.replace(".ins", "")
+
+    lines = [
+        f"# API Reference — {stem}",
+        f"",
+        f"> Generated by InScript {VERSION}  ",
+        f"> Source: `{source_file}`" if source_file else "",
+        f"",
+        "---",
+        "",
+    ]
+
+    for entry in entries:
+        kind = entry["kind"]
+        name = entry["name"]
+
+        # Section header
+        lines.append(f"## `{kind} {name}`")
+        if entry.get("since"):
+            lines.append(f"*Since v{entry['since']}*  ")
+        if entry.get("deprecated"):
+            lines.append(f"")
+            lines.append(f"> **Deprecated:** {entry['deprecated']}")
+        lines.append("")
+
+        # Description
+        if entry["description"]:
+            lines.append(entry["description"])
+            lines.append("")
+
+        # Parameters table
+        if entry["params"]:
+            lines.append("### Parameters")
+            lines.append("")
+            lines.append("| Name | Type | Description |")
+            lines.append("|------|------|-------------|")
+            for p in entry["params"]:
+                ptype = f"`{p['type']}`" if p["type"] else "—"
+                lines.append(f"| `{p['name']}` | {ptype} | {p['desc']} |")
+            lines.append("")
+
+        # Returns
+        if entry.get("returns"):
+            r = entry["returns"]
+            lines.append("### Returns")
+            lines.append("")
+            rtype = f"`{r['type']}`" if r["type"] else ""
+            rdesc = r["desc"]
+            if rtype and rdesc:
+                lines.append(f"{rtype} — {rdesc}")
+            elif rtype:
+                lines.append(rtype)
+            else:
+                lines.append(rdesc)
+            lines.append("")
+
+        # Examples (runnable code blocks)
+        if entry["examples"]:
+            lines.append("### Example")
+            lines.append("")
+            for ex in entry["examples"]:
+                lines.append("```inscript")
+                lines.append(ex)
+                lines.append("```")
+                lines.append("")
+
+        lines.append("---")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+# ── File / directory driver ───────────────────────────────────────────────────
+
+def _doc_file(filepath: str, output_path: str = None) -> tuple:
+    """
+    v1.9.3: Extract doc comments from a single .ins file and return
+    (entries, markdown_str).  Writes to output_path if given.
+    """
+    try:
+        with open(filepath, encoding="utf-8") as f:
+            source = f.read()
+    except OSError as e:
+        print(f"[InScript doc] Cannot read '{filepath}': {e}", file=sys.stderr)
+        return [], ""
+
+    entries  = _parse_doc_comments(source)
+    markdown = _render_doc_markdown(entries, source_file=filepath)
+
+    if output_path:
+        os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
+        try:
+            with open(output_path, "w", encoding="utf-8") as f:
+                f.write(markdown)
+        except OSError as e:
+            print(f"[InScript doc] Cannot write '{output_path}': {e}", file=sys.stderr)
+
+    return entries, markdown
+
+
+def _generate_docs(path: str, output_dir: str = None) -> int:
+    """
+    v1.9.3: `inscript doc FILE|DIR [--out DIR]`
+
+    • FILE  → print Markdown to stdout (or write to --out/filename.md)
+    • DIR   → walk all .ins files, write docs/api/<name>.md  (or --out/<name>.md)
+
+    Returns 0 on success, 1 on error.
+    """
+    if os.path.isfile(path):
+        entries, markdown = _doc_file(path)
+        if output_dir:
+            stem    = os.path.basename(path).replace(".ins", "")
+            out_md  = os.path.join(output_dir, stem + ".md")
+            _doc_file(path, output_path=out_md)
+            n = len(entries)
+            print(f"[InScript doc] '{path}' → '{out_md}'  ({n} item{'s' if n!=1 else ''})")
+        else:
+            print(markdown)
+        return 0
+
+    elif os.path.isdir(path):
+        out_base = output_dir or os.path.join(path, "docs", "api")
+        ins_files = sorted(_find_ins_files(path))
+        if not ins_files:
+            print(f"[InScript doc] No .ins files found in '{path}'")
+            return 0
+        total_entries = 0
+        for fpath in ins_files:
+            rel    = os.path.relpath(fpath, path)
+            stem   = rel.replace(os.sep, "_").replace(".ins", "")
+            out_md = os.path.join(out_base, stem + ".md")
+            entries, _ = _doc_file(fpath, output_path=out_md)
+            total_entries += len(entries)
+            n = len(entries)
+            print(f"[InScript doc]  {rel} → {os.path.relpath(out_md, path)}  ({n} item{'s' if n!=1 else ''})")
+        print(f"[InScript doc] Done. {len(ins_files)} file(s), {total_entries} documented item(s).")
+        return 0
+    else:
+        print(f"[InScript doc] Not found: '{path}'", file=sys.stderr)
+        return 1
+
 def run_source(source: str, filename: str = "<stdin>",
                type_check: bool = True,
                no_warn: bool = False,
@@ -694,6 +991,10 @@ Examples:
                         help="v1.9.2: Validate inscript.toml (default: current dir)")
     parser.add_argument("--lock", metavar="DIR", nargs="?", const=".",
                         help="v1.9.2: Generate inscript.lock from inscript.toml")
+    parser.add_argument("--doc", metavar="FILE_OR_DIR",
+                        help="v1.9.3: Generate Markdown docs from /// doc comments")
+    parser.add_argument("--doc-out", metavar="DIR", default=None,
+                        help="v1.9.3: Output directory for --doc (default: stdout / docs/api/)")
     parser.add_argument("--strict", action="store_true",
                         help="v1.6.0: Strict mode — all warnings become errors, no implicit any")
     parser.add_argument("--tokens", action="store_true", help="Print lexer token stream")
@@ -859,6 +1160,8 @@ Examples:
         return _validate_manifest(args.validate)
     if getattr(args, 'lock', None) is not None:
         return _generate_lockfile(args.lock)
+    if getattr(args, 'doc', None):
+        return _generate_docs(args.doc, output_dir=getattr(args, 'doc_out', None))
 
     # v1.9.1: --no-typecheck is deprecated — emit a warning and honour it
     if getattr(args, 'no_typecheck', False):
