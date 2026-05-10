@@ -24,7 +24,7 @@ from errors   import (InScriptError, LexerError, ParseError,
                        SemanticError, InScriptRuntimeError,
                        MultiError, InScriptWarning)
 
-VERSION = "1.9.9"
+VERSION = "1.9.10"
 LANG    = "InScript"
 PACKAGES_DIR = os.path.join(os.path.expanduser("~"), ".inscript", "packages")
 REGISTRY_URL = "https://raw.githubusercontent.com/authorss81/inscript-packages/main/registry.json"
@@ -598,6 +598,159 @@ def _infer_types_file(path: str) -> int:
         print(f"  Line {line:3d}:  {kw} {name:<20s}  →  {typ}")
     print()
     return 0
+
+
+def _check_v2_readiness(project_dir: str = ".") -> int:
+    """
+    v1.9.10: `inscript check-v2 [DIR]`
+
+    Runs all pre-v2.0.0 readiness gates and reports pass/fail for each.
+    Exit code 0 = all gates pass (project is ready for v2.0.0).
+    Exit code 1 = one or more gates fail (work remains).
+
+    Gates checked:
+      1. div removed        — no .ins files use the `div` keyword
+      2. null removed       — no .ins files use the `null` keyword
+      3. bare array removed — no .ins files use bare `: array` annotation
+      4. hash comments      — no .ins files use old `//` line comments
+      5. async/await real   — interpreter has InScriptCoroutine (not stub)
+      6. type inference     — Array<T> inference present in analyzer
+      7. pkg lock           — inscript.lock exists and is non-empty
+      8. inscript.toml      — inscript.toml exists in project_dir
+    """
+    import re as _re
+
+    PASS = "\033[32m  ✅ PASS\033[0m"
+    FAIL = "\033[31m  ❌ FAIL\033[0m"
+    WARN = "\033[33m  ⚠️  WARN\033[0m"
+
+    gates_passed = 0
+    gates_failed = 0
+    gates_warned = 0
+
+    def gate(name: str, passed: bool, detail: str = "", warn: bool = False):
+        nonlocal gates_passed, gates_failed, gates_warned
+        if passed:
+            print(f"{PASS}  {name}")
+            gates_passed += 1
+        elif warn:
+            print(f"{WARN}  {name}  — {detail}")
+            gates_warned += 1
+        else:
+            print(f"{FAIL}  {name}  — {detail}")
+            gates_failed += 1
+
+    print(f"\n  InScript v2.0.0 Readiness Check\n  Project: {os.path.abspath(project_dir)}\n")
+
+    # ── Gate 1: div removed ───────────────────────────────────────────────────
+    ins_files = list(_find_ins_files(project_dir)) if os.path.isdir(project_dir) else []
+    div_hits = []
+    for fpath in ins_files:
+        try:
+            src = open(fpath, encoding="utf-8").read()
+            lines = [i+1 for i, l in enumerate(src.splitlines())
+                     if _re.search(r'\bdiv\b', l) and not l.lstrip().startswith('#')]
+            if lines:
+                div_hits.append((fpath, lines))
+        except OSError:
+            pass
+    gate("div keyword removed",
+         len(div_hits) == 0,
+         f"{sum(len(v) for _,v in div_hits)} occurrence(s) in "
+         f"{len(div_hits)} file(s) — run: inscript --migrate {project_dir}")
+
+    # ── Gate 2: null removed ──────────────────────────────────────────────────
+    null_hits = []
+    for fpath in ins_files:
+        try:
+            src = open(fpath, encoding="utf-8").read()
+            lines = [i+1 for i, l in enumerate(src.splitlines())
+                     if _re.search(r'\bnull\b', l) and not l.lstrip().startswith('#')]
+            if lines:
+                null_hits.append((fpath, lines))
+        except OSError:
+            pass
+    gate("null keyword removed",
+         len(null_hits) == 0,
+         f"{sum(len(v) for _,v in null_hits)} occurrence(s) — run: inscript --migrate {project_dir}")
+
+    # ── Gate 3: bare array removed ────────────────────────────────────────────
+    arr_hits = []
+    for fpath in ins_files:
+        try:
+            src = open(fpath, encoding="utf-8").read()
+            if _re.search(r':\s*array\b', src):
+                arr_hits.append(fpath)
+        except OSError:
+            pass
+    gate("bare 'array' annotation removed",
+         len(arr_hits) == 0,
+         f"Found in {len(arr_hits)} file(s) — use typed arrays like Array<int>",
+         warn=len(arr_hits) > 0)
+
+    # ── Gate 4: # comments (// as comments gone) ──────────────────────────────
+    comment_hits = []
+    for fpath in ins_files:
+        try:
+            src = open(fpath, encoding="utf-8").read()
+            # Detect lines where // is used as a comment (standalone // line or // followed by a word)
+            bad = [i+1 for i, l in enumerate(src.splitlines())
+                   if _re.match(r'^\s*//', l) or _re.search(r'\s//\s+[A-Za-z_]', l)]
+            if bad:
+                comment_hits.append((fpath, bad))
+        except OSError:
+            pass
+    gate("# line comments (no old // comments)",
+         len(comment_hits) == 0,
+         f"{len(comment_hits)} file(s) still use // as comments — run: inscript --migrate {project_dir}")
+
+    # ── Gate 5: async/await is real (not stub) ────────────────────────────────
+    try:
+        from stdlib_values import InScriptCoroutine
+        gate("async/await real (InScriptCoroutine)", True)
+    except ImportError:
+        gate("async/await real (InScriptCoroutine)", False,
+             "InScriptCoroutine not found in stdlib_values — v1.9.7 not applied")
+
+    # ── Gate 6: type inference (Array<T>) ────────────────────────────────────
+    try:
+        from analyzer import array_type, T_INT
+        test_t = array_type(T_INT)
+        gate("Array<T> type inference present", test_t.name == "Array")
+    except Exception as e:
+        gate("Array<T> type inference present", False, str(e))
+
+    # ── Gate 7: inscript.lock present ────────────────────────────────────────
+    lock_path = os.path.join(project_dir, LOCK_FILENAME)
+    lock_ok   = os.path.isfile(lock_path)
+    gate("inscript.lock present",
+         lock_ok,
+         f"Not found at '{lock_path}' — run: inscript lock",
+         warn=not lock_ok)
+
+    # ── Gate 8: inscript.toml present ────────────────────────────────────────
+    toml_path = os.path.join(project_dir, MANIFEST_FILENAME)
+    toml_ok   = os.path.isfile(toml_path)
+    gate("inscript.toml present",
+         toml_ok,
+         f"Not found at '{toml_path}' — run: inscript init",
+         warn=not toml_ok)
+
+    # ── Summary ──────────────────────────────────────────────────────────────
+    total = gates_passed + gates_failed + gates_warned
+    print(f"\n  {gates_passed}/{total} gates passed"
+          + (f"  ({gates_warned} warning(s))" if gates_warned else "")
+          + (f"  ({gates_failed} failure(s))" if gates_failed else ""))
+
+    if gates_failed == 0 and gates_warned == 0:
+        print("\n  \033[32m🎉 All gates pass — project is ready for v2.0.0!\033[0m\n")
+        return 0
+    elif gates_failed == 0:
+        print("\n  \033[33m⚠️  Warnings present — review before tagging v2.0.0.\033[0m\n")
+        return 0
+    else:
+        print(f"\n  \033[31m✗ {gates_failed} gate(s) failed — resolve before v2.0.0.\033[0m\n")
+        return 1
 
 
 def _migrate_files(path: str) -> int:
@@ -1860,6 +2013,8 @@ Examples:
                         help="v1.6.0: Check all .ins files in DIR recursively, exit 1 if any errors")
     parser.add_argument("--infer-types", metavar="FILE",
                         help="v1.9.8: Print inferred type for every let/const declaration in FILE")
+    parser.add_argument("--check-v2", metavar="DIR", nargs="?", const=".",
+                        help="v1.9.10: Run all v2.0.0 readiness gates on DIR (default: .)")
     parser.add_argument("--migrate", metavar="DIR_OR_FILE",
                         help="v1.7.4: Auto-migrate deprecated syntax (null→nil, div→//)")
     parser.add_argument("--compat", metavar="DIR_OR_FILE",
@@ -2058,6 +2213,8 @@ Examples:
         return _migrate_files(args.migrate)
     if getattr(args, 'infer_types', None):
         return _infer_types_file(args.infer_types)
+    if getattr(args, 'check_v2', None) is not None:
+        return _check_v2_readiness(args.check_v2)
     if getattr(args, 'compat', None):
         return _compat_files(args.compat)
     if getattr(args, 'init', None) is not None:

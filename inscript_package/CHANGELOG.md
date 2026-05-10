@@ -4,7 +4,26 @@ All notable changes are documented here. Follows [Semantic Versioning](https://s
 
 ---
 
-## [1.9.9] — 2026-05-09
+## [1.9.10] — 2026-05-09
+
+### v2.0.0 Readiness Gate — `inscript check-v2`
+
+- **`inscript --check-v2 [DIR]`** — new command that runs 8 pre-v2.0.0 readiness gates on a project directory and reports ✅/❌ per gate.
+- **Gates checked:**
+  1. `div` keyword removed — no `.ins` files use `div` (E0056)
+  2. `null` keyword removed — no `.ins` files use `null` (E0055)
+  3. bare `array` annotation removed — use `Array<T>` instead
+  4. `#` line comments — no files still use `//` as comments
+  5. `async/await` is real — `InScriptCoroutine` present (v1.9.7 applied)
+  6. `Array<T>` type inference present — array_type helper works (v1.9.8 applied)
+  7. `inscript.lock` present in project dir
+  8. `inscript.toml` present in project dir
+- **Exit code 0** = all hard gates pass (warnings allowed); **exit code 1** = one or more failures.
+- **Pure addition** — no existing code was rewritten; only `_check_v2_readiness()` added and `--check-v2` argument wired.
+
+---
+
+
 
 ### Package manager hardening
 

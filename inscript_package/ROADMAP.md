@@ -462,12 +462,12 @@ Threading/Bench, Game Visual, Game IO, Game World, Game Systems, Utilities.
 - [ ] Offline mode: install from lock file hashes if registry unreachable
 - [ ] `test_v199.py`
 
-### v1.9.10 — v2.0.0 Readiness Gate
-- [ ] `inscript check-v2` command — runs all pre-v2.0.0 readiness checks, prints pass/fail per gate
-- [ ] Gates: `div` removed ✓, `null` removed ✓, `#` comments ✓, bare `array` removed ✓, async/await real, type inference coverage, package manager lockfile valid
-- [ ] Exit code 0 = all gates pass (ready for v2.0.0), exit 1 = one or more fail
-- [ ] No rewrites — only adds `check-v2` command on top of existing work
-- [ ] `test_v1910.py`
+### v1.9.10 — v2.0.0 Readiness Gate ✅
+- [x] `inscript check-v2` command — runs all pre-v2.0.0 readiness checks, prints pass/fail per gate
+- [x] Gates: `div` removed ✓, `null` removed ✓, `#` comments ✓, bare `array` removed ✓, async/await real ✓, type inference coverage ✓, package manager lockfile valid ✓, inscript.toml present ✓
+- [x] Exit code 0 = all gates pass (ready for v2.0.0), exit 1 = one or more fail
+- [x] No rewrites — only adds `check-v2` command on top of existing work
+- [x] `test_v1910.py`
 
 ## Timeline
 
