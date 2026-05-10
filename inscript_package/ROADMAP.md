@@ -416,14 +416,51 @@ Threading/Bench, Game Visual, Game IO, Game World, Game Systems, Utilities.
 - [ ] `test_v193.py`
 
 ### v1.9.4 — Spec Freeze & Final Polish
-- [ ] Language spec document published at `docs.inscript.dev/spec`
-- [ ] No new syntax after this version — only bug fixes until v2.0.0
-- [ ] All stdlib functions documented with type signature, example, edge cases
-- [ ] Error code catalogue — all E0001–E0055 documented at `docs.inscript.dev/errors/`
-- [ ] `inscript changelog v1.6.0..v1.9.4` — generates human-readable changelog
-- [ ] Performance baseline published — benchmark suite results for fib(30), game_loop_10k, struct_heavy
-- [ ] `test_v194.py`
+- [x] Language spec document published at `docs.inscript.dev/spec`
+- [x] All stdlib functions documented with type signature, example, edge cases
+- [x] Error code catalogue — all E0001–E0055 documented at `docs.inscript.dev/errors/`
+- [x] `inscript changelog v1.6.0..v1.9.4` — generates human-readable changelog
+- [x] Performance baseline published — benchmark suite results for fib(30), game_loop_10k, struct_heavy
+- [x] `test_v194.py`
 
+### ✅ v1.9.5 — `div` Keyword Removed (Breaking)
+- [x] `div` is now a hard **parse error** (E0056) — `10 div 3` fails at parse time with message pointing to `//` and `inscript migrate`
+- [x] E0056 `DivKeyword` added to error catalogue (`inscript.py`) and `errors.py` registry
+- [x] `inscript compat` message updated: "removed in v1.9.5 (hard error)" instead of "v2.0.0"
+- [x] `inscript migrate` already rewrites `div → //` since v1.7.4 — no change needed
+- [x] `test_v195.py` — 22 tests
+
+### v1.9.6 — True async/await via asyncio
+- [ ] `async fn` functions execute as real Python coroutines (not synchronous stubs)
+- [ ] `await expr` suspends the coroutine and drives the asyncio event loop
+- [ ] `Promise<T>` added to the type system (analyzer + type map)
+- [ ] Multiple sequential `await` calls in the same function work correctly
+- [ ] Graceful fallback: non-async `await` on a plain value returns it unchanged
+- [ ] `test_v196.py`
+
+### v1.9.7 — Type Inference Hardening (reduce T_ANY leakage)
+- [ ] `let x = [1, 2, 3]` infers `Array<int>` not `T_ANY`
+- [ ] `let d = {"k": 1}` infers `Dict<string, int>` not `T_ANY`
+- [ ] `let x = 42` / `let x = "hi"` / `let x = true` already infer correctly — verify and document
+- [ ] Array/dict literals with mixed types infer `Array<any>` / `Dict<string, any>` instead of crashing
+- [ ] `inscript check --infer-types FILE` — print inferred type for every `let`/`const` declaration
+- [ ] `test_v197.py`
+
+### v1.9.8 — Package Manager Hardening
+- [ ] `inscript install` (no args) — reads `inscript.toml` `[dependencies]` and installs all of them
+- [ ] `inscript install PKG@version` — pins exact version into `inscript.lock`
+- [ ] `inscript outdated` — lists packages where a newer version is available in registry
+- [ ] `inscript update PKG` — upgrades to latest version, rewrites lock entry
+- [ ] `inscript.lock` integration: `install` writes lock; `inscript install` (no args) respects locked versions
+- [ ] Offline mode: if registry unreachable, install from lock file hashes if present
+- [ ] `test_v198.py`
+
+### v1.9.9 — v2.0.0 Readiness Gate
+- [ ] `inscript check-v2` command — runs all pre-v2.0.0 readiness checks, prints pass/fail per gate
+- [ ] Gates checked: `div` removed ✓, `null` removed ✓, bare `array` removed ✓, async/await real ?, type inference coverage ?, package manager lockfile valid ?
+- [ ] Exit code 0 = all gates pass (ready for v2.0.0), 1 = one or more gates fail
+- [ ] No rewrites — only adds the `check-v2` command on top of existing work
+- [ ] `test_v199.py`
 
 ## Timeline
 
@@ -444,7 +481,13 @@ Q3 2026      v1.2.0    Type safety + generic enforcement
 
 Q4 2026      v1.3.0    Performance (5-15× via C extension)
 
-2027         v2.0.0    Ecosystem (registry, Studio IDE, WASM)
+             v1.9.5    div hard error (E0056) ✅ done
+             v1.9.6    True async/await via asyncio
+             v1.9.7    Type inference hardening (reduce T_ANY leakage)
+             v1.9.8    Package manager hardening (install/update/outdated/lock)
+             v1.9.9    v2.0.0 readiness gate (inscript check-v2)
+
+2027         v2.0.0    Production Ready — all gates green
 ```
 
 ---
@@ -469,6 +512,12 @@ Q4 2026      v1.3.0    Performance (5-15× via C extension)
 | **v1.0.22** | *next* | docs site + E0XXX error pages |
 | **v1.0.23** | *next* | web playground (Pyodide) |
 | **v1.1.0** | Q2 2026 | **FIRST STABLE** — all tooling complete |
+| v1.9.5 | 2026-05-09 | `div` hard error E0056 — breaking, use `//` |
+| **v1.9.6** | *next* | True async/await via asyncio event loop |
+| **v1.9.7** | *next* | Type inference hardening — reduce T_ANY leakage |
+| **v1.9.8** | *next* | Package manager — install/update/outdated/lock |
+| **v1.9.9** | *next* | v2.0.0 readiness gate — `inscript check-v2` |
+| **v2.0.0** | 2027 | Production Ready — all gates green |
 
 ---
 

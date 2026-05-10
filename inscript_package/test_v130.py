@@ -85,7 +85,7 @@ cases = [
     ("int - int",  "print(10 - 3)",         "7"),
     ("int * int",  "print(3 * 4)",          "12"),
     ("int / int",  "print(10 / 4)",         "2.5"),
-    ("int // int", "print(10 div 3)",        "3"),
+    ("int // int", "print(10//3)",            "3"),  # v1.9.5: div removed
     ("int % int",  "print(10 % 3)",         "1"),
     ("float + float", "print(1.5 + 2.5)",   "4.0"),
     ("int < int",  "print(3 < 5)",          "true"),
@@ -102,8 +102,8 @@ for name, code, want in cases:
     ok(f"fast-path {name}", out == want, f"got {out!r}")
 
 # Division by zero still errors
-out, err = run("print(1 div 0)")
-ok("fast-path int div 0 raises error", err is not None and out is None)
+out, err = run("print(1//0)")
+ok("fast-path int // 0 raises error", err is not None and out is None)  # v1.9.5
 
 # ─── 3. Tail Call Optimization ───────────────────────────────────────────────
 
@@ -177,7 +177,7 @@ ok("_current_fn resets correctly between functions", out == "0\n0" and err is No
 out, err = run("""
 fn safe(x) {
     try {
-        return 100 div x
+        return 100//x
     } catch e {
         return -1
     }
@@ -230,7 +230,7 @@ for code, want in [
     ("print(10 - 3)",      "7"),
     ("print(3 * 4)",       "12"),
     ("print(10 / 4)",      "2.5"),
-    ("print(10 div 3)",    "3"),
+    ("print(10//3)",        "3"),  # v1.9.5
     ("print(10 % 3)",      "1"),
     ("print(2 == 2)",      "true"),
     ("print(3 < 5)",       "true"),
@@ -240,8 +240,8 @@ for code, want in [
     ok(f"folded value correct: {code[:20]}", out == want and err is None, f"got {out!r}")
 
 # 4g: division by zero NOT folded (must stay as runtime error)
-ops = get_ops("let x = 10 div 0")
-ok("10 div 0 not folded (div-by-zero kept for runtime)",
+ops = get_ops("let x = 10//0")
+ok("10//0 not folded (div-by-zero kept for runtime)",  # v1.9.5
    not any(o[0].name == "LOAD_INT" and o[2] == 10 and
            # check there's no DIV following it either
            False for o in ops))

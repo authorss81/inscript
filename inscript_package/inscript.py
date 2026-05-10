@@ -24,7 +24,7 @@ from errors   import (InScriptError, LexerError, ParseError,
                        SemanticError, InScriptRuntimeError,
                        MultiError, InScriptWarning)
 
-VERSION = "1.9.4"
+VERSION = "1.9.5"
 LANG    = "InScript"
 PACKAGES_DIR = os.path.join(os.path.expanduser("~"), ".inscript", "packages")
 REGISTRY_URL = "https://raw.githubusercontent.com/authorss81/inscript-packages/main/registry.json"
@@ -256,9 +256,9 @@ def _compat_files(path: str) -> int:
 
     CHECKS = [
         (_re.compile(r'\bnull\b'),
-         "use of 'null' — removed in v2.0.0, use 'nil'"),
+         "use of 'null' — removed in v1.7.4, use 'nil'"),
         (_re.compile(r'\bdiv\b'),
-         "use of 'div' operator — removed in v2.0.0, use '//' for floor division"),
+         "use of 'div' operator — removed in v1.9.5 (hard error), use '//' for floor division"),
         (_re.compile(r':\s*\[\]'),
          "bare ':[]' type annotation — use ':array' or ':[T]' with element type"),
         (_re.compile(r'\barray\b(?!\s*<)(?!\s*\[)'),
@@ -786,6 +786,7 @@ ERROR_CATALOGUE = {
     "E0053": ("ConstInLoop",           "const declaration inside a loop"),
     "E0054": ("NeverNotDiverging",     "Function declared -> never but has a non-throwing path"),
     "E0055": ("NullKeyword",           "'null' keyword removed in v1.7.4 — use 'nil'"),
+    "E0056": ("DivKeyword",            "'div' keyword removed in v1.9.5 — use '//' for integer division"),
 }
 
 

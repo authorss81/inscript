@@ -54,8 +54,9 @@ ERROR_CODES = {
     "PropertyError":           "E0048",
     "NilAccess":               "E0049",
 
-    # Deprecated-keyword hard errors (v1.7.4)
+    # Deprecated-keyword hard errors (v1.7.4+)
     "NullKeyword":             "E0055",
+    "DivKeyword":              "E0056",
 }
 
 DOCS_BASE = "https://docs.inscript.dev/errors"

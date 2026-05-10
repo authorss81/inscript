@@ -53,7 +53,7 @@ def run_all():
     T('print(10-3)',        '7')
     T('print(3*4)',         '12')
     T('print(10/4)',        '2.5')
-    T('print(10 div 3)',    '3')
+    T('print(10//3)',        '3')  # v1.9.5: div removed, use //
     T('print(10%3)',        '1')
     T('print(2**10)',       '1024')
     T('print(-7)',          '-7')
@@ -191,9 +191,9 @@ match x {
     # ── 6.11 Try/Catch ──────────────────────────────────────────────────────
     section("6.11  Try/Catch")
     T('try { throw "err" } catch e { print(e) }',         'err')
-    T('try { 1 div 0 } catch e { print("caught") }',      'caught', 'catch native exception')
+    T('try { 1//0 } catch e { print("caught") }',          'caught', 'catch int div by zero')
     T('try { nil.x } catch e { print("nil_err") }',       'nil_err', 'catch nil access')
-    T('''fn safe(x){try{return 100 div x}catch e{return -1}}
+    T('''fn safe(x){try{return 100//x}catch e{return -1}}
 print(safe(0))
 print(safe(5))''', '-1\n20', 'try/catch in function')
 

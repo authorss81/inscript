@@ -81,7 +81,7 @@ run("subtract",             'print(10-4)', "6")
 run("multiply",             'print(3*4)', "12")
 run("divide",               'print(10.0/4.0)', "2.5")
 run("power",                'print(2**10)', "1024")
-run("integer div",          'print(7 div 2)', "3")
+run("integer div //",      'print(7//2)', "3")  # v1.9.5: div removed
 run("modulo",               'print(17 % 5)', "2")
 run("compound +=",          'let x=5; x+=3; print(x)', "8")
 run("compound -=",          'let x=10; x-=3; print(x)', "7")

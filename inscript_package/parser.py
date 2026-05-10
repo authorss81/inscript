@@ -1610,7 +1610,13 @@ class Parser:
         left = self.parse_unary()   # BUG-09 fix: call parse_unary (was parse_power)
         while self.check(TT.STAR, TT.SLASH, TT.SLASH_SLASH, TT.PERCENT) or self.check(TT.DIV):
             op_tok = self.advance()
-            op    = "//" if op_tok.type == TT.DIV else op_tok.value
+            if op_tok.type == TT.DIV:
+                self._error(
+                    "[E0056] 'div' was removed in v1.9.5 — use '//' for integer division. "
+                    "Run: inscript migrate <file> to auto-fix.",
+                    op_tok
+                )
+            op    = op_tok.value
             right = self.parse_unary()
             left  = BinaryExpr(left=left, op=op, right=right,
                                 line=line, col=col)

@@ -4,6 +4,19 @@ All notable changes are documented here. Follows [Semantic Versioning](https://s
 
 ---
 
+## [1.9.5] — 2026-05-09
+
+### Breaking: `div` keyword removed (E0056)
+
+- **`div` is now a hard parse error** — `10 div 3` raises `[E0056] 'div' was removed in v1.9.5 — use '//' for integer division`. This was deprecated since v1.7.1 when `//` was introduced.
+- **E0056 `DivKeyword`** added to error catalogue and `errors.py` registry.
+- **`inscript migrate`** already rewrites `div → //` — no change needed there; the tool has handled this since v1.7.4.
+- **`inscript compat`** check message updated to say "removed in v1.9.5 (hard error)" rather than "v2.0.0".
+- **Migration path**: run `inscript migrate <file>` before upgrading; all `div` uses are auto-rewritten to `//`.
+
+---
+
+
 ## [1.8.1] — 2026-05-04
 
 ### Union Types & Optionals

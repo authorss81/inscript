@@ -114,16 +114,16 @@ def t_interface_inherited():
     assert out == "base"
 test("1.1 interface: inherited methods satisfy interface requirement", t_interface_inherited)
 
-# 1.2 div keyword
+# 1.2 div keyword — v1.9.5: div is now a hard error; use //
 def t_div_keyword():
-    out = run_ok("print(10 div 3)")
+    out = run_ok("print(10//3)")  # v1.9.5: use // not div
     assert out == "3"
-test("1.2 div keyword: 10 div 3 = 3", t_div_keyword)
+test("1.2 floor-div //: 10//3 = 3", t_div_keyword)
 
 def t_div_negative():
-    out = run_ok("print(-7 div 2)")
+    out = run_ok("print(-7//2)")  # v1.9.5: use // not div
     assert out == "-4", f"Got {out}"
-test("1.2 div floors toward negative infinity: -7 div 2 = -4", t_div_negative)
+test("1.2 floor-div //: -7//2 = -4 (floors toward negative infinity)", t_div_negative)
 
 # 1.4 String literals
 def t_raw_string():
@@ -385,7 +385,7 @@ def t_call_stack():
 test("3.4 InScriptCallStack push/pop/snapshot", t_call_stack)
 
 def t_call_stack_in_error():
-    src = "fn inner() -> int { return 1 div 0 }\nfn outer() -> int { return inner() }\nlet x = outer()\n"
+    src = "fn inner() -> int { return 1//0 }\nfn outer() -> int { return inner() }\nlet x = outer()\n"  # v1.9.5: // not div
     e = run_err(src)
     assert e is not None
     trace = getattr(e, "call_trace", [])

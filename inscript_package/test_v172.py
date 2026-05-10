@@ -181,11 +181,15 @@ cases = [
     ("10//3",   "print(10//3)",      "3"),
     ("-7//2",   "print(-7//2)",      "-4"),
     ("comment", "let x=5 // note\nprint(x)", "5"),
-    ("div kw",  "print(10 div 3)",   "3"),
+    # v1.9.5: "div kw" removed from valid-cases — div is now a hard parse error (E0056)
 ]
 for name, code, want in cases:
     out, err = run(code)
     ok(f"v1.7.1 {name}", out == want and err is None, repr(out))
+
+# v1.9.5: div keyword is now a hard parse error
+out, err = run("print(10 div 3)")
+ok("v1.9.5 div is hard error (E0056)", err is not None and "E0056" in err, repr(err))
 
 out, err = run("print(null)")
 ok("null hard error", err is not None and "removed" in err)
