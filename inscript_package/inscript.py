@@ -24,7 +24,7 @@ from errors   import (InScriptError, LexerError, ParseError,
                        SemanticError, InScriptRuntimeError,
                        MultiError, InScriptWarning)
 
-VERSION = "1.9.3"
+VERSION = "1.9.4"
 LANG    = "InScript"
 PACKAGES_DIR = os.path.join(os.path.expanduser("~"), ".inscript", "packages")
 REGISTRY_URL = "https://raw.githubusercontent.com/authorss81/inscript-packages/main/registry.json"
@@ -732,6 +732,585 @@ def _generate_docs(path: str, output_dir: str = None) -> int:
         print(f"[InScript doc] Not found: '{path}'", file=sys.stderr)
         return 1
 
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# v1.9.4 — Spec Freeze & Final Polish
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Error code catalogue ──────────────────────────────────────────────────────
+
+ERROR_CATALOGUE = {
+    "E0001": ("LexError",              "Unexpected character or malformed token"),
+    "E0002": ("UnterminatedString",    "String literal has no closing quote"),
+    "E0003": ("UnterminatedComment",   "Block comment /* ... */ never closed"),
+    "E0010": ("ParseError",            "Unexpected token or malformed syntax"),
+    "E0011": ("MissingClosingBrace",   "Expected '}' to close block"),
+    "E0012": ("MissingClosingParen",   "Expected ')' to close expression"),
+    "E0013": ("MissingClosingBracket", "Expected ']' to close array or index"),
+    "E0014": ("InvalidAssignTarget",   "Left-hand side of assignment is not assignable"),
+    "E0015": ("MissingReturnType",     "Arrow '->' present but return type missing"),
+    "E0020": ("SemanticError",         "General semantic / type error"),
+    "E0021": ("TypeMismatch",          "Value type does not match declared type"),
+    "E0022": ("UndefinedName",         "Name referenced before declaration"),
+    "E0023": ("DuplicateDeclaration",  "Name already declared in this scope"),
+    "E0024": ("ConstReassign",         "Cannot reassign a constant"),
+    "E0025": ("ReturnTypeMismatch",    "Returned value type differs from declared return type"),
+    "E0026": ("ReturnOutsideFn",       "return statement outside a function"),
+    "E0027": ("BreakOutsideLoop",      "break statement outside a loop"),
+    "E0028": ("ContinueOutsideLoop",   "continue statement outside a loop"),
+    "E0029": ("UnknownType",           "Type name not found in scope"),
+    "E0030": ("RuntimeError",          "General runtime error"),
+    "E0031": ("DivisionByZero",        "Integer or float division by zero"),
+    "E0032": ("IndexOutOfBounds",      "Array index outside valid range"),
+    "E0033": ("KeyNotFound",           "Dict key does not exist"),
+    "E0034": ("StackOverflow",         "Call depth exceeded (infinite recursion)"),
+    "E0035": ("TypeError",             "Operation applied to incompatible types"),
+    "E0036": ("ArithmeticError",       "Invalid arithmetic operation"),
+    "E0037": ("InvalidCast",           "Cannot cast value to target type"),
+    "E0038": ("NilDereference",        "Method or field access on nil"),
+    "E0039": ("ThrowSignal",           "Unhandled throw (not an error unless uncaught)"),
+    "E0040": ("UncaughtThrow",         "throw reached top level without a try/catch"),
+    "E0041": ("ImportError",           "Module or file could not be imported"),
+    "E0042": ("ExportError",           "Export of undefined name"),
+    "E0043": ("NamespaceError",        "Invalid namespace access"),
+    "E0044": ("ArgumentCount",         "Wrong number of arguments to function call"),
+    "E0045": ("MissingField",          "Struct initializer missing required field"),
+    "E0046": ("UnknownField",          "Struct initializer references unknown field"),
+    "E0047": ("InterfaceNotImpl",      "Struct claims to implement interface but methods missing"),
+    "E0048": ("EnumNotExhaustive",     "match on enum is missing one or more variants"),
+    "E0049": ("NilAccess",             "Optional field or nil value accessed without guard"),
+    "E0050": ("InvalidReturn",         "Return value in void function"),
+    "E0051": ("UndeclaredInterface",   "implements clause references unknown interface"),
+    "E0052": ("CircularImport",        "Import creates a circular dependency"),
+    "E0053": ("ConstInLoop",           "const declaration inside a loop"),
+    "E0054": ("NeverNotDiverging",     "Function declared -> never but has a non-throwing path"),
+    "E0055": ("NullKeyword",           "'null' keyword removed in v1.7.4 — use 'nil'"),
+}
+
+
+def _print_error_catalogue(filter_prefix: str = None) -> int:
+    """
+    v1.9.4: Print the full error code catalogue, optionally filtered by prefix.
+    """
+    print(f"InScript Error Code Catalogue  (InScript {VERSION})")
+    print(f"{'='*58}")
+    count = 0
+    for code, (name, desc) in sorted(ERROR_CATALOGUE.items()):
+        if filter_prefix and not code.startswith(filter_prefix):
+            continue
+        print(f"  {code}  {name:<28}  {desc}")
+        count += 1
+    print(f"{'='*58}")
+    print(f"  {count} error code(s)")
+    return 0
+
+
+# ── changelog generator ───────────────────────────────────────────────────────
+
+def _parse_version_tuple(v: str) -> tuple:
+    """Parse 'v1.6.0' or '1.6.0' → (1, 6, 0)."""
+    import re
+    m = re.match(r"v?(\d+)\.(\d+)\.(\d+)", v.strip())
+    if not m:
+        return (0, 0, 0)
+    return (int(m.group(1)), int(m.group(2)), int(m.group(3)))
+
+
+def _generate_changelog_range(spec: str, changelog_path: str = None) -> int:
+    """
+    v1.9.4: `inscript changelog FROM..TO`
+
+    Reads CHANGELOG.md and extracts entries whose version falls in [FROM, TO].
+    Prints filtered changelog to stdout.
+
+    Examples:
+      inscript changelog v1.6.0..v1.9.4
+      inscript changelog v1.8.0..
+      inscript changelog ..v1.7.4
+    """
+    import re
+
+    # Parse the range spec
+    if ".." in spec:
+        lo_str, hi_str = spec.split("..", 1)
+        lo = _parse_version_tuple(lo_str) if lo_str.strip() else (0, 0, 0)
+        hi = _parse_version_tuple(hi_str) if hi_str.strip() else (999, 999, 999)
+    else:
+        # Single version — exact match
+        lo = hi = _parse_version_tuple(spec)
+        if lo == (0, 0, 0):
+            print("[InScript changelog] Invalid range. Use e.g. v1.6.0..v1.9.4 or v1.9.3",
+                  file=sys.stderr)
+            return 1
+
+    if lo == (0, 0, 0) and hi == (999, 999, 999):
+        print("[InScript changelog] Invalid range. Use e.g. v1.6.0..v1.9.4",
+              file=sys.stderr)
+        return 1
+
+    # Find CHANGELOG.md
+    if changelog_path is None:
+        candidates = [
+            os.path.join(os.getcwd(), "CHANGELOG.md"),
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "CHANGELOG.md"),
+        ]
+        changelog_path = next((p for p in candidates if os.path.exists(p)), None)
+
+    if not changelog_path or not os.path.exists(changelog_path):
+        print("[InScript changelog] CHANGELOG.md not found. "
+              "Run from the project root.", file=sys.stderr)
+        return 1
+
+    with open(changelog_path, encoding="utf-8") as f:
+        content = f.read()
+
+    # Split into per-version sections by "## [X.Y.Z]" headings
+    section_re = re.compile(r"^## \[(\d+\.\d+\.\d+)\]", re.MULTILINE)
+    positions  = [(m.start(), m.group(1)) for m in section_re.finditer(content)]
+
+    if not positions:
+        print("[InScript changelog] No version sections found in CHANGELOG.md",
+              file=sys.stderr)
+        return 1
+
+    # Extract sections that fall within [lo, hi]
+    selected = []
+    for i, (start, ver_str) in enumerate(positions):
+        vt = _parse_version_tuple(ver_str)
+        if lo <= vt <= hi:
+            end = positions[i + 1][0] if i + 1 < len(positions) else len(content)
+            selected.append((vt, ver_str, content[start:end].rstrip()))
+
+    if not selected:
+        lo_s = ".".join(str(x) for x in lo)
+        hi_s = ".".join(str(x) for x in hi)
+        print(f"[InScript changelog] No versions found in range {lo_s}..{hi_s}")
+        return 0
+
+    # Print newest-first
+    selected.sort(key=lambda x: x[0], reverse=True)
+    lo_s = ".".join(str(x) for x in lo) if lo != (0,0,0) else "start"
+    hi_s = ".".join(str(x) for x in hi) if hi != (999,999,999) else "latest"
+    print(f"# InScript Changelog  {lo_s}..{hi_s}\n")
+    for _, _, section_text in selected:
+        print(section_text)
+        print()
+
+    print(f"---")
+    print(f"{len(selected)} version(s) shown.")
+    return 0
+
+
+# ── performance benchmark suite ───────────────────────────────────────────────
+
+BENCHMARK_PROGRAMS = {
+    "fib_30": (
+        "Fibonacci fib(30) — recursive, tests call overhead",
+        """
+fn fib(n) {
+  if n <= 1 { return n }
+  return fib(n - 1) + fib(n - 2)
+}
+fib(30)
+"""
+    ),
+    "loop_100k": (
+        "Counter loop 100,000 iterations — tests loop + arith throughput",
+        """
+let i = 0
+let sum = 0
+while i < 100000 {
+  sum = sum + i
+  i = i + 1
+}
+sum
+"""
+    ),
+    "struct_heavy": (
+        "Struct allocation + field access, 10,000 objects",
+        """
+struct Vec2 { x: float = 0.0; y: float = 0.0 }
+fn make_vecs(n) {
+  let i = 0
+  let last_x = 0.0
+  while i < n {
+    let v = Vec2{x: i * 1.0, y: i * 2.0}
+    last_x = v.x + v.y
+    i = i + 1
+  }
+  return last_x
+}
+make_vecs(10000)
+"""
+    ),
+    "string_concat": (
+        "String concatenation, 1,000 iterations",
+        """
+let s = ""
+let i = 0
+while i < 1000 {
+  s = s + "x"
+  i = i + 1
+}
+len(s)
+"""
+    ),
+    "array_ops": (
+        "Array push + iteration, 5,000 elements",
+        """
+let arr = []
+let i = 0
+while i < 5000 {
+  arr.push(i)
+  i = i + 1
+}
+arr.len()
+"""
+    ),
+}
+
+
+def _run_benchmarks(filter_name: str = None, iterations: int = 3) -> int:
+    """
+    v1.9.4: `inscript benchmark [NAME]` — run the built-in performance suite.
+
+    Runs each benchmark `iterations` times and reports median time.
+    """
+    import time, statistics
+
+    from interpreter import Interpreter
+    from lexer      import Lexer
+    from parser     import Parser
+
+    programs = BENCHMARK_PROGRAMS
+    if filter_name:
+        programs = {k: v for k, v in programs.items() if filter_name in k}
+        if not programs:
+            print(f"[InScript benchmark] No benchmark matching '{filter_name}'",
+                  file=sys.stderr)
+            return 1
+
+    col_w = max(len(k) for k in programs) + 2
+    print(f"\nInScript Benchmark Suite  (v{VERSION})  [{iterations} runs each]")
+    print(f"{'='*(col_w + 52)}")
+    print(f"  {'Benchmark':<{col_w}}  {'Median':>10}  {'Min':>10}  {'Max':>10}  Description")
+    print(f"  {'-'*(col_w)}  {'-'*10}  {'-'*10}  {'-'*10}  {'-'*30}")
+
+    results = {}
+    for name, (desc, src) in programs.items():
+        times = []
+        for _ in range(iterations):
+            try:
+                interp  = Interpreter()
+                tokens  = Lexer(src).tokenize()
+                program = Parser(tokens).parse()
+                t0 = time.perf_counter()
+                interp.run(program)
+                times.append(time.perf_counter() - t0)
+            except Exception as e:
+                print(f"  {'ERROR':<{col_w}}  {name}: {e}", file=sys.stderr)
+                times.append(float("inf"))
+
+        median = statistics.median(times)
+        mn     = min(times)
+        mx     = max(times)
+
+        def fmt(t):
+            if t == float("inf"): return "  ERROR   "
+            if t < 1:             return f"{t*1000:9.1f}ms"
+            return                       f"{t:9.3f}s "
+
+        results[name] = median
+        print(f"  {name:<{col_w}}  {fmt(median)}  {fmt(mn)}  {fmt(mx)}  {desc[:40]}")
+
+    print(f"{'='*(col_w + 52)}")
+    fastest = min(results, key=results.get)
+    slowest = max(k for k,v in results.items() if v != float("inf"))
+    print(f"  Fastest: {fastest}  ({results[fastest]*1000:.1f}ms median)")
+    print()
+    return 0
+
+
+# ── stdlib documentation ──────────────────────────────────────────────────────
+
+STDLIB_SIGNATURES = {
+    # Built-in functions
+    "print":      ("(value: any) -> void",     "Print value to stdout",           "print(42)"),
+    "println":    ("(value: any) -> void",     "Print value with newline",        "println('hello')"),
+    "len":        ("(x: array|string) -> int", "Length of array or string",       "len([1,2,3])  // 3"),
+    "range":      ("(n: int) -> [int]",        "Generate 0..n-1 integer array",   "range(5)  // [0,1,2,3,4]"),
+    "typeof":     ("(x: any) -> string",       "Runtime type name of value",      "typeof(42)  // 'int'"),
+    "str":        ("(x: any) -> string",       "Convert value to string",         "str(3.14)  // '3.14'"),
+    "int":        ("(x: any) -> int",          "Parse/cast to integer",           "int('42')  // 42"),
+    "float":      ("(x: any) -> float",        "Parse/cast to float",             "float('3.14')  // 3.14"),
+    "bool":       ("(x: any) -> bool",         "Cast to boolean",                 "bool(0)  // false"),
+    "abs":        ("(x: int|float) -> same",   "Absolute value",                  "abs(-5)  // 5"),
+    "min":        ("(a, b) -> same",           "Smaller of two values",           "min(3, 7)  // 3"),
+    "max":        ("(a, b) -> same",           "Larger of two values",            "max(3, 7)  // 7"),
+    "clamp":      ("(v, lo, hi) -> same",      "Clamp v to [lo, hi]",             "clamp(15, 0, 10)  // 10"),
+    "floor":      ("(x: float) -> int",        "Floor to nearest integer",        "floor(3.7)  // 3"),
+    "ceil":       ("(x: float) -> int",        "Ceiling to nearest integer",      "ceil(3.2)  // 4"),
+    "round":      ("(x: float) -> int",        "Round to nearest integer",        "round(3.5)  // 4"),
+    "sqrt":       ("(x: float) -> float",      "Square root",                     "sqrt(9.0)  // 3.0"),
+    "pow":        ("(base, exp) -> float",     "Raise base to exponent",          "pow(2.0, 8.0)  // 256.0"),
+    "sin":        ("(x: float) -> float",      "Sine (radians)",                  "sin(0.0)  // 0.0"),
+    "cos":        ("(x: float) -> float",      "Cosine (radians)",                "cos(0.0)  // 1.0"),
+    "random":     ("() -> float",              "Random float in [0.0, 1.0)",      "random()"),
+    "random_int": ("(lo: int, hi: int) -> int","Random int in [lo, hi]",          "random_int(1, 6)"),
+    "assert":     ("(cond: bool, msg: string = '') -> void",
+                                              "Assert condition or throw",        "assert(x > 0, 'must be positive')"),
+    "panic":      ("(msg: string) -> never",  "Throw with message, always fails", "panic('unreachable')"),
+    "exit":       ("(code: int = 0) -> never","Exit program with status code",    "exit(1)"),
+    "input":      ("(prompt: string = '') -> string",
+                                              "Read line from stdin",             "let name = input('Name: ')"),
+    # Array methods
+    "Array.push":    ("(v: T) -> void",         "Append element",                  "[].push(1)"),
+    "Array.pop":     ("() -> T?",               "Remove and return last element",  "arr.pop()"),
+    "Array.len":     ("() -> int",              "Number of elements",              "arr.len()"),
+    "Array.map":     ("(fn: (T)->U) -> [U]",    "Transform each element",          "arr.map(fn(x){return x*2})"),
+    "Array.filter":  ("(fn: (T)->bool) -> [T]", "Keep matching elements",          "arr.filter(fn(x){return x>0})"),
+    "Array.find":    ("(fn: (T)->bool) -> T?",  "First matching element or nil",   "arr.find(fn(x){return x>3})"),
+    "Array.any":     ("(fn: (T)->bool) -> bool","True if any element matches",     "arr.any(fn(x){return x>0})"),
+    "Array.all":     ("(fn: (T)->bool) -> bool","True if all elements match",      "arr.all(fn(x){return x>0})"),
+    "Array.each":    ("(fn: (T)->void) -> void","Iterate (side-effect only)",      "arr.each(fn(x){print(x)})"),
+    "Array.reduce":  ("(fn: (U,T)->U, init: U) -> U",
+                                               "Fold array to single value",      "arr.reduce(fn(acc,x){return acc+x}, 0)"),
+    "Array.sorted":  ("() -> [T]",              "Return sorted copy",              "arr.sorted()"),
+    "Array.reversed":"() -> [T]",
+    "Array.join":    ("(sep: string) -> string","Join elements with separator",    "arr.join(', ')"),
+    "Array.contains":"(v: T) -> bool",
+    "Array.take":    ("(n: int) -> [T]",        "First n elements",                "arr.take(3)"),
+    "Array.skip":    ("(n: int) -> [T]",        "Skip first n elements",           "arr.skip(2)"),
+    # String methods
+    "String.len":        ("() -> int",          "Length in characters",            '"hello".len()  // 5'),
+    "String.upper":      ("() -> string",       "Uppercase copy",                  '"hi".upper()  // "HI"'),
+    "String.lower":      ("() -> string",       "Lowercase copy",                  '"HI".lower()  // "hi"'),
+    "String.trim":       ("() -> string",       "Strip leading/trailing whitespace",'" x ".trim()  // "x"'),
+    "String.split":      ('(sep: string) -> [string]', "Split on separator",       '"a,b".split(",")  // ["a","b"]'),
+    "String.contains":   ("(sub: string) -> bool", "True if substring found",      '"hello".contains("ell")'),
+    "String.starts_with":("(pre: string) -> bool", "True if starts with prefix",  '"hello".starts_with("he")'),
+    "String.ends_with":  ("(suf: string) -> bool", "True if ends with suffix",    '"hello".ends_with("lo")'),
+    "String.replace":    ("(old: string, new: string) -> string",
+                                               "Replace first occurrence",         '"hello".replace("l","r")'),
+    "String.chars":      ("() -> [string]",     "Split into individual characters","'ab'.chars()  // ['a','b']"),
+    "String.to_int":     ("() -> int?",         "Parse as integer or nil",         '"42".to_int()  // 42'),
+    "String.to_float":   ("() -> float?",       "Parse as float or nil",           '"3.14".to_float()'),
+}
+
+
+def _print_stdlib_docs(filter_str: str = None) -> int:
+    """
+    v1.9.4: `inscript stdlib [FILTER]` — print stdlib function signatures.
+    """
+    entries = STDLIB_SIGNATURES
+    if filter_str:
+        entries = {k: v for k, v in entries.items()
+                   if filter_str.lower() in k.lower()}
+        if not entries:
+            print(f"[InScript stdlib] No matches for '{filter_str}'")
+            return 0
+
+    print(f"\nInScript Standard Library  (v{VERSION})")
+    print(f"{'='*70}")
+
+    last_group = None
+    for name, info in sorted(entries.items()):
+        group = name.split(".")[0] if "." in name else "Built-ins"
+        if group != last_group:
+            print(f"\n  ── {group} ─────")
+            last_group = group
+
+        if isinstance(info, str):
+            # Abbreviated entry (just signature string)
+            print(f"  {name:<22}  {info}")
+        elif len(info) == 2:
+            sig, desc = info
+            print(f"  {name:<22}  {sig}")
+            print(f"  {'':22}  # {desc}")
+        else:
+            sig, desc, example = info
+            print(f"  {name:<22}  {sig}")
+            print(f"  {'':22}  # {desc}")
+            print(f"  {'':22}  {example}")
+
+    print(f"\n{'='*70}")
+    total = len(entries)
+    print(f"  {total} stdlib item(s)")
+    return 0
+
+
+# ── spec document generator ───────────────────────────────────────────────────
+
+LANGUAGE_SPEC = """# InScript Language Specification
+## Version {version}
+
+> **Spec Freeze**: No new syntax will be added after v1.9.4.
+> Only bug fixes and performance improvements until v2.0.0.
+
+---
+
+## 1. Lexical Structure
+
+### 1.1 Comments
+- Line comments: `// text`
+- Block comments: `/* text */` (nestable)
+- Doc comments: `/// text` (parsed by `inscript doc`)
+
+### 1.2 Keywords
+```
+let  const  fn  return  if  else  while  for  in  match  case
+struct  enum  interface  type  impl  mixin  extends  implements
+true  false  nil  throw  try  catch  break  continue  defer  yield
+pub  async  await  scene  import  export  with  super  self  is  as
+div  not  and  or
+```
+
+### 1.3 Literals
+- **Integer**: `42`, `1_000_000`
+- **Float**: `3.14`, `1.0e-3`
+- **String**: `"hello"`, `'world'`, escape sequences `\n \t \\ \"`
+- **Bool**: `true`, `false`
+- **Nil**: `nil`
+
+---
+
+## 2. Types
+
+### 2.1 Primitive Types
+`int`  `float`  `bool`  `string`  `nil`  `void`  `any`  `never`
+
+### 2.2 Composite Types
+- **Array**: `[T]` — e.g. `[int]`, `[string]`
+- **Dict**: `{K: V}` — e.g. `{string: int}`
+- **Optional**: `T?` — sugar for `T | nil`
+- **Union**: `A | B | C`
+- **Function**: `fn(T1, T2) -> R`
+
+### 2.3 User-Defined Types
+- **Struct**: `struct Name {{ fields; methods }}`
+- **Enum**: `enum Name {{ Variant1; Variant2 }}`
+- **Interface**: `interface Name {{ fn method() -> R }}`
+- **Type alias**: `type ID = int`
+
+---
+
+## 3. Declarations
+
+### 3.1 Variables
+```inscript
+let x: int = 42
+const MAX: int = 100
+let items: [string] = []
+```
+
+### 3.2 Functions
+```inscript
+fn add(a: int, b: int) -> int {{
+  return a + b
+}}
+fn greet(name: string = "World") {{
+  print("Hello, " + name)
+}}
+```
+
+### 3.3 Structs
+```inscript
+struct Player {{
+  name: string = ""
+  health: int  = 100
+  fn take_damage(dmg: int) {{
+    self.health = self.health - dmg
+  }}
+}}
+```
+
+### 3.4 Enums
+```inscript
+enum Direction {{ North; South; East; West }}
+```
+
+### 3.5 Interfaces
+```inscript
+interface Drawable {{
+  fn draw() -> void
+}}
+struct Sprite implements Drawable {{
+  fn draw() {{ print("drawing") }}
+}}
+```
+
+---
+
+## 4. Control Flow
+
+```inscript
+if cond {{ }} else if cond {{ }} else {{ }}
+while cond {{ }}
+for item in collection {{ }}
+match value {{
+  case Pattern {{ }}
+  case _       {{ }}  // wildcard
+}}
+```
+
+---
+
+## 5. Error Handling
+
+```inscript
+try {{
+  risky()
+}} catch e {{
+  print("caught: " + e)
+}}
+throw "something went wrong"
+fn fatal() -> never {{ throw "fatal" }}
+```
+
+---
+
+## 6. Module System
+
+```inscript
+import "path/to/module"
+export fn public_api() {{ }}
+```
+
+---
+
+## 7. Breaking Changes (v2.0.0 preview)
+
+- `null` removed — use `nil`
+- `div` operator removed — use `//`
+- Bare `array` type without element type is an error
+- `--no-typecheck` CLI flag removed — use `--unsafe-no-check`
+
+---
+
+*Generated by InScript {version}*
+"""
+
+
+def _generate_spec(output_path: str = None) -> int:
+    """
+    v1.9.4: `inscript spec [--out FILE]` — print the language spec document.
+    """
+    content = LANGUAGE_SPEC.replace("{version}", VERSION)
+    if output_path:
+        os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
+        try:
+            with open(output_path, "w", encoding="utf-8") as f:
+                f.write(content)
+            print(f"[InScript spec] Spec written to '{output_path}'")
+            return 0
+        except OSError as e:
+            print(f"[InScript spec] Cannot write: {e}", file=sys.stderr)
+            return 1
+    else:
+        print(content)
+        return 0
+
 def run_source(source: str, filename: str = "<stdin>",
                type_check: bool = True,
                no_warn: bool = False,
@@ -995,6 +1574,16 @@ Examples:
                         help="v1.9.3: Generate Markdown docs from /// doc comments")
     parser.add_argument("--doc-out", metavar="DIR", default=None,
                         help="v1.9.3: Output directory for --doc (default: stdout / docs/api/)")
+    parser.add_argument("--errors", metavar="PREFIX", nargs="?", const="",
+                        help="v1.9.4: Print error code catalogue (optional prefix filter, e.g. E003)")
+    parser.add_argument("--changelog", metavar="RANGE",
+                        help="v1.9.4: Print changelog for version range e.g. v1.6.0..v1.9.4")
+    parser.add_argument("--benchmark", metavar="NAME", nargs="?", const="",
+                        help="v1.9.4: Run performance benchmark suite (optional name filter)")
+    parser.add_argument("--stdlib", metavar="FILTER", nargs="?", const="",
+                        help="v1.9.4: Print stdlib function signatures (optional filter)")
+    parser.add_argument("--spec", metavar="FILE", nargs="?", const=None,
+                        help="v1.9.4: Print language spec (optional --spec FILE to write to file)")
     parser.add_argument("--strict", action="store_true",
                         help="v1.6.0: Strict mode — all warnings become errors, no implicit any")
     parser.add_argument("--tokens", action="store_true", help="Print lexer token stream")
@@ -1162,6 +1751,17 @@ Examples:
         return _generate_lockfile(args.lock)
     if getattr(args, 'doc', None):
         return _generate_docs(args.doc, output_dir=getattr(args, 'doc_out', None))
+    if getattr(args, 'errors', None) is not None:
+        return _print_error_catalogue(filter_prefix=args.errors or None)
+    if getattr(args, 'changelog', None):
+        return _generate_changelog_range(args.changelog)
+    if getattr(args, 'benchmark', None) is not None:
+        return _run_benchmarks(filter_name=args.benchmark or None)
+    if getattr(args, 'stdlib', None) is not None:
+        return _print_stdlib_docs(filter_str=args.stdlib or None)
+    if getattr(args, 'spec', None) is not None or '--spec' in sys.argv:
+        out = args.spec if hasattr(args, 'spec') and isinstance(args.spec, str) else None
+        return _generate_spec(output_path=out)
 
     # v1.9.1: --no-typecheck is deprecated — emit a warning and honour it
     if getattr(args, 'no_typecheck', False):
