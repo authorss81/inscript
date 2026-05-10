@@ -24,7 +24,7 @@ from errors   import (InScriptError, LexerError, ParseError,
                        SemanticError, InScriptRuntimeError,
                        MultiError, InScriptWarning)
 
-VERSION = "1.9.7"
+VERSION = "1.9.8"
 LANG    = "InScript"
 PACKAGES_DIR = os.path.join(os.path.expanduser("~"), ".inscript", "packages")
 REGISTRY_URL = "https://raw.githubusercontent.com/authorss81/inscript-packages/main/registry.json"
@@ -313,6 +313,81 @@ def _compat_files(path: str) -> int:
         print()
     print(f"Run: inscript migrate {path}  to auto-fix null/div issues.")
     return 1
+
+
+def _infer_types_file(path: str) -> int:
+    """
+    v1.9.8: `inscript --infer-types FILE`
+    Parse and type-check FILE, then print the inferred type for every
+    let/const declaration. Useful for understanding what the analyzer infers.
+    Returns 0 on success, 1 if file not found or parse error.
+    """
+    import os
+    if not os.path.isfile(path):
+        print(f"[InScript infer-types] File not found: '{path}'", file=sys.stderr)
+        return 1
+    try:
+        with open(path, encoding="utf-8") as f:
+            src = f.read()
+    except OSError as e:
+        print(f"[InScript infer-types] Cannot read '{path}': {e}", file=sys.stderr)
+        return 1
+
+    from lexer import Lexer
+    from parser import Parser
+    from analyzer import Analyzer
+    from ast_nodes import VarDecl
+
+    try:
+        tokens = Lexer(src).tokenize()
+        tree   = Parser(tokens).parse()
+    except Exception as e:
+        print(f"[InScript infer-types] Parse error: {e}", file=sys.stderr)
+        return 1
+
+    analyzer = Analyzer()
+    try:
+        analyzer.analyze(tree)
+    except Exception:
+        pass   # best-effort — show what we have even if there are errors
+
+    # Walk all VarDecl / ConstDecl nodes and report inferred types
+    results = []
+    def _walk(node):
+        if node is None:
+            return
+        if isinstance(node, (VarDecl,)):
+            sym = analyzer._scope.lookup(node.name) if hasattr(analyzer, '_scope') else None
+            typ = sym.type_ if sym else None
+            type_str = str(typ) if typ else "any"
+            results.append((node.line, "let" if not node.is_const else "const",
+                             node.name, type_str))
+        # Recurse into body of blocks, fns etc.
+        for attr in ("body", "then_branch", "else_branch", "value",
+                     "initializer", "statements"):
+            child = getattr(node, attr, None)
+            if child is None:
+                continue
+            if hasattr(child, "__iter__") and not isinstance(child, str):
+                for c in child:
+                    if hasattr(c, "__class__") and hasattr(c, "line"):
+                        _walk(c)
+            elif hasattr(child, "line"):
+                _walk(child)
+
+    if hasattr(tree, "body"):
+        for stmt in tree.body:
+            _walk(stmt)
+
+    if not results:
+        print(f"[InScript infer-types] No let/const declarations found in '{path}'")
+        return 0
+
+    print(f"[InScript infer-types] Inferred types in '{path}':\n")
+    for line, kw, name, typ in results:
+        print(f"  Line {line:3d}:  {kw} {name:<20s}  →  {typ}")
+    print()
+    return 0
 
 
 def _migrate_files(path: str) -> int:
@@ -1573,6 +1648,8 @@ Examples:
     parser.add_argument("--check",  action="store_true", help="Type-check only, don't run")
     parser.add_argument("--check-all", metavar="DIR",
                         help="v1.6.0: Check all .ins files in DIR recursively, exit 1 if any errors")
+    parser.add_argument("--infer-types", metavar="FILE",
+                        help="v1.9.8: Print inferred type for every let/const declaration in FILE")
     parser.add_argument("--migrate", metavar="DIR_OR_FILE",
                         help="v1.7.4: Auto-migrate deprecated syntax (null→nil, div→//)")
     parser.add_argument("--compat", metavar="DIR_OR_FILE",
@@ -1754,6 +1831,8 @@ Examples:
         return _fmt_all_files(args.fmt_all)
     if getattr(args, 'migrate', None):
         return _migrate_files(args.migrate)
+    if getattr(args, 'infer_types', None):
+        return _infer_types_file(args.infer_types)
     if getattr(args, 'compat', None):
         return _compat_files(args.compat)
     if getattr(args, 'init', None) is not None:

@@ -4,7 +4,18 @@ All notable changes are documented here. Follows [Semantic Versioning](https://s
 
 ---
 
-## [1.9.7] — 2026-05-09
+## [1.9.8] — 2026-05-09
+
+### Type inference hardening + missed test fixes
+
+- **Array literal inference**: `[1, 2, 3]` → `Array<int>`, `[1.0, 2.5]` → `Array<float>`. Mixed-type arrays `[1, "two"]` now correctly infer `Array<any>` instead of `Array<first_type>`.
+- **`inscript --infer-types FILE`**: new CLI flag — parses and type-checks FILE then prints the inferred type of every `let`/`const` declaration. Useful for debugging inference.
+- **`test_phase1.py`, `test_v12.py`, `test_v170.py` added to CI workflows** — these files existed but were never included in the workflow runs, allowing `div`-related failures to reach GitHub Actions undetected. All three are now in both `test.yml` and `publish.yml`.
+- **`div` fixed in `test_phase1.py` and `test_v12.py`** — the `v1.2 div keyword` section and `v1.1 floor div` regression test were still running `div` in InScript source strings; updated to `//` (the correct operator since v1.9.5).
+
+---
+
+
 
 ### True async/await via asyncio
 

@@ -427,16 +427,14 @@ walk(n)
 ok("stack trace on recursive type error",
    err is not None and "in walk" in err, repr(err))
 
-# migrate: div→// is correct for the tool; note // is a comment in InScript source
-# so `div` in existing code safely migrates — the REPL and file runner handle `//`
-# only at start of tokens after the statement expression is parsed.
-# Test that the migrate transform runs without crashing.
+# v1.9.5: div is now a hard parse error — test that migrate converts it correctly
+# and that the MIGRATED code runs, not the original (which now errors).
 dirty = "fn double(x) { return x div 1 }\nprint(double(21))"
 clean = _migrate(dirty)
 ok("migrate: dirty contains div",    "div" in dirty)
 ok("migrate: clean contains //",     "//" in clean)
-# Run the ORIGINAL (pre-migrate) code to confirm it works
-ok("original div code runs",         run_out(dirty) == "21", repr(run_out(dirty)))
+# Run the MIGRATED (post-migrate) code — original would error with E0056
+ok("migrated div code runs",         run_out(clean) == "21", repr(run_out(clean)))
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Summary

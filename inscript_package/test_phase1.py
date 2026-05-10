@@ -239,33 +239,33 @@ ok("mixed typed/untyped params",
    run('fn greet(name, times: int) { for i in 0..times { print(name) } }\ngreet("hi", 2)').strip() == "hi\nhi")
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 1.2 — div KEYWORD (floor division)
+# 1.2 — floor division with // (v1.9.5: div removed — E0056, use //)
 # ─────────────────────────────────────────────────────────────────────────────
-section("1.2 — 'div' keyword floor division")
+section("1.2 — '//' floor division (div removed in v1.9.5)")
 
-ok("10 div 3 = 3",
-   run('print(10 div 3)').strip() == "3")
+ok("10 // 3 = 3",
+   run('print(10 // 3)').strip() == "3")
 
-ok("7 div 2 = 3",
-   run('print(7 div 2)').strip() == "3")
+ok("7 // 2 = 3",
+   run('print(7 // 2)').strip() == "3")
 
-ok("-7 div 2 = -4 (floor)",
-   run('print(-7 div 2)').strip() == "-4")
+ok("-7 // 2 = -4 (floor)",
+   run('print(-7 // 2)').strip() == "-4")
 
-ok("10 div 5 = 2",
-   run('print(10 div 5)').strip() == "2")
+ok("10 // 5 = 2",
+   run('print(10 // 5)').strip() == "2")
 
-ok("div in expression",
-   run('let x = (10 div 3) + 1\nprint(x)').strip() == "4")
+ok("// in expression",
+   run('let x = (10 // 3) + 1\nprint(x)').strip() == "4")
 
-ok("div chained",
-   run('print(100 div 10 div 2)').strip() == "5")
+ok("// chained",
+   run('print(100 // 10 // 2)').strip() == "5")
 
-ok("div in loop",
-   run('let n = 16\nwhile n > 1 { n = n div 2 }\nprint(n)').strip() == "1")
+ok("// in loop",
+   run('let n = 16\nwhile n > 1 { n = n // 2 }\nprint(n)').strip() == "1")
 
-ok("// still works as floor div",
-   run('print(10 div 3)').strip() == "3")
+ok("// with spaces works (v1.9.6)",
+   run('print(10 // 3)').strip() == "3")
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 1.4 — RAW STRINGS r"..."
@@ -389,11 +389,11 @@ print(x is int)
 print(square(x))
 ''').strip() == "true\n25")
 
-ok("div in game-loop style",
+ok("// in game-loop style",
    run('''
 let total = 100
 let per_row = 7
-let rows = total div per_row
+let rows = total // per_row
 let remainder = total - (rows * per_row)
 print(rows)
 print(remainder)

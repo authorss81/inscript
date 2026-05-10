@@ -1151,13 +1151,21 @@ class Analyzer(Visitor):
     def visit_ArrayLiteralExpr(self, node: ArrayLiteralExpr) -> InScriptType:
         if not node.elements:
             return array_type(T_ANY)
+        # v1.9.8: infer element type; fall back to Array<any> on mixed types
         first_type = self.visit(node.elements[0])
+        # Normalise literal string types to T_STRING for array inference
+        if is_literal_type(first_type):
+            first_type = T_STRING
+        mixed = False
         for elem in node.elements[1:]:
             et = self.visit(elem)
-            if not types_compatible(first_type, et):
-                self._warn(f"Mixed types in array literal: '{first_type}' and '{et}'",
-                           node.line)
-        return array_type(first_type)
+            if is_literal_type(et):
+                et = T_STRING
+            if not types_compatible(first_type, et) and not types_compatible(et, first_type):
+                mixed = True
+        if mixed:
+            return array_type(T_ANY)   # [1, "a", true] → Array<any>
+        return array_type(first_type)  # [1, 2, 3] → Array<int>
 
     def visit_DictLiteralExpr(self, node: DictLiteralExpr) -> InScriptType:
         if not node.pairs:

@@ -47,15 +47,18 @@ jobs:
           python test_parser.py
           python test_analyzer.py
           python test_interpreter.py
+          python test_phase1.py
           python test_phase6.py
           python test_phase7.py
           python test_audit.py
           python test_comprehensive.py
+          python test_v12.py
           python test_v120.py
           python test_v130.py
           python test_v140.py
           python test_v150.py
           python test_v160.py
+          python test_v170.py
           python test_v172.py
           python test_v173.py
           python test_v174.py
@@ -70,6 +73,7 @@ jobs:
           python test_v195.py
           python test_v196.py
           python test_v197.py
+          python test_v198.py
 
   build:
     name: Build distribution
