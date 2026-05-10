@@ -220,7 +220,7 @@ class Rect:
 
 class InScriptFunction:
     """A user-defined function or lambda at runtime."""
-    def __init__(self, name, params, body, closure, is_native=False, native_fn=None, return_type=None):
+    def __init__(self, name, params, body, closure, is_native=False, native_fn=None, return_type=None, is_async=False):
         self.name        = name
         self.params      = params       # List[Param]  AST nodes
         self.body        = body         # BlockStmt AST node
@@ -228,6 +228,7 @@ class InScriptFunction:
         self.is_native   = is_native
         self.native_fn   = native_fn    # Python callable for native fns
         self.return_type = return_type  # Optional type annotation
+        self.is_async    = is_async     # v1.9.7: true for `async fn`
         self._interp     = None         # Set by interpreter so stdlib can call us
 
     def __repr__(self): return f"<fn {self.name}>"
@@ -237,6 +238,21 @@ class InScriptFunction:
         if self._interp is not None:
             return self._interp._call_function(self, list(args), [None]*len(args), 0)
         raise TypeError(f"InScriptFunction '{self.name}' cannot be called without an interpreter context")
+
+
+class InScriptCoroutine:
+    """
+    v1.9.7: Wraps the result of calling an `async fn`.
+    Holds a Python coroutine that runs the function body.
+    Driven to completion by `await` via asyncio.
+    """
+    def __init__(self, coro, fn_name: str = "<async>"):
+        self.coro     = coro       # Python coroutine object
+        self.fn_name  = fn_name    # for repr / error messages
+
+    def __repr__(self):
+        return f"<coroutine {self.fn_name}>"
+
 
 
 class InScriptInstance:

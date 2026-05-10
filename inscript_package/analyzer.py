@@ -65,12 +65,14 @@ T_TRANSFORM3D = InScriptType("Transform3D")
 T_TEXTURE = InScriptType("Texture")
 
 T_NEVER  = InScriptType("never")   # v1.8.3: bottom type — function never returns normally
+T_PROMISE = InScriptType("Promise") # v1.9.7: async fn return type
 
 BUILTIN_TYPES: Dict[str, InScriptType] = {
     # canonical names
     "int": T_INT, "float": T_FLOAT, "bool": T_BOOL,
     "string": T_STRING, "void": T_VOID, "null": T_NULL, "any": T_ANY,
     "never": T_NEVER,                                   # v1.8.3
+    "Promise": T_PROMISE,                               # v1.9.7: async fn return type
     # common aliases
     "str": T_STRING, "boolean": T_BOOL, "number": T_FLOAT,
     "nil": T_NULL, "object": T_ANY, "auto": T_ANY,
@@ -648,21 +650,36 @@ class Analyzer(Visitor):
     def visit_FunctionDecl(self, node: FunctionDecl) -> InScriptType:
         ret_type = self._resolve_type_ann(node.return_type)
 
+        # v1.9.7: async fn — external return type is Promise<T>, but the body
+        # is checked against the inner type T (what the fn actually returns).
+        # E.g.: `async fn f() -> string` → body checked vs `string`, external type = Promise<string>
+        is_async = getattr(node, 'is_async', False)
+        if is_async:
+            inner_ret_type = ret_type if ret_type not in (T_ANY, T_VOID) else T_ANY
+            external_ret_type = InScriptType("Promise", [inner_ret_type])
+        else:
+            inner_ret_type    = ret_type
+            external_ret_type = ret_type
+
         # v1.8.4: return type inference — if no annotation and body has a single
-        # unambiguous return type, infer it automatically
-        if node.return_type is None and ret_type == T_ANY and node.body:
+        # unambiguous return type, infer it automatically (use inner type for async)
+        if node.return_type is None and inner_ret_type == T_ANY and node.body:
             inferred = self._infer_fn_return_type(node)
             if inferred not in (T_ANY, T_VOID, T_NULL):
-                ret_type = inferred
+                inner_ret_type = inferred
+                if is_async:
+                    external_ret_type = InScriptType("Promise", [inner_ret_type])
+                else:
+                    external_ret_type = inner_ret_type
                 # Update the hoisted symbol's type to the inferred one
                 existing = self._scope.lookup(node.name)
                 if existing and existing.kind == "fn":
-                    existing.type_ = ret_type
+                    existing.type_ = external_ret_type
 
-        # Register in current scope (if not already hoisted)
+        # Register in current scope using external type (Promise<T> for async)
         if not self._scope.lookup_local(node.name):
             self._define(Symbol(
-                node.name, ret_type, kind="fn",
+                node.name, external_ret_type, kind="fn",
                 fn_node=node, line=node.line, col=node.col
             ))
 
@@ -676,10 +693,10 @@ class Analyzer(Visitor):
 
         # Warn if function declares a non-void return type but body may not return
         if (node.return_type is not None and
-                ret_type.name not in ("void", "nil", "any", "") and
+                inner_ret_type.name not in ("void", "nil", "any", "") and
                 not node.is_native if hasattr(node, 'is_native') else True):
             if node.body and not self._body_always_returns(node.body):
-                if ret_type == T_NEVER:
+                if inner_ret_type == T_NEVER:
                     # v1.8.3: `-> never` functions MUST always throw / diverge
                     self._error(
                         f"Function '{node.name}' is declared '-> never' "
@@ -689,15 +706,15 @@ class Analyzer(Visitor):
                 else:
                     self._warn(
                         "missing-return",
-                        f"Function '{node.name}' declares return type '{ret_type.name}' "
+                        f"Function '{node.name}' declares return type '{inner_ret_type.name}' "
                         f"but not all code paths return a value",
                         node.line
                     )
 
-        # Analyze body in a new scope
+        # Analyze body in a new scope — body return type is inner (not Promise<T>)
         self._push_scope("fn")
         prev_ret = self._current_fn_return_type
-        self._current_fn_return_type = ret_type
+        self._current_fn_return_type = inner_ret_type
 
         # Register parameters — mark used=True so we never warn about unused params
         for param in node.params:
@@ -714,7 +731,7 @@ class Analyzer(Visitor):
 
         self._current_fn_return_type = prev_ret
         self._pop_scope()
-        return ret_type
+        return external_ret_type
 
     def _body_always_returns(self, block) -> bool:
         """Return True if every code path through block ends with a return/throw."""

@@ -5,14 +5,15 @@
 # After Lexer → Parser → Analyzer pass, this is what runs InScript programs.
 
 from __future__ import annotations
-import math, random, time
+import math, random, time, asyncio
 from typing import Any, Dict, List, Optional
 
 from ast_nodes import *
 from environment import Environment
 from stdlib_values import (
     Vec2, Vec3, Color, Rect,
-    InScriptFunction, InScriptInstance, InScriptRange, InScriptGenerator
+    InScriptFunction, InScriptInstance, InScriptRange, InScriptGenerator,
+    InScriptCoroutine,
 )
 import stdlib as _stdlib  # loads all built-in modules
 from errors import (
@@ -526,6 +527,8 @@ class Interpreter(Visitor):
         # v1.4.0: preserve generic metadata for constraint checking at call time
         fn.type_params  = getattr(node, 'type_params',  [])
         fn.constraints  = getattr(node, 'constraints',  {})
+        # v1.9.7: mark async functions
+        fn.is_async     = getattr(node, 'is_async', False)
         self._env.define(node.name, fn)
         return fn
 
@@ -2319,6 +2322,33 @@ class Interpreter(Visitor):
 
         _bind_args(call_env, arg_vals, arg_names)
 
+        # v1.9.7: async fn — wrap body execution in a Python coroutine
+        if getattr(fn, 'is_async', False):
+            async def _async_body():
+                nonlocal result
+                prev_fn2     = self._current_fn
+                prev_def2    = getattr(self, '_deferred', None)
+                self._deferred   = []
+                self._current_fn = fn
+                try:
+                    for stmt in fn.body.body:
+                        self.visit(stmt)
+                except ReturnSignal as r:
+                    result = r.value
+                except PropagateSignal as sig:
+                    result = sig.err_val
+                finally:
+                    for deferred_expr in reversed(self._deferred):
+                        try: self.visit(deferred_expr)
+                        except Exception: pass
+                    self._deferred    = prev_def2 if prev_def2 is not None else []
+                    self._current_fn  = prev_fn2
+                    self._env         = prev_env
+                    self._call_depth -= 1
+                    self._call_stack.pop()
+                return result
+            return InScriptCoroutine(_async_body(), fn_name=fn.name or "<async>")
+
         # v1.3.0: TCO trampoline — self-recursive tail calls loop instead of recurse
         result = None
         prev_fn     = self._current_fn
@@ -2443,7 +2473,24 @@ class Interpreter(Visitor):
         return InScriptRange(start, end, inclusive=node.inclusive)
 
     def visit_AwaitExpr(self, node: AwaitExpr) -> Any:
-        return self.visit(node.expr)   # synchronous in Phase 4
+        """
+        v1.9.7: True async/await.
+        - InScriptCoroutine → drive via Python coroutine protocol (sync driver).
+        - Plain value → passthrough (backwards compatible).
+
+        We use a synchronous driver (coro.send(None)) rather than asyncio.run()
+        because InScript coroutine bodies contain no real Python await points —
+        they are synchronous interpreter execution wrapped in `async def`.
+        This also safely handles nested async calls without event-loop conflicts.
+        """
+        val = self.visit(node.expr)
+        if isinstance(val, InScriptCoroutine):
+            try:
+                val.coro.send(None)
+                return None   # coroutine yielded unexpectedly — shouldn't happen
+            except StopIteration as e:
+                return e.value
+        return val   # plain value: passthrough
 
     def visit_SpawnExpr(self, node: SpawnExpr) -> Any:
         return None   # Phase 6 (ECS)

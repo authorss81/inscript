@@ -4,7 +4,20 @@ All notable changes are documented here. Follows [Semantic Versioning](https://s
 
 ---
 
-## [1.9.6] — 2026-05-09
+## [1.9.7] — 2026-05-09
+
+### True async/await via asyncio
+
+- **`async fn`** declarations now produce real Python coroutines at call time, not synchronous stubs. Calling an `async fn` returns an `InScriptCoroutine` object.
+- **`await expr`** drives the coroutine to completion using `asyncio.run()`. Plain `await value` (non-coroutine) is a passthrough — backwards-compatible.
+- **`Promise<T>`** added to the type system. The analyzer marks `async fn` return types as `Promise<T>` where `T` is the declared or inferred return type.
+- **`InScriptCoroutine`** class added to `stdlib_values.py` — holds the Python coroutine and function name for repr/error messages.
+- Multiple sequential `await` calls in the same function work correctly.
+- Nested async calls (async fn calling async fn with await) work correctly.
+
+---
+
+
 
 ### Breaking: `#` line comments; `//` always floor division
 
