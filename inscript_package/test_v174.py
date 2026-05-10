@@ -189,6 +189,9 @@ import re as _re
 
 def _migrate_src(src: str) -> str:
     """Apply the same transformations as inscript._migrate_files()."""
+    # v1.9.6: // comments → # (MUST run before div→// to avoid double-converting)
+    src = _re.sub(r'^(\s*)//', r'\1#', src, flags=_re.MULTILINE)
+    src = _re.sub(r'(\s)//(\s+[A-Za-z_])', r'\1#\2', src)
     src = _re.sub(r'\bnull\b', 'nil', src)
     src = _re.sub(r'\bdiv\b', '//', src)
     src = _re.sub(r':\s*\[\]', ': array', src)

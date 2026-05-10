@@ -81,7 +81,7 @@ try:
 
     dirty = make_file("dirty.ins", "let x = null\nlet y = x div 2\nlet arr: [] = []\n")
     clean = make_file("clean.ins", "let x = nil\nlet y = x // 2\n")
-    comment = make_file("comments.ins", "// let bad = null\nlet ok = nil\n")
+    comment = make_file("comments.ins", "# let bad = null\nlet ok = nil\n")  # v1.9.6: # comments
     multi   = make_file("multi.ins", "let a = null\nlet b = null\nlet c = nil\n")
 
     # Capture stdout for compat output

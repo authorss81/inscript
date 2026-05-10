@@ -430,37 +430,44 @@ Threading/Bench, Game Visual, Game IO, Game World, Game Systems, Utilities.
 - [x] `inscript migrate` already rewrites `div → //` since v1.7.4 — no change needed
 - [x] `test_v195.py` — 22 tests
 
-### v1.9.6 — True async/await via asyncio
+### v1.9.6 — `#` Line Comments; `//` Always Floor Division ⚠️ Breaking
+- [ ] `#` is the new line-comment character — `# this is a comment`
+- [ ] `//` is **always** floor division, regardless of surrounding spaces — `10 // 3 == 3`
+- [ ] The old space-sensitive rule (`space before // → comment`) is removed entirely
+- [ ] `inscript migrate` rewrites `// comment` lines → `# comment` (standalone and inline)
+- [ ] E0057 `SlashSlashComment` — friendly error if `//` appears where a comment was expected (i.e. nothing follows that parses as an expression)
+- [ ] `/* */` block comments unchanged
+- [ ] `test_v196.py`
+
+### v1.9.7 — True async/await via asyncio
 - [ ] `async fn` functions execute as real Python coroutines (not synchronous stubs)
 - [ ] `await expr` suspends the coroutine and drives the asyncio event loop
 - [ ] `Promise<T>` added to the type system (analyzer + type map)
 - [ ] Multiple sequential `await` calls in the same function work correctly
-- [ ] Graceful fallback: non-async `await` on a plain value returns it unchanged
-- [ ] `test_v196.py`
-
-### v1.9.7 — Type Inference Hardening (reduce T_ANY leakage)
-- [ ] `let x = [1, 2, 3]` infers `Array<int>` not `T_ANY`
-- [ ] `let d = {"k": 1}` infers `Dict<string, int>` not `T_ANY`
-- [ ] `let x = 42` / `let x = "hi"` / `let x = true` already infer correctly — verify and document
-- [ ] Array/dict literals with mixed types infer `Array<any>` / `Dict<string, any>` instead of crashing
-- [ ] `inscript check --infer-types FILE` — print inferred type for every `let`/`const` declaration
+- [ ] Graceful fallback: `await` on a plain value returns it unchanged
 - [ ] `test_v197.py`
 
-### v1.9.8 — Package Manager Hardening
-- [ ] `inscript install` (no args) — reads `inscript.toml` `[dependencies]` and installs all of them
-- [ ] `inscript install PKG@version` — pins exact version into `inscript.lock`
-- [ ] `inscript outdated` — lists packages where a newer version is available in registry
-- [ ] `inscript update PKG` — upgrades to latest version, rewrites lock entry
-- [ ] `inscript.lock` integration: `install` writes lock; `inscript install` (no args) respects locked versions
-- [ ] Offline mode: if registry unreachable, install from lock file hashes if present
+### v1.9.8 — Type Inference Hardening (reduce T_ANY leakage)
+- [ ] `let x = [1, 2, 3]` infers `Array<int>` not `T_ANY`
+- [ ] `let d = {"k": 1}` infers `Dict<string, int>` not `T_ANY`
+- [ ] Array/dict literals with mixed types infer `Array<any>` / `Dict<string, any>` instead of crashing
+- [ ] `inscript check --infer-types FILE` — print inferred type for every `let`/`const` declaration
 - [ ] `test_v198.py`
 
-### v1.9.9 — v2.0.0 Readiness Gate
-- [ ] `inscript check-v2` command — runs all pre-v2.0.0 readiness checks, prints pass/fail per gate
-- [ ] Gates checked: `div` removed ✓, `null` removed ✓, bare `array` removed ✓, async/await real ?, type inference coverage ?, package manager lockfile valid ?
-- [ ] Exit code 0 = all gates pass (ready for v2.0.0), 1 = one or more gates fail
-- [ ] No rewrites — only adds the `check-v2` command on top of existing work
+### v1.9.9 — Package Manager Hardening
+- [ ] `inscript install` (no args) — reads `inscript.toml` `[dependencies]` and installs all
+- [ ] `inscript install PKG@version` — pins exact version into `inscript.lock`
+- [ ] `inscript outdated` — lists packages where a newer version is available
+- [ ] `inscript update PKG` — upgrades to latest, rewrites lock entry
+- [ ] Offline mode: install from lock file hashes if registry unreachable
 - [ ] `test_v199.py`
+
+### v1.9.10 — v2.0.0 Readiness Gate
+- [ ] `inscript check-v2` command — runs all pre-v2.0.0 readiness checks, prints pass/fail per gate
+- [ ] Gates: `div` removed ✓, `null` removed ✓, `#` comments ✓, bare `array` removed ✓, async/await real, type inference coverage, package manager lockfile valid
+- [ ] Exit code 0 = all gates pass (ready for v2.0.0), exit 1 = one or more fail
+- [ ] No rewrites — only adds `check-v2` command on top of existing work
+- [ ] `test_v1910.py`
 
 ## Timeline
 
@@ -482,10 +489,11 @@ Q3 2026      v1.2.0    Type safety + generic enforcement
 Q4 2026      v1.3.0    Performance (5-15× via C extension)
 
              v1.9.5    div hard error (E0056) ✅ done
-             v1.9.6    True async/await via asyncio
-             v1.9.7    Type inference hardening (reduce T_ANY leakage)
-             v1.9.8    Package manager hardening (install/update/outdated/lock)
-             v1.9.9    v2.0.0 readiness gate (inscript check-v2)
+             v1.9.6    # comments; // always floor division ✅ building
+             v1.9.7    True async/await via asyncio
+             v1.9.8    Type inference hardening (reduce T_ANY leakage)
+             v1.9.9    Package manager hardening (install/update/outdated/lock)
+             v1.9.10   v2.0.0 readiness gate (inscript check-v2)
 
 2027         v2.0.0    Production Ready — all gates green
 ```
@@ -513,10 +521,11 @@ Q4 2026      v1.3.0    Performance (5-15× via C extension)
 | **v1.0.23** | *next* | web playground (Pyodide) |
 | **v1.1.0** | Q2 2026 | **FIRST STABLE** — all tooling complete |
 | v1.9.5 | 2026-05-09 | `div` hard error E0056 — breaking, use `//` |
-| **v1.9.6** | *next* | True async/await via asyncio event loop |
-| **v1.9.7** | *next* | Type inference hardening — reduce T_ANY leakage |
-| **v1.9.8** | *next* | Package manager — install/update/outdated/lock |
-| **v1.9.9** | *next* | v2.0.0 readiness gate — `inscript check-v2` |
+| **v1.9.6** | *next* | `#` line comments; `//` always floor division (breaking) |
+| **v1.9.7** | *next* | True async/await via asyncio event loop |
+| **v1.9.8** | *next* | Type inference hardening — reduce T_ANY leakage |
+| **v1.9.9** | *next* | Package manager — install/update/outdated/lock |
+| **v1.9.10** | *next* | v2.0.0 readiness gate — `inscript check-v2` |
 | **v2.0.0** | 2027 | Production Ready — all gates green |
 
 ---

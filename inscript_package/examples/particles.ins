@@ -1,12 +1,12 @@
-// ─────────────────────────────────────────────────────────────────────────────
-// particles.ins — Particle system demo in InScript
-// Run: python inscript.py --game examples/particles.ins
-//
-// Controls:
-//   CLICK      : Burst of fire particles at cursor
-//   SPACE      : Switch effect (fire / snow / sparks / confetti)
-//   R          : Reset all particles
-// ─────────────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+# particles.ins — Particle system demo in InScript
+# Run: python inscript.py --game examples/particles.ins
+#
+# Controls:
+#   CLICK      : Burst of fire particles at cursor
+#   SPACE      : Switch effect (fire / snow / sparks / confetti)
+#   R          : Reset all particles
+# ─────────────────────────────────────────────────────────────────────────────
 
 import "math"
 import "random"
@@ -21,8 +21,8 @@ fn randf(lo: float, hi: float) -> float {
 }
 
 fn new_particle(kind: int, sx: float, sy: float) -> string[] {
-    // Returns [x, y, vx, vy, life, max_life, r, g, b, size, rot, rot_speed]
-    // Encoding as floats in a list (InScript doesn't have struct arrays yet)
+    # Returns [x, y, vx, vy, life, max_life, r, g, b, size, rot, rot_speed]
+    # Encoding as floats in a list (InScript doesn't have struct arrays yet)
     let vx: float = randf(-80.0, 80.0)
     let vy: float = randf(-200.0, -60.0)
     let life: float = randf(0.8, 2.2)
@@ -33,7 +33,7 @@ fn new_particle(kind: int, sx: float, sy: float) -> string[] {
     let rot: float = randf(0.0, 360.0)
     let rsp: float = randf(-180.0, 180.0)
 
-    if kind == 1 { // snow
+    if kind == 1 { # snow
         vx = randf(-40.0, 40.0)
         vy = randf(40.0, 120.0)
         life = randf(3.0, 6.0)
@@ -41,7 +41,7 @@ fn new_particle(kind: int, sx: float, sy: float) -> string[] {
         sz = randf(3.0, 8.0)
         rsp = randf(-30.0, 30.0)
     }
-    if kind == 2 { // sparks
+    if kind == 2 { # sparks
         vx = randf(-220.0, 220.0)
         vy = randf(-300.0, 50.0)
         life = randf(0.3, 1.0)
@@ -49,7 +49,7 @@ fn new_particle(kind: int, sx: float, sy: float) -> string[] {
         sz = randf(1.0, 4.0)
         rsp = 0.0
     }
-    if kind == 3 { // confetti
+    if kind == 3 { # confetti
         vx = randf(-150.0, 150.0)
         vy = randf(-180.0, -40.0)
         life = randf(1.5, 4.0)
@@ -65,7 +65,7 @@ fn new_particle(kind: int, sx: float, sy: float) -> string[] {
 }
 
 scene Particles {
-    let effect: int = 0          // 0=fire 1=snow 2=sparks 3=confetti
+    let effect: int = 0          # 0=fire 1=snow 2=sparks 3=confetti
     let px_x: float[] = []
     let px_y: float[] = []
     let px_vx: float[] = []
@@ -90,7 +90,7 @@ scene Particles {
         px_life.push(randf(0.8, 2.0))
         px_max.push(px_life[count])
 
-        if effect == 0 { // fire
+        if effect == 0 { # fire
             px_r.push(1.0)
             px_g.push(randf(0.2, 0.7))
             px_b.push(0.0)
@@ -98,7 +98,7 @@ scene Particles {
             px_rot.push(0.0)
             px_rsp.push(0.0)
         }
-        if effect == 1 { // snow
+        if effect == 1 { # snow
             px_vx[count] = randf(-30.0, 30.0)
             px_vy[count] = randf(50.0, 130.0)
             px_life[count] = randf(3.0, 6.0)
@@ -107,7 +107,7 @@ scene Particles {
             px_sz.push(randf(3.0, 7.0))
             px_rot.push(0.0); px_rsp.push(randf(-20.0, 20.0))
         }
-        if effect == 2 { // sparks
+        if effect == 2 { # sparks
             px_vx[count] = randf(-250.0, 250.0)
             px_vy[count] = randf(-350.0, 50.0)
             px_life[count] = randf(0.2, 0.9)
@@ -116,7 +116,7 @@ scene Particles {
             px_sz.push(randf(1.0, 3.5))
             px_rot.push(0.0); px_rsp.push(0.0)
         }
-        if effect == 3 { // confetti
+        if effect == 3 { # confetti
             px_vx[count] = randf(-160.0, 160.0)
             px_vy[count] = randf(-200.0, -30.0)
             px_life[count] = randf(2.0, 5.0)
@@ -153,14 +153,14 @@ scene Particles {
     }
 
     on_update(dt: float) {
-        // Switch effect
+        # Switch effect
         if input.key_pressed("space") {
             effect = (effect + 1) % 4
             reset_all()
         }
         if input.key_pressed("r") { reset_all() }
 
-        // Click burst
+        # Click burst
         if input.mouse_pressed(0) {
             let mx: float = input.mouse_x as float
             let my: float = input.mouse_y as float
@@ -171,18 +171,18 @@ scene Particles {
             }
         }
 
-        // Auto-emit for ambient effects
+        # Auto-emit for ambient effects
         emit_timer = emit_timer + dt
         if emit_timer > 0.03 {
             emit_timer = 0.0
-            if effect == 0 { // fire: emit at bottom centre
+            if effect == 0 { # fire: emit at bottom centre
                 let i: int = 0
                 while i < 3 {
                     add(randf(300.0, 500.0), H - 10.0)
                     i = i + 1
                 }
             }
-            if effect == 1 { // snow: emit at top
+            if effect == 1 { # snow: emit at top
                 let i: int = 0
                 while i < 4 {
                     add(randf(0.0, W), -10.0)
@@ -191,7 +191,7 @@ scene Particles {
             }
         }
 
-        // Update particles
+        # Update particles
         let alive_x: float[] = []
         let alive_y: float[] = []
         let alive_vx: float[] = []
@@ -240,7 +240,7 @@ scene Particles {
     on_draw {
         screen.clear()
 
-        // Draw particles
+        # Draw particles
         let i: int = 0
         while i < count {
             let t: float = px_life[i] / px_max[i]
@@ -251,7 +251,7 @@ scene Particles {
             let g: float = px_g[i]
             let b: float = px_b[i]
 
-            // Fire: colour shifts red→orange→yellow as it ages up
+            # Fire: colour shifts red→orange→yellow as it ages up
             if effect == 0 {
                 g = px_g[i] * t
                 if t > 0.7 { b = (t - 0.7) / 0.3 * 0.6 }
@@ -264,7 +264,7 @@ scene Particles {
             i = i + 1
         }
 
-        // UI
+        # UI
         let effect_name: string = "Fire"
         if effect == 1 { effect_name = "Snow" }
         if effect == 2 { effect_name = "Sparks" }

@@ -1,12 +1,12 @@
-// ─────────────────────────────────────────────────────────────────────────────
-// pong.ins — Classic Pong in InScript
-// Run: python inscript.py --game examples/pong.ins
-//
-// Controls:
-//   Left paddle  : W / S
-//   Right paddle : UP / DOWN
-//   Restart      : R  (after game over)
-// ─────────────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+# pong.ins — Classic Pong in InScript
+# Run: python inscript.py --game examples/pong.ins
+#
+# Controls:
+#   Left paddle  : W / S
+#   Right paddle : UP / DOWN
+#   Restart      : R  (after game over)
+# ─────────────────────────────────────────────────────────────────────────────
 
 const W: int = 800
 const H: int = 600
@@ -55,7 +55,7 @@ scene Pong {
             return
         }
 
-        // Paddle movement
+        # Paddle movement
         if input.key_down("w") { ly = ly - PAD_SPEED * dt }
         if input.key_down("s") { ly = ly + PAD_SPEED * dt }
         if input.key_down("up")   { ry = ry - PAD_SPEED * dt }
@@ -63,15 +63,15 @@ scene Pong {
         ly = clamp(ly, 0.0, H - PAD_H)
         ry = clamp(ry, 0.0, H - PAD_H)
 
-        // Ball movement
+        # Ball movement
         ball_x = ball_x + bvx * dt * speed
         ball_y = ball_y + bvy * dt * speed
 
-        // Top / bottom bounce
+        # Top / bottom bounce
         if ball_y - BALL_R < 0.0    { ball_y = BALL_R;        bvy = -bvy }
         if ball_y + BALL_R > H      { ball_y = H - BALL_R;    bvy = -bvy }
 
-        // Left paddle collision
+        # Left paddle collision
         let lpad_x: float = 20.0
         if bvx < 0.0 && ball_x - BALL_R < lpad_x + PAD_W && ball_x + BALL_R > lpad_x {
             if ball_y > ly && ball_y < ly + PAD_H {
@@ -83,7 +83,7 @@ scene Pong {
             }
         }
 
-        // Right paddle collision
+        # Right paddle collision
         let rpad_x: float = W - 20.0 - PAD_W
         if bvx > 0.0 && ball_x + BALL_R > rpad_x && ball_x - BALL_R < rpad_x + PAD_W {
             if ball_y > ry && ball_y < ry + PAD_H {
@@ -95,7 +95,7 @@ scene Pong {
             }
         }
 
-        // Scoring
+        # Scoring
         if ball_x < 0.0 {
             sr = sr + 1
             if sr >= MAX_SCORE { winner = 2 } else {
@@ -121,37 +121,37 @@ scene Pong {
     on_draw {
         screen.clear()
 
-        // Centre dashed line
+        # Centre dashed line
         let cy: int = 0
         while cy < H {
             draw.rect(W / 2 - 2, cy, 4, 14, {"r":0.25,"g":0.25,"b":0.28,"a":1.0})
             cy = cy + 28
         }
 
-        // Paddles
+        # Paddles
         draw.rounded_rect(20, ly, PAD_W, PAD_H,
                           {"r":0.2,"g":0.8,"b":1.0,"a":1.0}, 4)
         draw.rounded_rect(W - 20 - PAD_W, ry, PAD_W, PAD_H,
                           {"r":1.0,"g":0.8,"b":0.2,"a":1.0}, 4)
 
-        // Ball
+        # Ball
         draw.circle(ball_x, ball_y, BALL_R, {"r":1.0,"g":1.0,"b":1.0,"a":1.0})
 
-        // Scores
+        # Scores
         draw.text_centered(W / 4, 40, string(sl),
                            {"r":0.2,"g":0.8,"b":1.0,"a":1.0}, 52, true)
         draw.text_centered(W * 3 / 4, 40, string(sr),
                            {"r":1.0,"g":0.8,"b":0.2,"a":1.0}, 52, true)
 
-        // FPS
+        # FPS
         draw.text(4, H - 20, "FPS: " + string(screen.fps),
                   {"r":0.4,"g":0.4,"b":0.4,"a":1.0}, 12)
 
-        // Controls hint
+        # Controls hint
         draw.text(8, H - 36, "W/S", {"r":0.35,"g":0.35,"b":0.4,"a":1.0}, 12)
         draw.text(W - 70, H - 36, "UP/DOWN", {"r":0.35,"g":0.35,"b":0.4,"a":1.0}, 12)
 
-        // Winner overlay
+        # Winner overlay
         if winner != 0 {
             screen.fade(160)
             let msg: string = "LEFT WINS!"

@@ -85,12 +85,12 @@ for name, code, want in float_cases:
     ok(name, run_out(code) == want, f"got {run_out(code)!r}")
 
 int_cases = [
-    # Note: // is InScript's LINE COMMENT — floor division uses the `div` keyword
-    ("10 div 3 == 3",  "print(10 div 3)",     "3"),
-    ("-7 div 2 == -4", "print(-7 div 2)",     "-4"),
-    ("15 div 5 == 3",  "print(15 div 5)",     "3"),
-    ("div keyword",    "print(10 div 3)",     "3"),
-    ("comment //**",   "let x=5 // note\nprint(x)", "5"),
+    # v1.9.5: div removed (E0056); v1.9.6: // always floor div, # is comment
+    ("10 // 3 == 3",   "print(10 // 3)",      "3"),
+    ("-7 // 2 == -4",  "print(-7 // 2)",      "-4"),
+    ("15 // 5 == 3",   "print(15 // 5)",      "3"),
+    ("// with spaces", "print(10 // 3)",      "3"),
+    ("# comment",      "let x=5 # note\nprint(x)", "5"),
 ]
 for name, code, want in int_cases:
     ok(name, run_out(code) == want, f"got {run_out(code)!r}")
@@ -357,6 +357,7 @@ ok("migrate: :[]→:array", _migrate("let x: []")        == "let x: array")
 ok("migrate: mixed",      _migrate("let x = null\na div b") == "let x = nil\na // b")
 ok("migrate: clean noop", _migrate("x = nil\n")        == "x = nil\n")
 
+# v1.9.6: migrate now also converts // comments → # comments
 DIRTY = "fn f(a, b) {\n    return a div b\n}\nlet x = null\nlet arr: [] = []\n"
 CLEAN = "fn f(a, b) {\n    return a // b\n}\nlet x = nil\nlet arr: array = []\n"
 ok("migrate: full file", _migrate(DIRTY) == CLEAN,

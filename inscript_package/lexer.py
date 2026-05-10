@@ -292,26 +292,12 @@ class Lexer:
         if ch in (" ", "\t", "\r", "\n"):
             return
 
-        # // — floor-division operator or line comment
-        # v1.7.1: `//` is now the integer division operator (10 // 3 → 3)
-        # Line comment: `let x = 5   // this is a comment` — space before //
-        # Floor division: `10 // 3`, `x//2`, `(a+b) // c`
-        # Rule: if the character BEFORE // was a digit, ), ], or identifier char → floor div
-        #        otherwise → line comment
+        # // — floor-division operator (v1.9.6: ALWAYS floor division, no exceptions)
+        # v1.9.6: `#` is the new line-comment character.
+        # `//` with or without spaces is always integer floor division: 10 // 3 → 3
         if ch == "/" and self.current == "/":
             self.advance()  # consume second /
-            # Determine: floor-div or line comment?
-            # Rule: the character IMMEDIATELY before first '/' (no whitespace allowed)
-            # must be digit/identifier/closing bracket to be floor-div.
-            # Any space/tab before the // → line comment.
-            first_slash_pos = self.pos - 2
-            prev = self.source[first_slash_pos - 1] if first_slash_pos > 0 else ''
-            if prev and (prev.isdigit() or prev.isalpha() or prev in ')]}'):
-                # `10//3`, `x//2`, `(a+b)//c` — no space → floor division
-                self._emit(TT.SLASH_SLASH, "//", sl, sc)
-            else:
-                # `10 // 3` with spaces, `5 // comment`, `// standalone` → comment
-                self._skip_line_comment()
+            self._emit(TT.SLASH_SLASH, "//", sl, sc)
             return
         if ch == "/" and self.current == "*":
             self._skip_block_comment(sl, sc); return
@@ -586,7 +572,9 @@ class Lexer:
             if self.match("?"):  emit(TT.NULLISH,       "??")
             elif self.match("."): emit(TT.QUESTION_DOT, "?.")
             else:                emit(TT.QUESTION,       "?")
-        elif ch == "#":         emit(TT.HASH,         "#")
+        elif ch == "#":
+            # v1.9.6: # is the line-comment character (was: HASH annotation token)
+            self._skip_line_comment(); return
         elif ch == "@":         emit(TT.AT,           "@")
         elif ch == "(":         emit(TT.LPAREN)
         elif ch == ")":         emit(TT.RPAREN)

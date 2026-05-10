@@ -6,7 +6,8 @@ test_v172.py  InScript v1.7.2 — Recursive Types tests
   * Self-referential structs (linked list, tree)
   * nil as type annotation (next: nil = nil)
   * Mutually-recursive structs
-  * v1.7.1 regression: float display, // operator, null hard error
+  * v1.7.1 regression: float display, // operator
+  * v1.9.6: // always floor div (spaces ok), # is line comment
 
 Run:  python3 test_v172.py
 """
@@ -180,7 +181,7 @@ cases = [
     ("sqrt2",   "print(2.0**0.5)",   "1.4142135623730951"),
     ("10//3",   "print(10//3)",      "3"),
     ("-7//2",   "print(-7//2)",      "-4"),
-    ("comment", "let x=5 // note\nprint(x)", "5"),
+    ("comment", "let x=5 # this is a comment\nprint(x)", "5"),  # v1.9.6: # comments
     # v1.9.5: "div kw" removed from valid-cases — div is now a hard parse error (E0056)
 ]
 for name, code, want in cases:
@@ -190,6 +191,14 @@ for name, code, want in cases:
 # v1.9.5: div keyword is now a hard parse error
 out, err = run("print(10 div 3)")
 ok("v1.9.5 div is hard error (E0056)", err is not None and "E0056" in err, repr(err))
+
+# v1.9.6: // with spaces is floor division
+out, err = run("print(10 // 3)")
+ok("v1.9.6 // with spaces is floor division", out == "3" and err is None, repr(out))
+
+# v1.9.6: # is the line comment
+out, err = run("let x = 42 # inline comment\nprint(x)")
+ok("v1.9.6 # is line comment", out == "42" and err is None, repr(out))
 
 out, err = run("print(null)")
 ok("null hard error", err is not None and "removed" in err)

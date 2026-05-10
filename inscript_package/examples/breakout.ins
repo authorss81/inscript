@@ -1,12 +1,12 @@
-// ─────────────────────────────────────────────────────────────────────────────
-// breakout.ins — Breakout / Arkanoid clone in InScript
-// Run: python inscript.py --game examples/breakout.ins
-//
-// Controls:
-//   LEFT / RIGHT or A / D : Move paddle
-//   SPACE                  : Launch ball (on start)
-//   R                      : Restart
-// ─────────────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+# breakout.ins — Breakout / Arkanoid clone in InScript
+# Run: python inscript.py --game examples/breakout.ins
+#
+# Controls:
+#   LEFT / RIGHT or A / D : Move paddle
+#   SPACE                  : Launch ball (on start)
+#   R                      : Restart
+# ─────────────────────────────────────────────────────────────────────────────
 
 const W: int = 800
 const H: int = 600
@@ -40,7 +40,7 @@ fn make_bricks() -> bool[] {
 }
 
 fn brick_color(row: int) -> string {
-    // Return a color dict key name based on row
+    # Return a color dict key name based on row
     if row == 0 { return "top" }
     if row == 1 { return "hi" }
     if row == 2 { return "mid" }
@@ -87,7 +87,7 @@ scene Breakout {
             return
         }
 
-        // Paddle movement
+        # Paddle movement
         if input.key_down("left") || input.key_down("a") {
             px = px - PAD_SPEED * dt
         }
@@ -96,7 +96,7 @@ scene Breakout {
         }
         px = clampf(px, 0.0, W - PAD_W)
 
-        // Launch
+        # Launch
         if !launched && input.key_pressed("space") {
             launched = true
             bvx = BALL_SPEED * 0.7
@@ -108,16 +108,16 @@ scene Breakout {
             return
         }
 
-        // Ball movement
+        # Ball movement
         bx = bx + bvx * dt
         by = by + bvy * dt
 
-        // Wall bounces
+        # Wall bounces
         if bx - BALL_R < 0.0   { bx = BALL_R;     bvx = -bvx }
         if bx + BALL_R > W     { bx = W - BALL_R;  bvx = -bvx }
         if by - BALL_R < 0.0   { by = BALL_R;      bvy = -bvy }
 
-        // Ball lost
+        # Ball lost
         if by > H + 20.0 {
             lives = lives - 1
             if lives <= 0 {
@@ -131,7 +131,7 @@ scene Breakout {
             }
         }
 
-        // Paddle collision
+        # Paddle collision
         if bvy > 0.0 && by + BALL_R > PAD_Y && by - BALL_R < PAD_Y + PAD_H {
             if bx > px && bx < px + PAD_W {
                 bvy = -bvy
@@ -141,7 +141,7 @@ scene Breakout {
             }
         }
 
-        // Brick collisions
+        # Brick collisions
         let col: int = 0
         while col < BRICK_COLS {
             let row: int = 0
@@ -158,7 +158,7 @@ scene Breakout {
                             total_bricks = total_bricks - 1
                             if total_bricks <= 0 { won = true }
 
-                            // Which side did we hit?
+                            # Which side did we hit?
                             let from_top: float = by + BALL_R - bk_y
                             let from_bot: float = bk_y + BRICK_H - (by - BALL_R)
                             let from_lft: float = bx + BALL_R - bk_x
@@ -186,7 +186,7 @@ scene Breakout {
     on_draw {
         screen.clear()
 
-        // Bricks
+        # Bricks
         let brick_colors: string[] = [
             "0.9,0.2,0.2",
             "0.9,0.5,0.1",
@@ -217,16 +217,16 @@ scene Breakout {
             col = col + 1
         }
 
-        // Paddle
+        # Paddle
         draw.rounded_rect(px, PAD_Y, PAD_W, PAD_H,
                           {"r":0.2,"g":0.7,"b":1.0,"a":1.0}, 6)
 
-        // Ball
+        # Ball
         draw.circle(bx, by, BALL_R, {"r":1.0,"g":1.0,"b":1.0,"a":1.0})
         draw.circle(bx - 2, by - 2, BALL_R * 0.35,
                     {"r":1.0,"g":1.0,"b":1.0,"a":0.5})
 
-        // HUD
+        # HUD
         draw.text(8, 8, "SCORE: " + string(score),
                   {"r":0.9,"g":0.9,"b":0.9,"a":1.0}, 18, true)
         draw.text(8, 30, "LIVES: " + string(lives),

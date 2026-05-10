@@ -1,12 +1,12 @@
-// ─────────────────────────────────────────────────────────────────────────────
-// Asteroid Blaster — InScript Demo Program
-// Shows: generics, ADT enums, inheritance, mixins, properties, pattern guards,
-//        coroutines, error propagation, comptime, pipe operator, closures
-//
-// Run:  python inscript.py examples/asteroid_blaster.ins
-// ─────────────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+# Asteroid Blaster — InScript Demo Program
+# Shows: generics, ADT enums, inheritance, mixins, properties, pattern guards,
+#        coroutines, error propagation, comptime, pipe operator, closures
+#
+# Run:  python inscript.py examples/asteroid_blaster.ins
+# ─────────────────────────────────────────────────────────────────────────────
 
-// ── Safe math via Result / error propagation ──────────────────────────────
+# ── Safe math via Result / error propagation ──────────────────────────────
 fn safe_divide(a: float, b: float) -> Result {
     if b == 0.0 { return Err("division by zero") }
     return Ok(a / b)
@@ -17,7 +17,7 @@ fn accuracy_pct(hits: int, shots: int) -> Result {
     return Ok(r * 100.0)
 }
 
-// ── Generic bullet pool ───────────────────────────────────────────────────
+# ── Generic bullet pool ───────────────────────────────────────────────────
 struct Stack<T> {
     items: T[]
     fn push(item: T)   { self.items.push(item) }
@@ -26,7 +26,7 @@ struct Stack<T> {
     fn is_empty() -> bool { return self.items.length == 0 }
 }
 
-// ── Score board with get/set properties ──────────────────────────────────
+# ── Score board with get/set properties ──────────────────────────────────
 struct ScoreBoard {
     _score:    int
     _hi_score: int
@@ -39,7 +39,7 @@ struct ScoreBoard {
     get hi_score() -> int { return self._hi_score }
 }
 
-// ── Base ship — inherited by PlayerShip ───────────────────────────────────
+# ── Base ship — inherited by PlayerShip ───────────────────────────────────
 struct Ship {
     name:  string
     x:     float
@@ -73,7 +73,7 @@ struct PlayerShip extends Ship {
     }
 }
 
-// ── ADT enum — each asteroid variant carries different data ───────────────
+# ── ADT enum — each asteroid variant carries different data ───────────────
 enum Asteroid {
     Small(x: float, y: float)
     Medium(x: float, y: float)
@@ -96,7 +96,7 @@ fn asteroid_label(a: Asteroid) -> string {
     }
 }
 
-// ── HP status via pattern matching guard ──────────────────────────────────
+# ── HP status via pattern matching guard ──────────────────────────────────
 fn hp_status(hp: int) -> string {
     match hp {
         case h if h <= 0  { return "💀 Dead" }
@@ -107,7 +107,7 @@ fn hp_status(hp: int) -> string {
     }
 }
 
-// ── Coroutine: lazily yields one asteroid per call ────────────────────────
+# ── Coroutine: lazily yields one asteroid per call ────────────────────────
 fn* asteroid_wave(wave_num: int) {
     let count = wave_num + 1
     let i = 0
@@ -121,10 +121,10 @@ fn* asteroid_wave(wave_num: int) {
     }
 }
 
-// ── Comptime constant: evaluated once at startup ───────────────────────────
+# ── Comptime constant: evaluated once at startup ───────────────────────────
 const SURVIVAL_BONUS = comptime { 50 * 10 }
 
-// ── Main simulation ───────────────────────────────────────────────────────
+# ── Main simulation ───────────────────────────────────────────────────────
 fn main() {
     print("╔═══════════════════════════════════════════╗")
     print("║        ASTEROID BLASTER  v1.0  🚀         ║")
@@ -132,7 +132,7 @@ fn main() {
     print("╚═══════════════════════════════════════════╝")
     print("")
 
-    // Set up player ship
+    # Set up player ship
     let player = PlayerShip {
         name:  "Eagle-1",
         x:     400.0,
@@ -143,7 +143,7 @@ fn main() {
         hits:  0,
     }
 
-    // Generic bullet pool (Stack<string>)
+    # Generic bullet pool (Stack<string>)
     let pool = Stack<string> { items: [] }
     pool.push("AP-Round")
     pool.push("AP-Round")
@@ -152,15 +152,15 @@ fn main() {
     pool.push("Laser")
     print(f"  Arming {pool.size()} rounds...\n")
 
-    // Score board using get/set property accessors
+    # Score board using get/set property accessors
     let board = ScoreBoard { _score: 0, _hi_score: 0 }
 
-    // Simulate 3 waves
+    # Simulate 3 waves
     let wave_num = 1
     while wave_num <= 3 {
         print(f"━━━  WAVE {wave_num}  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
-        // Spawn asteroids via coroutine
+        # Spawn asteroids via coroutine
         let spawner = asteroid_wave(wave_num)
         let spawned = 0
         while spawned < wave_num + 1 {
@@ -170,7 +170,7 @@ fn main() {
                 let pts = asteroid_points(asteroid)
                 board.score = board.score + pts
 
-                // Fire if ammo available (pop from generic stack)
+                # Fire if ammo available (pop from generic stack)
                 if !pool.is_empty() {
                     let ammo = pool.pop()
                     let tx = float(random_int(300, 500))
@@ -181,7 +181,7 @@ fn main() {
             spawned += 1
         }
 
-        // Ship takes hull damage, moves
+        # Ship takes hull damage, moves
         player.take_damage(wave_num * 10)
         player.move_by(float(wave_num) * 0.3, -0.2)
 
@@ -192,16 +192,16 @@ fn main() {
         wave_num += 1
     }
 
-    // Pipe operator: apply bonus, then format
+    # Pipe operator: apply bonus, then format
     fn add_bonus(s: int) -> int { return s + SURVIVAL_BONUS }
     fn label_score(s: int) -> string { return f"🏆 {s} points" }
     let final_label = board.score |> add_bonus |> label_score
 
-    // Error propagation: accuracy may fail if 0 shots
+    # Error propagation: accuracy may fail if 0 shots
     let acc_result = accuracy_pct(player.hits, player.shots)
     let acc = unwrap_or(acc_result, 0.0)
 
-    // Destructure final stats
+    # Destructure final stats
     let [total_shots, total_hits] = [player.shots, player.hits]
 
     print("━━━  MISSION COMPLETE  ━━━━━━━━━━━━━━━━━━━━━━━━━━")

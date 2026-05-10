@@ -24,7 +24,7 @@ from errors   import (InScriptError, LexerError, ParseError,
                        SemanticError, InScriptRuntimeError,
                        MultiError, InScriptWarning)
 
-VERSION = "1.9.5"
+VERSION = "1.9.6"
 LANG    = "InScript"
 PACKAGES_DIR = os.path.join(os.path.expanduser("~"), ".inscript", "packages")
 REGISTRY_URL = "https://raw.githubusercontent.com/authorss81/inscript-packages/main/registry.json"
@@ -276,7 +276,8 @@ def _compat_files(path: str) -> int:
             print(f"[InScript compat] Cannot read '{fpath}': {e}", file=sys.stderr)
             return issues
         for lineno, line in enumerate(src.splitlines(), 1):
-            if line.lstrip().startswith("//"):
+            stripped = line.lstrip()
+            if stripped.startswith("//") or stripped.startswith("#"):
                 continue
             for pat, msg in CHECKS:
                 if pat.search(line):
@@ -333,9 +334,20 @@ def _migrate_files(path: str) -> int:
             with open(fpath, encoding="utf-8") as f:
                 original = f.read()
             src = original
+            # v1.9.6: // line comments → # line comments  (MUST run before div→// rewrite)
+            # Rule 1: standalone comment lines — optional whitespace then //
+            src = re.sub(r'^(\s*)//', r'\1#', src, flags=re.MULTILINE)
+            # Rule 2: inline word comment — ` // word` → ` # word`
+            # Fires only when identifier/word follows, not digit (digits are floor-div)
+            src = re.sub(r'(\s)//(\s+[A-Za-z_])', r'\1#\2', src)
+            # Rule 3: warn about ambiguous ` // <digit>` patterns (may be comment or floor-div)
+            ambiguous = re.findall(r'(\s)//(\s+\d)', src)
+            if ambiguous:
+                print(f"  WARNING   {fpath}: {len(ambiguous)} ambiguous ' // <digit>' pattern(s) — "
+                      f"check manually: floor-div or comment? Change to '#' if comment.")
             # null → nil
             src = re.sub(r'\bnull\b', 'nil', src)
-            # x div y → x // y  (only bare `div` between expressions)
+            # x div y → x // y  (only bare `div` between expressions, safe after comment rules)
             src = re.sub(r'\bdiv\b', '//', src)
             # bare [] type annotation → array  (e.g. `: []` → `: array`)
             src = re.sub(r':\s*\[\]', ': array', src)
@@ -1154,7 +1166,7 @@ LANGUAGE_SPEC = """# InScript Language Specification
 ## 1. Lexical Structure
 
 ### 1.1 Comments
-- Line comments: `// text`
+- Line comments: `# text`  (v1.9.6: was `// text`)
 - Block comments: `/* text */` (nestable)
 - Doc comments: `/// text` (parsed by `inscript doc`)
 

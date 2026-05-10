@@ -1,12 +1,12 @@
-// -----------------------------------------------------------------------------
-// platformer.ins - Side-scrolling platformer in InScript
-// Run: python inscript.py --game examples/platformer.ins
-//
-// Controls:
-//   A / D || LEFT / RIGHT  : move
-//   SPACE || W / UP        : jump (double-jump allowed)
-//   R                      : restart
-// -----------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# platformer.ins - Side-scrolling platformer in InScript
+# Run: python inscript.py --game examples/platformer.ins
+#
+# Controls:
+#   A / D || LEFT / RIGHT  : move
+#   SPACE || W / UP        : jump (double-jump allowed)
+#   R                      : restart
+# -----------------------------------------------------------------------------
 
 const SW: int   = 800
 const SH: int   = 600
@@ -15,7 +15,7 @@ const MOVE_SP: float = 220.0
 const JUMP_V: float  = -420.0
 const CAM_LERP: float = 0.10
 
-// -- Platform helpers ---------------------------------------------------------
+# -- Platform helpers ---------------------------------------------------------
 
 fn make_platform(x: float, y: float, w: float, h: float) -> [float] {
     let p = [x, y, w, h]
@@ -32,20 +32,20 @@ fn rect_overlap(ax: float, ay: float, aw: float, ah: float,
     return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by
 }
 
-// -- Coin helper ---------------------------------------------------------------
+# -- Coin helper ---------------------------------------------------------------
 
 fn make_coin(x: float, y: float) -> [float] {
-    return [x, y, 1.0]    // x, y, alive
+    return [x, y, 1.0]    # x, y, alive
 }
 
-// -- Scene ---------------------------------------------------------------------
+# -- Scene ---------------------------------------------------------------------
 
 scene Platformer {
 
-    // Camera
+    # Camera
     let cam_x: float = 0.0
 
-    // Player state
+    # Player state
     let px: float   = 120.0
     let py: float   = 300.0
     let pvx: float  = 0.0
@@ -55,15 +55,15 @@ scene Platformer {
     let facing_right: bool = true
     let anim_t: float = 0.0
 
-    // Score / game state
+    # Score / game state
     let score: int   = 0
     let dead: bool   = false
     let win: bool    = false
     let msg_t: float = 0.0
 
-    // World data - platforms as [x, y, w, h]
+    # World data - platforms as [x, y, w, h]
     let platforms: [[float]] = [
-        [0.0,    500.0, 300.0, 24.0],   // start ground
+        [0.0,    500.0, 300.0, 24.0],   # start ground
         [350.0,  420.0, 140.0, 20.0],
         [540.0,  340.0, 120.0, 20.0],
         [700.0,  440.0, 180.0, 20.0],
@@ -72,10 +72,10 @@ scene Platformer {
         [1260.0, 360.0, 120.0, 20.0],
         [1420.0, 280.0, 100.0, 20.0],
         [1560.0, 400.0, 200.0, 20.0],
-        [1800.0, 480.0, 400.0, 24.0],   // end ground
+        [1800.0, 480.0, 400.0, 24.0],   # end ground
     ]
 
-    // Coins as [x, y, alive]
+    # Coins as [x, y, alive]
     let coins: [[float]] = [
         [370.0, 390.0, 1.0],
         [560.0, 310.0, 1.0],
@@ -89,7 +89,7 @@ scene Platformer {
         [1950.0,450.0, 1.0],
     ]
 
-    // Flag / goal
+    # Flag / goal
     const GOAL_X: float = 2050.0
     const GOAL_Y: float = 390.0
     const TOTAL_COINS: int = 10
@@ -99,7 +99,7 @@ scene Platformer {
         on_ground = false; jumps_left = 2; facing_right = true
         anim_t = 0.0; score = 0; dead = false; win = false; msg_t = 0.0
         cam_x = 0.0
-        // revive all coins
+        # revive all coins
         let i = 0
         while i < len(coins) {
             coins[i][2] = 1.0
@@ -120,7 +120,7 @@ scene Platformer {
             return
         }
 
-        // -- Input ----------------------------------------------------------
+        # -- Input ----------------------------------------------------------
         let move_left:  bool = input.key_down("a") || input.key_down("left")
         let move_right: bool = input.key_down("d") || input.key_down("right")
         let jump_press: bool = input.key_pressed("space") || input.key_pressed("w") || input.key_pressed("up")
@@ -134,12 +134,12 @@ scene Platformer {
             jumps_left = jumps_left - 1
         }
 
-        // -- Physics --------------------------------------------------------
+        # -- Physics --------------------------------------------------------
         pvy = pvy + GRAV * dt
         px  = px + pvx * dt
         py  = py + pvy * dt
 
-        // -- Platform collision ---------------------------------------------
+        # -- Platform collision ---------------------------------------------
         const PW: float = 28.0
         const PH: float = 36.0
 
@@ -153,19 +153,19 @@ scene Platformer {
             let plh: float = plat_h(plat)
 
             if rect_overlap(px, py, PW, PH, plx, ply, plw, plh) {
-                // Land on top
+                # Land on top
                 if pvy >= 0.0 && py + PH - pvy * dt <= ply + 4.0 {
                     py = ply - PH
                     pvy = 0.0
                     on_ground = true
                     jumps_left = 2
                 }
-                // Hit bottom
+                # Hit bottom
                 if pvy < 0.0 && py - pvy * dt >= ply + plh - 4.0 {
                     py = ply + plh
                     pvy = 0.0
                 }
-                // Side collision
+                # Side collision
                 if pvy == 0.0 {
                     if px + PW > plx && px < plx { px = plx - PW }
                     if px < plx + plw && px + PW > plx + plw { px = plx + plw }
@@ -174,11 +174,11 @@ scene Platformer {
             pi = pi + 1
         }
 
-        // -- Coin collection ------------------------------------------------
+        # -- Coin collection ------------------------------------------------
         let ci = 0
         while ci < len(coins) {
             let coin: [float] = coins[ci]
-            if coin[2] > 0.0 {   // alive
+            if coin[2] > 0.0 {   # alive
                 let cx: float = coin[0] + 8.0
                 let cy: float = coin[1] + 8.0
                 let dx: float = px + PW * 0.5 - cx
@@ -191,32 +191,32 @@ scene Platformer {
             ci = ci + 1
         }
 
-        // -- Goal ----------------------------------------------------------
+        # -- Goal ----------------------------------------------------------
         if px > GOAL_X && score >= TOTAL_COINS {
             win = true
             msg_t = 0.0
         }
 
-        // -- Death (fell below world) ---------------------------------------
+        # -- Death (fell below world) ---------------------------------------
         if py > SH + 200.0 {
             dead = true
             msg_t = 0.0
         }
 
-        // -- Camera --------------------------------------------------------
+        # -- Camera --------------------------------------------------------
         let target_cam: float = px - SW * 0.35
         if target_cam < 0.0 { target_cam = 0.0 }
         cam_x = cam_x + (target_cam - cam_x) * CAM_LERP
 
-        // -- Walk animation ------------------------------------------------
+        # -- Walk animation ------------------------------------------------
         if pvx != 0.0 { anim_t = anim_t + dt * 8.0 }
     }
 
     on_draw {
-        // -- Sky gradient background ----------------------------------------
+        # -- Sky gradient background ----------------------------------------
         screen.clear(Color.rgb(135, 206, 235))
 
-        // Distant hills
+        # Distant hills
         let h: int = 0
         while h < 5 {
             let hx: float = h * 200.0 - (cam_x * 0.3) % 200.0 - 200.0
@@ -227,7 +227,7 @@ scene Platformer {
             h = h + 1
         }
 
-        // -- Platforms ------------------------------------------------------
+        # -- Platforms ------------------------------------------------------
         let pi = 0
         while pi < len(platforms) {
             let plat: [float] = platforms[pi]
@@ -235,23 +235,23 @@ scene Platformer {
             let sy: float = plat_y(plat)
             let sw: float = plat_w(plat)
             let sh: float = plat_h(plat)
-            // Dark base
+            # Dark base
             draw.rect(sx, sy + 6.0, sw, sh - 6.0, Color.rgb(101, 67, 33))
-            // Grass top
+            # Grass top
             draw.rect(sx, sy, sw, 8.0, Color.rgb(76, 153, 0))
-            // Highlight edge
+            # Highlight edge
             draw.rect(sx, sy, sw, 2.0, Color.rgb(120, 200, 60))
             pi = pi + 1
         }
 
-        // -- Coins ----------------------------------------------------------
+        # -- Coins ----------------------------------------------------------
         let ci = 0
         while ci < len(coins) {
             let coin: [float] = coins[ci]
             if coin[2] > 0.0 {
                 let cx: float = coin[0] - cam_x + 8.0
                 let cy: float = coin[1] + 8.0
-                // Spinning bob effect
+                # Spinning bob effect
                 let bob: float = math2d.sin_wave(1.5, 3.0, ci * 0.5)
                 draw.circle(cx, cy + bob, 10.0, Color.GOLD)
                 draw.circle(cx, cy + bob, 7.0, Color.rgb(255, 235, 100))
@@ -259,7 +259,7 @@ scene Platformer {
             ci = ci + 1
         }
 
-        // -- Goal flag -----------------------------------------------------
+        # -- Goal flag -----------------------------------------------------
         let fx: float = GOAL_X - cam_x
         draw.rect(fx, GOAL_Y, 6.0, 80.0, Color.rgb(80, 60, 40))
         draw.polygon(
@@ -268,29 +268,29 @@ scene Platformer {
         )
         draw.text_centered("FINISH", fx + 20.0, GOAL_Y + 90.0, Color.WHITE, 14)
 
-        // -- Player --------------------------------------------------------
+        # -- Player --------------------------------------------------------
         const PW: float = 28.0
         const PH: float = 36.0
         let draw_x: float = px - cam_x
         let draw_y: float = py
 
-        // Body
+        # Body
         draw.rect(draw_x + 4.0, draw_y + 12.0, PW - 8.0, PH - 16.0, Color.rgb(70, 130, 180))
-        // Head
+        # Head
         draw.circle(draw_x + PW * 0.5, draw_y + 8.0, 10.0, Color.rgb(255, 220, 180))
-        // Eyes
+        # Eyes
         let eye_off: float = 3.0
         if !facing_right { eye_off = -3.0 }
         draw.circle(draw_x + PW * 0.5 + eye_off, draw_y + 7.0, 2.5, Color.rgb(30, 30, 30))
 
-        // Legs (animated walk)
+        # Legs (animated walk)
         let leg1: float = math2d.sin_wave(1.0, 8.0, 0.0)
         let leg2: float = math2d.sin_wave(1.0, 8.0, 0.5)
         if !on_ground { leg1 = -6.0; leg2 = 6.0 }
         draw.rect(draw_x + 5.0,  draw_y + PH - 10.0, 8.0, 10.0, Color.rgb(50, 90, 140))
         draw.rect(draw_x + 15.0, draw_y + PH - 10.0, 8.0, 10.0, Color.rgb(50, 90, 140))
 
-        // -- HUD ------------------------------------------------------------
+        # -- HUD ------------------------------------------------------------
         draw.rect(0.0, 0.0, SW, 36.0, Color.rgba(0, 0, 0, 140))
         draw.text(f"Coins: {score} / {TOTAL_COINS}", 16.0, 10.0, Color.GOLD, 18)
         let jump_str: string = ""
@@ -300,7 +300,7 @@ scene Platformer {
         draw.text(f"Jumps: {jump_str}", 200.0, 10.0, Color.WHITE, 18)
         draw.text("A/D: move   SPACE: jump   R: restart", SW - 330.0, 10.0, Color.rgb(180,180,180), 14)
 
-        // -- Overlays -------------------------------------------------------
+        # -- Overlays -------------------------------------------------------
         if dead {
             let alpha: int = 180
             draw.rect(0.0, 0.0, SW, SH, Color.rgba(180, 0, 0, alpha))

@@ -152,14 +152,22 @@ def test_positions():
 test("Line and column tracking", test_positions)
 
 # ─── Test: Line comments ──────────────────────
+# v1.9.6: # is the line-comment character; // is always floor division
 def test_line_comments():
-    src = "let x = 5 // this is a comment\nlet y = 10"
+    # # comment
+    src = "let x = 5 # this is a comment\nlet y = 10"
     ts = tokens_of(src)
-    # Should have let, x, =, 5, let, y, =, 10 — no comment content
     tts = [t for t, _ in ts]
-    assert TT.IDENT not in tts or "this" not in [v for _, v in ts]
+    assert "this" not in [v for _, v in ts]
     assert (TT.INT, 5)  in ts
     assert (TT.INT, 10) in ts
+
+def test_slash_slash_always_floor_div():
+    # // with spaces is now floor division, not a comment
+    src = "let x = 10 // 3"
+    ts = tokens_of(src)
+    tts = [t for t, _ in ts]
+    assert TT.SLASH_SLASH in tts, "// should always be floor division token"
 test("Single-line comments skipped", test_line_comments)
 
 # ─── Test: Block comments ─────────────────────

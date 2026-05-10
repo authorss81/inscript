@@ -2,7 +2,8 @@
 test_v195.py — v1.9.5: `div` keyword removed (E0056 hard error)
 
 Notes:
-  - `//` requires NO spaces before it (lexer rule: space before // → comment)
+  - `//` is always floor division (v1.9.6: spaces allowed)
+  - `#` is the line comment character (v1.9.6)
   - `null` errors at RUNTIME via visit_NullLiteralExpr (not parse time)
   - `div` errors at PARSE time via parse_multiplication
 """
@@ -78,14 +79,14 @@ expect_parse_error("div_in_print",             "print(10 div 2)",               
 
 # ── 9-14: // works fine (NO spaces — lexer: space before // → comment) ───────
 
-expect_value("slashslash_basic",       "10//3",                              3)
-expect_value("slashslash_negative",    "-10//3",                             -4)
-expect_value("slashslash_chained",     "100//3//2",                          16)
+expect_value("slashslash_basic",       "10 // 3",                            3)  # v1.9.6: spaces ok
+expect_value("slashslash_negative",    "-10 // 3",                           -4)
+expect_value("slashslash_chained",     "100 // 3 // 2",                      16)
 expect_value("slashslash_in_fn",
-    "fn half(n: int) -> int { return n//2 }\nhalf(10)",                      5)
-expect_value("slashslash_in_array",    "[10//3, 20//4, 30//7]",              [3, 5, 4])
+    "fn half(n: int) -> int { return n // 2 }\nhalf(10)",                    5)
+expect_value("slashslash_in_array",    "[10 // 3, 20 // 4, 30 // 7]",       [3, 5, 4])
 expect_value("slashslash_loop",
-    "let s = 0\nfor i in [2,4,6,8] { s = s + i//2 }\ns",                   10)
+    "let s = 0\nfor i in [2,4,6,8] { s = s + i // 2 }\ns",               10)
 
 # ── 15-16: null still errors at runtime (E0055) ──────────────────────────────
 

@@ -4,7 +4,22 @@ All notable changes are documented here. Follows [Semantic Versioning](https://s
 
 ---
 
-## [1.9.5] — 2026-05-09
+## [1.9.6] — 2026-05-09
+
+### Breaking: `#` line comments; `//` always floor division
+
+- **`#` is now the line-comment character** — `# this is a comment`, `let x = 5 # inline`. This matches Python, Ruby, Shell, and TOML — immediately familiar to any reader.
+- **`//` is always floor division**, regardless of surrounding spaces — `10 // 3 == 3`, `10//3 == 3`, `a // b == a // b`. The old space-sensitive rule (space before `//` → comment) is completely removed.
+- **`/* */` block comments** are unchanged.
+- **`inscript migrate`** updated with two new rules: (1) standalone `// comment` lines → `# comment`, (2) inline ` // word` → ` # word`. Does not touch `x // 2` style floor division.
+- **Migration path**: run `inscript migrate <file>` — all `//` comment usages are auto-converted to `#`.
+
+### Why now
+The old rule made `10 // 3` silently return `10` if there was a space before `//`, producing wrong answers with no error. Any auto-formatter adding spaces would silently break code.
+
+---
+
+
 
 ### Breaking: `div` keyword removed (E0056)
 
