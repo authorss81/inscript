@@ -4,7 +4,21 @@ All notable changes are documented here. Follows [Semantic Versioning](https://s
 
 ---
 
-## [1.9.8] — 2026-05-09
+## [1.9.9] — 2026-05-09
+
+### Package manager hardening
+
+- **`inscript install PKG@version`** — version pinning: `inscript --install math-utils@1.2.0` installs exactly that version and writes it to `inscript.lock`.
+- **`inscript install` (no args)** — reads `[dependencies]` from `inscript.toml` and installs every listed package. If `inscript.lock` exists, uses its pinned versions.
+- **`inscript update PKG`** — removes existing installation and reinstalls at latest (or `PKG@version`). Updates `inscript.lock` entry.
+- **`inscript outdated`** — compares `inscript.lock` pinned versions against the registry and reports which packages have updates available.
+- **Offline mode** — if the registry is unreachable, `install` checks `inscript.lock` for a pinned version record and reports it rather than hard-failing.
+- **Lock file integration**: `_write_lock_entry` / `_read_lock` / `_remove_lock_entry` helpers added — all package operations now read and write `inscript.lock` consistently.
+- **`_parse_pkg_spec`** helper — parses `PKG@version` into `(name, version)` tuple, used throughout.
+
+---
+
+
 
 ### Type inference hardening + missed test fixes
 
