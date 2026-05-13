@@ -513,6 +513,10 @@ class Analyzer(Visitor):
             Symbol("network", T_ANY,   kind="var"),
             Symbol("navmesh", T_ANY,   kind="var"),
             Symbol("time",    T_ANY,   kind="var"),
+            # v1.9.11: async I/O modules
+            Symbol("http",    T_ANY,   kind="var"),
+            Symbol("file",    T_ANY,   kind="var"),
+            Symbol("timer",   T_ANY,   kind="var"),
         ]
         for sym in builtins:
             self._scope.symbols[sym.name] = sym
@@ -1471,6 +1475,25 @@ class Analyzer(Visitor):
             for m in (struct.methods or []):
                 if m.name == method:
                     return self._resolve_type_ann(m.return_type)
+
+        # ── v1.9.11: async module method return types ─────────────────────────
+        # http.get_async(url) → Promise<string>
+        # file.read_async(path) → Promise<string>
+        # file.write_async(path, content) → Promise<bool>
+        # timer.sleep(ms) → Promise<nil>
+        _PROMISE_STRING = InScriptType("Promise", [T_STRING])
+        _PROMISE_BOOL   = InScriptType("Promise", [T_BOOL])
+        _PROMISE_NIL    = InScriptType("Promise", [T_NULL])
+        _ASYNC_RETURNS  = {
+            ("http",  "get_async"):   _PROMISE_STRING,
+            ("file",  "read_async"):  _PROMISE_STRING,
+            ("file",  "write_async"): _PROMISE_BOOL,
+            ("timer", "sleep"):       _PROMISE_NIL,
+        }
+        if obj_type.name in ("http", "file", "timer"):
+            key = (obj_type.name, method)
+            if key in _ASYNC_RETURNS:
+                return _ASYNC_RETURNS[key]
 
         return T_ANY
 

@@ -469,7 +469,84 @@ Threading/Bench, Game Visual, Game IO, Game World, Game Systems, Utilities.
 - [x] No rewrites — only adds `check-v2` command on top of existing work
 - [x] `test_v1910.py`
 
-## Timeline
+---
+
+### v1.9.11 — Real Async I/O Stdlib
+
+**Goal:** Give `async/await` something meaningful to await. Right now `async fn` works but there are zero async I/O primitives — nothing to actually suspend on. This version adds three real async functions backed by asyncio.
+
+**What to implement:**
+- `http.get_async(url: string) -> Promise<string>` — async HTTP GET via `asyncio` + `urllib`. Returns response body as string. Times out after 10s. Works: `let body = await http.get_async("https://example.com")`.
+- `file.read_async(path: string) -> Promise<string>` — async file read via `asyncio.to_thread`. Returns full file content. Works: `let src = await file.read_async("data.json")`.
+- `timer.sleep(ms: int) -> Promise<nil>` — async sleep via `asyncio.sleep(ms / 1000)`. Works: `await timer.sleep(500)`.
+- All three return real `InScriptCoroutine` objects. `await` on them drives the asyncio event loop.
+- Analyzer: `http.get_async` → `Promise<string>`, `file.read_async` → `Promise<string>`, `timer.sleep` → `Promise<nil>`.
+- Graceful error handling: if network unreachable, `http.get_async` raises `InScriptRuntimeError` with a clear message.
+- `test_v1911.py` — tests that all three functions return coroutines, that await drives them, that errors are catchable.
+
+---
+
+### v1.9.12 — Bootstrap the Package Registry
+
+**Goal:** Make `inscript install` actually work. Right now the registry URL returns 403 and there are zero installable packages. This version creates three real packages as `.ins` files and a `registry.json` that `inscript install` can fetch.
+
+**What to implement:**
+- Create `inscript-packages/` directory structure with `registry.json` and 3 real packages:
+  - `math-utils` — `gcd(a,b)`, `lcm(a,b)`, `clamp(x, min, max)`, `lerp(a, b, t)`, `map_range(x, a, b, c, d)`
+  - `color-utils` — `hex_to_rgb(hex)`, `rgb_to_hex(r,g,b)`, `lerp_color(c1, c2, t)`, `lighten(c, amount)`, `darken(c, amount)`
+  - `grid` — `Grid` struct with `new(w,h)`, `get(x,y)`, `set(x,y,v)`, `in_bounds(x,y)`, `neighbours(x,y)`, `fill(v)`
+- Each package is a single `.ins` file with `///` doc comments on every function.
+- `registry.json` format: `{"math-utils": {"version": "1.0.0", "url": "...", "description": "...", "tags": [...]}}`
+- Update `REGISTRY_URL` in `inscript.py` to point to the real file (GitHub raw URL).
+- Update `install_package` offline test to use the new registry structure.
+- `test_v1912.py` — tests that all 3 packages parse and run correctly as `.ins` files; tests that `_parse_pkg_spec` and lock file work with real package names; does NOT require live network (packages embedded in test).
+
+---
+
+### v1.9.13 — Type Inference Round 2
+
+**Goal:** Eliminate the most common `T_ANY` leakage. After v1.9.8, array/dict literals infer correctly. But `let x = add(1, 2)` still gives `x: any` because function call return types don't propagate. This version fixes the three most impactful leakage points.
+
+**What to implement:**
+- **Function call return type propagation**: `let x = add(1, 2)` → `x: int` if `add` is declared `-> int`. Look up the callee symbol's `fn_node.return_type` and resolve it. Works for user-defined functions and known stdlib functions.
+- **Method chain type propagation**: `[1,2,3].map(fn(x) x*2)` → `Array<int>` not `T_ANY`. `"hello".split(",")` → `Array<string>`. Patch `_infer_method_call_type` for the 10 most common array/string methods.
+- **Ternary expression inference**: `let x = cond ? 1 : 2` → `x: int` not `T_ANY`. Infer from both branches; if they match, use that type; if they differ, use union.
+- **`inscript --infer-types` improvements**: show `→ Array<int>` not `→ any` for all fixed cases.
+- No changes to existing type-checking rules — only inference improvements (more specific types, never breaking valid code).
+- `test_v1913.py` — tests for each of the three fixed leakage points, before/after comparison showing `T_ANY` → specific type.
+
+---
+
+### v1.9.14 — Ship a Working Game
+
+**Goal:** Prove the language works end-to-end by making `examples/pong.ins` fully runnable. This is the most important version — a language that can't run its own examples isn't ready for v2.0.0.
+
+**What to implement:**
+- Audit `examples/pong.ins` against the current interpreter. Find every runtime error, parser failure, and missing stdlib function.
+- Fix each blocker found. Document every fix as a bug in CHANGELOG.
+- Add any missing game stdlib functions that `pong.ins` needs (ball physics, score display, input handling via keyboard events).
+- Verify `python inscript.py --game examples/pong.ins` launches a Pygame window and the game is playable.
+- Do the same for `examples/breakout.ins` — fix blockers, make it runnable.
+- `test_v1914.py` — parses and type-checks both `pong.ins` and `breakout.ins` without errors; runs key functions from each (ball update, collision, score) in isolation and checks outputs.
+
+---
+
+### v1.9.15 — String Interpolation
+
+**Goal:** Add `$"Hello {name}, score: {score}"` string interpolation. This is the single most-requested feature for a game scripting language — every print statement in every game currently requires string concatenation.
+
+**What to implement:**
+- **Lexer**: detect `$"..."` prefix. Inside the string, `{expr}` is an interpolation hole. Tokenise as `INTERP_STRING_START`, `INTERP_EXPR`, `INTERP_STRING_END` tokens, or handle entirely in the lexer by splitting into parts.
+- **Parser**: parse interpolated string as `InterpolatedStringExpr(parts: List[str | Expr])`. Simpler approach: lexer fully evaluates the segments and emits a `StringConcatExpr` tree.
+- **Interpreter**: evaluate each `{expr}`, call `str()` on the result, concatenate. `$"x={x}"` is identical to `"x=" ++ str(x)`.
+- **Analyzer**: `InterpolatedStringExpr` always returns `T_STRING`. Each embedded expression is type-checked; warn if a non-stringifiable type is embedded.
+- **Error messages**: if `{` is unclosed inside `$"..."`, emit `[E0057] Unclosed interpolation in string literal`.
+- **`inscript migrate`**: no migration needed — this is additive syntax.
+- `test_v1915.py` — basic interpolation, nested expressions `$"{a + b}"`, multiline, empty holes `$""`, type-check of embedded exprs, error on unclosed brace.
+
+---
+
+
 
 ```
 April 2026   v1.0.18   Current — VM complete, 839 tests, audit 8.8/10
@@ -493,9 +570,14 @@ Q4 2026      v1.3.0    Performance (5-15× via C extension)
              v1.9.7    True async/await via asyncio
              v1.9.8    Type inference hardening (reduce T_ANY leakage)
              v1.9.9    Package manager hardening (install/update/outdated/lock)
-             v1.9.10   v2.0.0 readiness gate (inscript check-v2)
+             v1.9.10   v2.0.0 readiness gate (inscript check-v2) ✅ done
+             v1.9.11   real async I/O: http.get_async, file.read_async, timer.sleep
+             v1.9.12   bootstrap package registry (3 real packages)
+             v1.9.13   type inference round 2 (fn call return, method chains)
+             v1.9.14   ship a working game (pong.ins + breakout.ins run)
+             v1.9.15   string interpolation $"Hello {name}"
 
-2027         v2.0.0    Production Ready — all gates green
+2027         v2.0.0    Production Ready — all 5 gaps closed
 ```
 
 ---
@@ -525,8 +607,13 @@ Q4 2026      v1.3.0    Performance (5-15× via C extension)
 | **v1.9.7** | *next* | True async/await via asyncio event loop |
 | **v1.9.8** | *next* | Type inference hardening — reduce T_ANY leakage |
 | **v1.9.9** | *next* | Package manager — install/update/outdated/lock |
-| **v1.9.10** | *next* | v2.0.0 readiness gate — `inscript check-v2` |
-| **v2.0.0** | 2027 | Production Ready — all gates green |
+| **v1.9.10** | 2026-05-09 | v2.0.0 readiness gate — `inscript check-v2` ✅ |
+| **v1.9.11** | *next* | Real async I/O — `http.get_async`, `file.read_async`, `timer.sleep` |
+| **v1.9.12** | *next* | Bootstrap package registry — 3 real installable packages |
+| **v1.9.13** | *next* | Type inference round 2 — fn call return, method chains, ternary |
+| **v1.9.14** | *next* | Ship a working game — `pong.ins` + `breakout.ins` run end-to-end |
+| **v1.9.15** | *next* | String interpolation — `$"Hello {name}"` |
+| **v2.0.0** | 2027 | Production Ready — all 5 gaps closed, game ships, registry live |
 
 ---
 

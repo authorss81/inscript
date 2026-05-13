@@ -76,6 +76,7 @@ jobs:
           python test_v198.py
           python test_v199.py
           python test_v1910.py
+          python test_v1911.py
 
   build:
     name: Build distribution

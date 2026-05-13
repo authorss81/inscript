@@ -165,7 +165,7 @@ fn main() {
         let spawned = 0
         while spawned < wave_num + 1 {
             let asteroid = spawner.next()
-            if asteroid != null {
+            if asteroid != nil {
                 print(asteroid_label(asteroid))
                 let pts = asteroid_points(asteroid)
                 board.score = board.score + pts

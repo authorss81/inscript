@@ -24,7 +24,10 @@ from errors   import (InScriptError, LexerError, ParseError,
                        SemanticError, InScriptRuntimeError,
                        MultiError, InScriptWarning)
 
-VERSION = "1.9.10"
+VERSION = "1.9.11"
+
+MANIFEST_FILENAME = "inscript.toml"
+LOCK_FILENAME     = "inscript.lock"
 LANG    = "InScript"
 PACKAGES_DIR = os.path.join(os.path.expanduser("~"), ".inscript", "packages")
 REGISTRY_URL = "https://raw.githubusercontent.com/authorss81/inscript-packages/main/registry.json"
@@ -2333,8 +2336,6 @@ if __name__ == "__main__":
 # v1.9.2 — Package Manifest Foundation
 # ─────────────────────────────────────────────────────────────────────────────
 
-MANIFEST_FILENAME = "inscript.toml"
-LOCK_FILENAME     = "inscript.lock"
 
 # Minimal TOML parser (stdlib only — no third-party deps)
 def _parse_toml_simple(text: str) -> dict:

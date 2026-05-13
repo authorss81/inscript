@@ -4,7 +4,23 @@ All notable changes are documented here. Follows [Semantic Versioning](https://s
 
 ---
 
-## [1.9.10] — 2026-05-09
+## [1.9.11] — 2026-05-09
+
+### Real async I/O stdlib
+
+- **`http.get_async(url: string) -> Promise<string>`** — async HTTP GET via `asyncio` + `urllib.request`. Returns the response body as a string. Times out after 10s. Errors are catchable via `try/catch`.
+- **`file.read_async(path: string) -> Promise<string>`** — async file read via `asyncio` + `run_in_executor`. Returns full UTF-8 file content.
+- **`file.write_async(path: string, content: string) -> Promise<bool>`** — async file write. Returns `true` on success.
+- **`file` module** added with both sync (`read`, `write`, `exists`) and async variants.
+- **`timer.sleep(ms: int) -> Promise<nil>`** — async sleep for `ms` milliseconds via `asyncio.sleep`. Use `await timer.sleep(500)` in any async function.
+- **`timer` module** added: `sleep`, `sleep_sync`, `now` (ms epoch), `now_sec` (float seconds).
+- **`http.get_async`** added to existing `http` module alongside `get` and `post`.
+- **Analyzer**: `http`, `file`, `timer` registered as builtin module symbols. Method calls `http.get_async`, `file.read_async`, `file.write_async`, `timer.sleep` infer `Promise<string>` / `Promise<bool>` / `Promise<nil>` return types.
+- All three new async functions return real `InScriptCoroutine` objects — `await` drives them to completion.
+
+---
+
+
 
 ### v2.0.0 Readiness Gate — `inscript check-v2`
 

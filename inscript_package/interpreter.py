@@ -2477,19 +2477,24 @@ class Interpreter(Visitor):
         v1.9.7: True async/await.
         - InScriptCoroutine → drive via Python coroutine protocol (sync driver).
         - Plain value → passthrough (backwards compatible).
-
-        We use a synchronous driver (coro.send(None)) rather than asyncio.run()
-        because InScript coroutine bodies contain no real Python await points —
-        they are synchronous interpreter execution wrapped in `async def`.
-        This also safely handles nested async calls without event-loop conflicts.
+        - Exceptions from inside the coroutine are converted to InScriptRuntimeError
+          so they are catchable by InScript try/catch blocks.
         """
         val = self.visit(node.expr)
         if isinstance(val, InScriptCoroutine):
             try:
                 val.coro.send(None)
-                return None   # coroutine yielded unexpectedly — shouldn't happen
+                return None
             except StopIteration as e:
                 return e.value
+            except InScriptRuntimeError:
+                raise   # already an InScript error, let it propagate
+            except Exception as e:
+                # Convert Python exceptions to InScriptRuntimeError so
+                # they are catchable by InScript try/catch blocks.
+                err = InScriptRuntimeError(str(e), getattr(node, 'line', 0))
+                err.thrown_value = str(e)
+                raise err
         return val   # plain value: passthrough
 
     def visit_SpawnExpr(self, node: SpawnExpr) -> Any:

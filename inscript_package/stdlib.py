@@ -982,10 +982,90 @@ except KeyError:
         except Exception as e:
             return {"status": 0, "body": str(e), "ok": False}
 
+    # v1.9.11: http.get_async(url) → InScriptCoroutine → Promise<string>
+    # Uses sync I/O inside async def so our single-send coroutine driver works.
+    def _http_get_async(url):
+        from stdlib_values import InScriptCoroutine as _Coro
+        async def _coro():
+            import urllib.request as _ur
+            try:
+                with _ur.urlopen(str(url), timeout=10) as r:
+                    return r.read().decode()
+            except Exception as e:
+                raise RuntimeError("http.get_async failed: " + str(e)) from e
+        return _Coro(_coro(), fn_name="http.get_async")
+
     register_module("http", {
-        "get":  _http_get,
-        "post": _http_post,
+        "get":       _http_get,
+        "post":      _http_post,
+        "get_async": _http_get_async,   # v1.9.11
     })
+
+# v1.9.11: file module — async file I/O
+try:
+    _MODULES["file"]
+except KeyError:
+    from stdlib_values import InScriptCoroutine as _CoroFile
+    import asyncio as _asyncio_file
+
+    def _file_read_async(path):
+        # Sync I/O inside async def — works with our single-send coroutine driver.
+        async def _coro():
+            try:
+                with open(str(path), encoding="utf-8") as _f:
+                    return _f.read()
+            except Exception as e:
+                raise RuntimeError("file.read_async failed: " + str(e)) from e
+        return _CoroFile(_coro(), fn_name="file.read_async")
+
+    def _file_write_async(path, content):
+        async def _coro():
+            try:
+                with open(str(path), "w", encoding="utf-8") as _f:
+                    _f.write(str(content))
+                return True
+            except Exception as e:
+                raise RuntimeError("file.write_async failed: " + str(e)) from e
+        return _CoroFile(_coro(), fn_name="file.write_async")
+
+    register_module("file", {
+        "read_async":  _file_read_async,   # v1.9.11: async read → Promise<string>
+        "write_async": _file_write_async,  # v1.9.11: async write → Promise<bool>
+        "read":        lambda p: open(str(p), encoding="utf-8").read(),
+        "write":       lambda p, c: open(str(p), "w", encoding="utf-8").write(str(c)) or True,
+        "exists":      lambda p: __import__("os").path.isfile(str(p)),
+    })
+
+# v1.9.11: timer module — async sleep and time utilities
+try:
+    _MODULES["timer"]
+except KeyError:
+    from stdlib_values import InScriptCoroutine as _CoroTimer
+    import time as _time_mod
+
+    def _timer_sleep(ms):
+        """timer.sleep(ms) → Promise<nil>  — sleep for ms milliseconds.
+        Uses sync sleep inside async def so our coroutine driver works."""
+        async def _coro():
+            import time as _t
+            _t.sleep(int(ms) / 1000.0)
+            return None
+        return _CoroTimer(_coro(), fn_name="timer.sleep")
+
+    def _timer_sleep_sync(ms):
+        """timer.sleep_sync(ms) — synchronous sleep (blocks)."""
+        import time as _t
+        _t.sleep(int(ms) / 1000.0)
+        return None
+
+    register_module("timer", {
+        "sleep":      _timer_sleep,       # v1.9.11: async sleep → Promise<nil>
+        "sleep_sync": _timer_sleep_sync,  # synchronous fallback
+        "now":        lambda: int(_time_mod.time() * 1000),  # ms since epoch
+        "now_sec":    lambda: _time_mod.time(),              # seconds since epoch
+    })
+
+
 
 # ── Extended stdlib (Part 1): collections, datetime, fs, process, log, test, compress
 try:
