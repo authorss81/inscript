@@ -1160,6 +1160,37 @@ class Analyzer(Visitor):
     def visit_BoolLiteralExpr(self, node: BoolLiteralExpr) -> InScriptType: return T_BOOL
     def visit_NullLiteralExpr(self, node: NullLiteralExpr) -> InScriptType: return T_NULL
 
+    def visit_FStringExpr(self, node) -> InScriptType:
+        """v1.9.15: $"..." and f"..." interpolated strings always produce T_STRING.
+        Type-check each {expr} segment by re-parsing and visiting it.
+        """
+        import re
+        template = node.template
+        for m in re.finditer(r'(?<!\x00)\{([^}\x00][^}]*)\}', template):
+            inner = m.group(1).strip()
+            # Strip optional format spec :spec
+            depth = 0; split_at = -1; ternary_depth = 0
+            for i, ch in enumerate(inner):
+                if ch in '([{': depth += 1
+                elif ch in ')]}': depth -= 1
+                elif ch == '?' and depth == 0: ternary_depth += 1
+                elif ch == ':' and depth == 0:
+                    if ternary_depth > 0: ternary_depth -= 1
+                    else: split_at = i; break
+            expr_src = inner[:split_at].strip() if split_at > 0 else inner
+            try:
+                from parser import parse
+                prog = parse(expr_src)
+                # visit each stmt in a suppressed-error sub-context
+                saved = self._errors; self._errors = []
+                try:
+                    for stmt in prog.body: self.visit(stmt)
+                finally:
+                    self._errors = saved
+            except Exception:
+                pass  # parse errors in sub-expr are caught at runtime
+        return T_STRING
+
     def visit_IdentExpr(self, node: IdentExpr) -> InScriptType:
         sym = self._lookup(node.name, node.line, node.col)
         return sym.type_

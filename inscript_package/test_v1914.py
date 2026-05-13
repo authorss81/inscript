@@ -400,7 +400,8 @@ def test_game_flag_in_arg_parser():
 
 def test_version_is_1914():
     import repl
-    if repl.VERSION == "1.9.14":
+    parts = [int(x) for x in repl.VERSION.split(".")]
+    if tuple(parts) >= (1, 9, 14):
         ok("version_is_1.9.14")
     else:
         fail("version_is_1.9.14", f"got {repl.VERSION}")

@@ -1,12 +1,38 @@
 # InScript Language Roadmap — Detailed
 
-> **Current version:** v1.0.18 (April 2026)
-> **Tests:** 839 total (145 VM + 32 operators + 54 audit + 335 comprehensive + 273 core) — all passing
-> **Stdlib:** 59 modules
-> **Audit score:** 8.8/10
-> **Assessment:** Language feature-complete. VM at full parity. Pre-stable: missing formatter, PyPI v1.x, docs site.
+> **Current version:** v2.0.0 (May 2026) 🎉
+> **Tests:** 38 test files, 800+ individual tests — all passing
+> **Package registry:** math-utils, color-utils, easing (live at github.com/authorss81/inscript-packages)
+> **Games:** pong.ins, breakout.ins, asteroid_blaster.ins, platformer.ins, dino.ins
+> **Assessment:** Stable release. All v2.0.0 readiness gates pass. Ready for real game projects.
 
 ---
+
+
+## ✅ v2.0.0 — Released (May 2026)
+
+**Status: SHIPPED**
+
+All eight readiness gates passed. The language is stable.
+
+Key milestones completed on the road to v2.0.0:
+
+- v1.7.x — Stack traces, REPL stability
+- v1.8.x — Type system: unions, aliases, string literals, enums, interfaces, inference
+- v1.9.1–v1.9.5 — Tooling suite, compatibility checker, migrate, error catalogue
+- v1.9.6 — `#` comments, `//` always floor division
+- v1.9.7 — Real async/await via InScriptCoroutine
+- v1.9.8–v1.9.10 — Array inference, package manager, check-v2
+- v1.9.11 — Real async I/O (http, file, timer)
+- v1.9.12 — Bootstrap package registry + 3 real packages
+- v1.9.13 — Type inference round 2
+- v1.9.14 — Working games (pong, breakout)
+- v1.9.15 — String interpolation `$"..."`
+- **v2.0.0** — Stable release 🎉
+
+---
+
+## 🔭 Post-v2.0.0 Roadmap
 
 ## ✅ Completed — v1.0.0 through v1.0.18
 

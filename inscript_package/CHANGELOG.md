@@ -4,6 +4,75 @@ All notable changes are documented here. Follows [Semantic Versioning](https://s
 
 ---
 
+## [2.0.0] — 2026-05-13
+
+### 🎉 InScript v2.0.0 — Stable Release
+
+This is the first stable release of InScript. All eight v2.0.0 readiness gates pass.
+The language is complete, tested, and ready for real game projects.
+
+---
+
+#### What's new since v1.9.15
+
+- **Version bump only** — no breaking changes from v1.9.15.
+- `inscript.toml` and `inscript.lock` now shipped with the package.
+- `--check-v2` gate 4 false-positive fixed: inline `//` floor division (e.g. `n // 16`)
+  is no longer misidentified as an old-style comment.
+- `--migrate` Rule 2 hardened: only rewrites `//` after statement terminators
+  (`; { }`), never inside expressions.
+
+---
+
+#### The v1.9.x journey that got us here
+
+| Version | Milestone |
+|---------|-----------|
+| v1.9.11 | Real async I/O — `http.get_async`, `file.read_async`, `timer.sleep` |
+| v1.9.12 | Bootstrap package registry — `math-utils`, `color-utils`, `easing` |
+| v1.9.13 | Type inference round 2 — fn call return types propagate, `T_ANY` leakage fixed |
+| v1.9.14 | Working games — `pong.ins` and `breakout.ins` verified with `--game` flag |
+| v1.9.15 | String interpolation — `$"Hello {name}, score: {score}"` |
+| **v2.0.0** | **Stable release — all 8 check-v2 gates pass** |
+
+---
+
+#### v2.0.0 readiness gates (all ✅)
+
+1. `div` keyword removed (hard error since v1.9.5)
+2. `null` keyword removed (hard error since v1.7.4)
+3. Bare `array` annotation removed — use `Array<T>`
+4. `#` line comments — no files use `//` as comments
+5. `async/await` is real — full `InScriptCoroutine` protocol (since v1.9.7)
+6. `Array<T>` type inference present (since v1.9.8)
+7. `inscript.lock` present in project
+8. `inscript.toml` present in project
+
+---
+
+#### Language feature summary at v2.0.0
+
+**Type system:** union types, optional `T?`, type aliases, string literal types,
+enum exhaustiveness, interface enforcement, `never`, `Array<T>` inference,
+fn call return type propagation, method chain type preservation.
+
+**Async:** `async fn` / `await`, `Promise<T>`, real `InScriptCoroutine` driver,
+`http.get_async`, `file.read_async/write_async`, `timer.sleep`.
+
+**Syntax:** `#` line comments, `//` floor division, `$"..."` string interpolation
+with format specs, `///` doc comments, `r"..."` raw strings.
+
+**Tooling:** `inscript --migrate`, `--compat`, `--doc`, `--changelog`, `--spec`,
+`--benchmark`, `--check-v2`, `--init`, `--validate`, `--lock`,
+`--install`, `--update`, `--outdated`, `--infer-types`, `--game`.
+
+**Package manager:** registry, `.ins` package format, semver ranges, lock file.
+
+**Games:** `pong.ins`, `breakout.ins`, `asteroid_blaster.ins`, `platformer.ins`,
+`dino.ins` — all run with `inscript --game FILE`.
+
+---
+
 ## [1.9.11] — 2026-05-09
 
 ### Real async I/O stdlib

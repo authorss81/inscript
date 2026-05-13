@@ -365,7 +365,7 @@ class Lexer:
         self._error("Unterminated triple-quoted string", sl, sc)
 
     def _scan_fstring(self, quote: str, sl: int, sc: int):
-        """Scan f"...{expr}..." — store the raw template as FSTRING token.
+        """Scan f"...{expr}..." or $"...{expr}..." — store the raw template as FSTRING token. v1.9.15: $"..." is the new preferred syntax; both prefixes share this scanner.
         {{ and }} are literal brace escapes.
         Inside {}, quote characters are allowed (e.g. d["key"])."""
         chars = []
@@ -580,6 +580,12 @@ class Lexer:
         elif ch == "#":
             # v1.9.6: # is the line-comment character (was: HASH annotation token)
             self._skip_line_comment(); return
+        elif ch == "$":
+            # v1.9.15: $"..." interpolated string (preferred over f"...")
+            if self.current in ('"', "'"):
+                self._scan_fstring(self.advance(), sl, sc)
+                return
+            # bare $ not followed by quote — skip (not used otherwise)
         elif ch == "@":         emit(TT.AT,           "@")
         elif ch == "(":         emit(TT.LPAREN)
         elif ch == ")":         emit(TT.RPAREN)

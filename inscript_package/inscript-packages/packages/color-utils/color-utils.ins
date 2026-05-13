@@ -2,10 +2,10 @@
 # Colour manipulation utilities for InScript games.
 # Install: inscript --install color-utils
 
-/// Parse a CSS hex colour string to {r, g, b} dict.
-/// Accepts "#RRGGBB" or "RRGGBB" formats.
-/// @param hex Hex colour string
-/// @returns Dict<string, int>
+#/ Parse a CSS hex colour string to {r, g, b} dict.
+#/ Accepts "#RRGGBB" or "RRGGBB" formats.
+#/ @param hex Hex colour string
+#/ @returns Dict<string, int>
 fn hex_to_rgb(hex: string) -> Dict<string, int> {
     let h = hex
     if h.starts_with("#") {
@@ -47,11 +47,11 @@ fn hex_to_rgb(hex: string) -> Dict<string, int> {
     return {"r": r, "g": g, "b": b}
 }
 
-/// Convert r, g, b integers (0-255) to a hex string "#RRGGBB".
-/// @param r Red channel (0-255)
-/// @param g Green channel (0-255)
-/// @param b Blue channel (0-255)
-/// @returns string
+#/ Convert r, g, b integers (0-255) to a hex string "#RRGGBB".
+#/ @param r Red channel (0-255)
+#/ @param g Green channel (0-255)
+#/ @param b Blue channel (0-255)
+#/ @returns string
 fn rgb_to_hex(r: int, g: int, b: int) -> string {
     fn byte_to_hex(n: int) -> string {
         let digits = "0123456789abcdef"
@@ -62,15 +62,15 @@ fn rgb_to_hex(r: int, g: int, b: int) -> string {
     return "#" ++ byte_to_hex(r) ++ byte_to_hex(g) ++ byte_to_hex(b)
 }
 
-/// Linearly interpolate between two RGB colours.
-/// @param r1 Red of first colour
-/// @param g1 Green of first colour
-/// @param b1 Blue of first colour
-/// @param r2 Red of second colour
-/// @param g2 Green of second colour
-/// @param b2 Blue of second colour
-/// @param t Blend factor (0.0=first, 1.0=second)
-/// @returns Dict<string, int>
+#/ Linearly interpolate between two RGB colours.
+#/ @param r1 Red of first colour
+#/ @param g1 Green of first colour
+#/ @param b1 Blue of first colour
+#/ @param r2 Red of second colour
+#/ @param g2 Green of second colour
+#/ @param b2 Blue of second colour
+#/ @param t Blend factor (0.0=first, 1.0=second)
+#/ @returns Dict<string, int>
 fn lerp_color(r1: int, g1: int, b1: int,
               r2: int, g2: int, b2: int,
               t: float) -> Dict<string, int> {
@@ -84,12 +84,12 @@ fn lerp_color(r1: int, g1: int, b1: int,
     }
 }
 
-/// Lighten an RGB colour by amount (0.0-1.0).
-/// @param r Red channel
-/// @param g Green channel
-/// @param b Blue channel
-/// @param amount Lightening factor (0.0=unchanged, 1.0=white)
-/// @returns Dict<string, int>
+#/ Lighten an RGB colour by amount (0.0-1.0).
+#/ @param r Red channel
+#/ @param g Green channel
+#/ @param b Blue channel
+#/ @param amount Lightening factor (0.0=unchanged, 1.0=white)
+#/ @returns Dict<string, int>
 fn lighten(r: int, g: int, b: int, amount: float) -> Dict<string, int> {
     fn lgt(c: int, a: float) -> int {
         let v = int(float(c) + (255.0 - float(c)) * a)
@@ -99,12 +99,12 @@ fn lighten(r: int, g: int, b: int, amount: float) -> Dict<string, int> {
     return {"r": lgt(r, amount), "g": lgt(g, amount), "b": lgt(b, amount)}
 }
 
-/// Darken an RGB colour by amount (0.0-1.0).
-/// @param r Red channel
-/// @param g Green channel
-/// @param b Blue channel
-/// @param amount Darkening factor (0.0=unchanged, 1.0=black)
-/// @returns Dict<string, int>
+#/ Darken an RGB colour by amount (0.0-1.0).
+#/ @param r Red channel
+#/ @param g Green channel
+#/ @param b Blue channel
+#/ @param amount Darkening factor (0.0=unchanged, 1.0=black)
+#/ @returns Dict<string, int>
 fn darken(r: int, g: int, b: int, amount: float) -> Dict<string, int> {
     fn drk(c: int, a: float) -> int {
         let v = int(float(c) * (1.0 - a))
@@ -114,12 +114,12 @@ fn darken(r: int, g: int, b: int, amount: float) -> Dict<string, int> {
     return {"r": drk(r, amount), "g": drk(g, amount), "b": drk(b, amount)}
 }
 
-/// Return the perceived brightness of an RGB colour (0-255).
-/// Uses the standard luminance formula.
-/// @param r Red channel
-/// @param g Green channel
-/// @param b Blue channel
-/// @returns float
+#/ Return the perceived brightness of an RGB colour (0-255).
+#/ Uses the standard luminance formula.
+#/ @param r Red channel
+#/ @param g Green channel
+#/ @param b Blue channel
+#/ @returns float
 fn brightness(r: int, g: int, b: int) -> float {
     return float(r) * 0.299 + float(g) * 0.587 + float(b) * 0.114
 }

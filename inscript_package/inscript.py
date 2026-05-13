@@ -24,7 +24,7 @@ from errors   import (InScriptError, LexerError, ParseError,
                        SemanticError, InScriptRuntimeError,
                        MultiError, InScriptWarning)
 
-VERSION = "1.9.14"
+VERSION = "2.0.0"
 
 MANIFEST_FILENAME = "inscript.toml"
 LOCK_FILENAME     = "inscript.lock"
@@ -703,9 +703,9 @@ def _check_v2_readiness(project_dir: str = ".") -> int:
     for fpath in ins_files:
         try:
             src = open(fpath, encoding="utf-8").read()
-            # Detect lines where // is used as a comment (standalone // line or // followed by a word)
+            # Only flag STANDALONE // lines — inline // is always floor division in v1.9.6+
             bad = [i+1 for i, l in enumerate(src.splitlines())
-                   if _re.match(r'^\s*//', l) or _re.search(r'\s//\s+[A-Za-z_]', l)]
+                   if _re.match(r'^\s*//', l)]
             if bad:
                 comment_hits.append((fpath, bad))
         except OSError:
@@ -785,9 +785,11 @@ def _migrate_files(path: str) -> int:
             # v1.9.6: // line comments → # line comments  (MUST run before div→// rewrite)
             # Rule 1: standalone comment lines — optional whitespace then //
             src = re.sub(r'^(\s*)//', r'\1#', src, flags=re.MULTILINE)
-            # Rule 2: inline word comment — ` // word` → ` # word`
-            # Fires only when identifier/word follows, not digit (digits are floor-div)
-            src = re.sub(r'(\s)//(\s+[A-Za-z_])', r'\1#\2', src)
+            # Rule 2: inline trailing comment — `; // word` or `} // word` → `; # word`
+            # v1.9.15: ONLY fires after statement terminators (;, {, }),
+            #          NOT after expression-ending chars like ), ], identifiers, digits.
+            #          This prevents floor-division like `(a*b) // gcd(a,b)` being mangled.
+            src = re.sub(r'([;{}])( *)//(\s+[A-Za-z_])', r'\1\2#\3', src)
             # Rule 3: warn about ambiguous ` // <digit>` patterns (may be comment or floor-div)
             ambiguous = re.findall(r'(\s)//(\s+\d)', src)
             if ambiguous:
@@ -2335,10 +2337,6 @@ Examples:
                       profile=profile)
 
 
-if __name__ == "__main__":
-    sys.exit(main())
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # v1.9.2 — Package Manifest Foundation
 # ─────────────────────────────────────────────────────────────────────────────
@@ -2690,3 +2688,7 @@ def _generate_lockfile(directory: str = ".") -> int:
     except OSError as e:
         print(f"[InScript lock] Cannot write lockfile: {e}", file=sys.stderr)
         return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -80,6 +80,8 @@ jobs:
           python test_v1912.py
           python test_v1913.py
           python test_v1914.py
+          python test_v1915.py
+          python test_v200.py
 
   build:
     name: Build distribution
