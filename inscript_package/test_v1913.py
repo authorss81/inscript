@@ -359,7 +359,8 @@ async fn fetch() -> string { return "data" }
 
 def test_version_is_1913():
     import repl
-    if repl.VERSION == "1.9.13":
+    parts = [int(x) for x in repl.VERSION.split(".")]
+    if tuple(parts) >= (1, 9, 13):
         ok("version_is_1.9.13")
     else:
         fail("version_is_1.9.13", f"got {repl.VERSION}")
