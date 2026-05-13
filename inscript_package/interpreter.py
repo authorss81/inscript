@@ -2516,41 +2516,76 @@ class Interpreter(Visitor):
         cond = self.visit(node.condition)
         return self.visit(node.then_expr) if cond else self.visit(node.else_expr)
 
+    @staticmethod
+    def _fstring_segments(template: str):
+        """v2.0.2: brace-depth-aware f-string segment splitter.
+        Returns list of (kind, text) where kind is "lit" or "expr".
+        Handles nested braces (match, for, object literals) correctly.
+        {{ and }} in source are stored as sentinel \x00{ and }\x00.
+        """
+        segments = []
+        i = 0
+        n = len(template)
+        lit_buf = []
+        while i < n:
+            ch = template[i]
+            # Sentinel escaped braces: \x00{ = literal {, }\x00 = literal }
+            if ch == "\x00" and i + 1 < n and template[i + 1] == "{":
+                lit_buf.append("{"); i += 2
+            elif ch == "}" and i + 1 < n and template[i + 1] == "\x00":
+                lit_buf.append("}"); i += 2
+            elif ch == "{":
+                # Start of an expression — find matching } with depth tracking
+                if lit_buf:
+                    segments.append(("lit", "".join(lit_buf))); lit_buf = []
+                depth = 1; j = i + 1; in_str = None
+                while j < n and depth > 0:
+                    c2 = template[j]
+                    if in_str:
+                        if c2 == "\\" and j + 1 < n: j += 2; continue
+                        if c2 == in_str: in_str = None
+                    elif c2 in ('"', "\'"):
+                        in_str = c2
+                    elif c2 == "{":
+                        depth += 1
+                    elif c2 == "}":
+                        depth -= 1
+                        if depth == 0: break
+                    j += 1
+                segments.append(("expr", template[i + 1:j]))
+                i = j + 1
+            else:
+                lit_buf.append(ch); i += 1
+        if lit_buf:
+            segments.append(("lit", "".join(lit_buf)))
+        return segments
+
     def visit_FStringExpr(self, node: FStringExpr) -> Any:
         """f"Hello {name}, score={score:.1f}" — evaluate {expr} segments at runtime.
+        v2.0.2: brace-depth-aware splitter handles match/for/object literals inside {}.
         Supports Python-style format specs: {x:.2f}, {n:06d}, {s:>20} etc.
-        {{ and }} in source produce literal braces (stored as \x00{ and }\x00 sentinels)."""
-        import re
+        {{ and }} in source produce literal braces."""
         result = []
-        template = node.template
-        pos = 0
-        for m in re.finditer(r'(?<!\x00)\{([^}\x00][^}]*)\}', template):
-            result.append(template[pos:m.start()])
-            inner = m.group(1).strip()
-
-            # Split off format spec: {expr:spec}
-            # Key: only split on ':' that is NOT inside brackets AND NOT after '?'
-            # (ternary x ? a : b uses ':' but it's not a format spec)
+        for kind, text in self._fstring_segments(node.template):
+            if kind == "lit":
+                result.append(text)
+                continue
+            inner = text.strip()
+            # Split off format spec {expr:spec}, respecting brackets and ternary
             fmt_spec = None
-            depth = 0
-            ternary_depth = 0
-            split_at = -1
+            depth = 0; ternary_depth = 0; split_at = -1
             for i, ch in enumerate(inner):
-                if ch in '([{': depth += 1
-                elif ch in ')]}': depth -= 1
-                elif ch == '?' and depth == 0: ternary_depth += 1
-                elif ch == ':' and depth == 0:
-                    if ternary_depth > 0:
-                        ternary_depth -= 1  # this ':' closes the ternary
-                    else:
-                        split_at = i
-                        break
+                if ch in "([{": depth += 1
+                elif ch in ")]}": depth -= 1
+                elif ch == "?" and depth == 0: ternary_depth += 1
+                elif ch == ":" and depth == 0:
+                    if ternary_depth > 0: ternary_depth -= 1
+                    else: split_at = i; break
             if split_at > 0:
-                expr_src = inner[:split_at].strip()
-                fmt_spec = inner[split_at+1:].strip()
+                expr_src  = inner[:split_at].strip()
+                fmt_spec  = inner[split_at + 1:].strip()
             else:
                 expr_src = inner
-
             try:
                 from parser import parse
                 prog = parse(expr_src)
@@ -2558,19 +2593,13 @@ class Interpreter(Visitor):
                 for stmt in prog.body:
                     val = self.visit(stmt)
                 if fmt_spec:
-                    # Apply Python format spec directly — supports .2f, 06d, >10s etc.
-                    try:
-                        result.append(format(val, fmt_spec))
-                    except Exception:
-                        result.append(_inscript_str(val))
+                    try:    result.append(format(val, fmt_spec))
+                    except: result.append(_inscript_str(val))
                 else:
                     result.append(_inscript_str(val))
             except Exception:
-                result.append(f"{{{inner}}}")
-            pos = m.end()
-        result.append(template[pos:])
-        final = "".join(result).replace("\x00{", "{").replace("}\x00", "}")
-        return final
+                result.append("{" + inner + "}")
+        return "".join(result)
 
     def visit_DestructureDecl(self, node: DestructureDecl) -> Any:
         """let [a, b, c] = arr  |  let {x, y} = point  |  let [[a,b],[c,d]] = nested"""

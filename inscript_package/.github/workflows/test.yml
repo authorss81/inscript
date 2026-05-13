@@ -78,6 +78,7 @@ jobs:
           python test_v1915.py
           python test_v200.py
           python test_v201.py
+          python test_v202.py
 
       - name: Run formatter smoke test (Unix only)
         working-directory: inscript_package

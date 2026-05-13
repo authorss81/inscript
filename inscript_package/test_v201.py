@@ -241,7 +241,8 @@ def test_analyzer_step_float_error():
 
 def test_version_is_201():
     import repl
-    if repl.VERSION == "2.0.1":
+    parts = [int(x) for x in repl.VERSION.split(".")]
+    if tuple(parts) >= (2, 0, 1):
         ok("version_is_2.0.1")
     else:
         fail("version_is_2.0.1", f"got {repl.VERSION}")
