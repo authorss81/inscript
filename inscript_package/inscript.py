@@ -24,7 +24,7 @@ from errors   import (InScriptError, LexerError, ParseError,
                        SemanticError, InScriptRuntimeError,
                        MultiError, InScriptWarning)
 
-VERSION = "1.9.11"
+VERSION = "1.9.12"
 
 MANIFEST_FILENAME = "inscript.toml"
 LOCK_FILENAME     = "inscript.lock"
@@ -166,8 +166,15 @@ def install_package(pkg_spec: str, lock_path: str = None) -> int:
     try:
         with urllib.request.urlopen(zip_url, timeout=30) as resp:
             data = resp.read()
-        with zipfile.ZipFile(io.BytesIO(data)) as zf:
-            zf.extractall(PACKAGES_DIR)
+        # v1.9.12: Handle .ins file URLs directly (not zip archives)
+        if zip_url.endswith(".ins"):
+            os.makedirs(pkg_dir, exist_ok=True)
+            main_ins = os.path.join(pkg_dir, "main.ins")
+            with open(main_ins, "wb") as f:
+                f.write(data)
+        else:
+            with zipfile.ZipFile(io.BytesIO(data)) as zf:
+                zf.extractall(PACKAGES_DIR)
         print(f"[InScript] ✅ {pkg_name}@{install_version} installed to {pkg_dir}")
         # v1.9.9: Write to lock file
         if lock_path:

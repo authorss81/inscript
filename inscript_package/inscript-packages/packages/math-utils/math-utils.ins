@@ -1,0 +1,106 @@
+# math-utils v1.0.0
+# Extra math utilities for InScript games.
+# Install: inscript --install math-utils
+
+/// Returns the greatest common divisor of a and b.
+/// @param a First integer
+/// @param b Second integer
+/// @returns int
+fn gcd(a: int, b: int) -> int {
+    while b != 0 {
+        let t = b
+        b = a % b
+        a = t
+    }
+    return a
+}
+
+/// Returns the least common multiple of a and b.
+/// @param a First integer
+/// @param b Second integer
+/// @returns int
+fn lcm(a: int, b: int) -> int {
+    return (a * b) // gcd(a, b)
+}
+
+/// Clamps x between lo and hi.
+/// @param x Value to clamp
+/// @param lo Minimum
+/// @param hi Maximum
+/// @returns float
+fn clamp(x: float, lo: float, hi: float) -> float {
+    if x < lo { return lo }
+    if x > hi { return hi }
+    return x
+}
+
+/// Linear interpolation between a and b by t (0.0 to 1.0).
+/// @param a Start value
+/// @param b End value
+/// @param t Blend factor (0.0=a, 1.0=b)
+/// @returns float
+fn lerp(a: float, b: float, t: float) -> float {
+    return a + (b - a) * t
+}
+
+/// Maps x from range [in_min, in_max] to range [out_min, out_max].
+/// @param x Input value
+/// @param in_min Input range minimum
+/// @param in_max Input range maximum
+/// @param out_min Output range minimum
+/// @param out_max Output range maximum
+/// @returns float
+fn map_range(x: float, in_min: float, in_max: float,
+             out_min: float, out_max: float) -> float {
+    return out_min + (x - in_min) * (out_max - out_min) / (in_max - in_min)
+}
+
+/// Returns true if n is prime.
+/// @param n Integer to test
+/// @returns bool
+fn is_prime(n: int) -> bool {
+    if n < 2 { return false }
+    if n == 2 { return true }
+    if n % 2 == 0 { return false }
+    let i = 3
+    while i * i <= n {
+        if n % i == 0 { return false }
+        i = i + 2
+    }
+    return true
+}
+
+/// Returns n! (factorial). Returns 1 for n <= 1.
+/// @param n Non-negative integer
+/// @returns int
+fn factorial(n: int) -> int {
+    if n <= 1 { return 1 }
+    return n * factorial(n - 1)
+}
+
+/// Returns the nth Fibonacci number (0-indexed: fib(0)=0, fib(1)=1).
+/// @param n Index
+/// @returns int
+fn fib(n: int) -> int {
+    if n <= 0 { return 0 }
+    if n == 1 { return 1 }
+    let a = 0
+    let b = 1
+    let i = 2
+    while i <= n {
+        let c = a + b
+        a = b
+        b = c
+        i = i + 1
+    }
+    return b
+}
+
+/// Returns the sign of x: 1, 0, or -1.
+/// @param x Any number
+/// @returns int
+fn sign(x: float) -> int {
+    if x > 0.0 { return 1 }
+    if x < 0.0 { return -1 }
+    return 0
+}

@@ -1,0 +1,26 @@
+{
+  "math-utils": {
+    "version": "1.0.0",
+    "description": "Common math utilities: gcd, lcm, clamp, lerp, map_range, is_prime, factorial, fib, sign",
+    "url": "https://raw.githubusercontent.com/authorss81/inscript-packages/main/packages/math-utils/math-utils.ins",
+    "tags": ["math", "utils", "game"],
+    "min_inscript": "1.9.0",
+    "author": "Shreyasi Sarkar"
+  },
+  "color-utils": {
+    "version": "1.0.0",
+    "description": "Colour manipulation: hex_to_rgb, rgb_to_hex, lerp_color, lighten, darken, brightness",
+    "url": "https://raw.githubusercontent.com/authorss81/inscript-packages/main/packages/color-utils/color-utils.ins",
+    "tags": ["color", "colour", "utils", "game"],
+    "min_inscript": "1.9.0",
+    "author": "Shreyasi Sarkar"
+  },
+  "easing": {
+    "version": "1.0.0",
+    "description": "Easing functions for animations: ease_in/out, smooth, bounce, cubic, apply",
+    "url": "https://raw.githubusercontent.com/authorss81/inscript-packages/main/packages/easing/easing.ins",
+    "tags": ["animation", "tween", "easing", "game"],
+    "min_inscript": "1.9.0",
+    "author": "Shreyasi Sarkar"
+  }
+}

@@ -295,8 +295,13 @@ class Lexer:
         # // — floor-division operator (v1.9.6: ALWAYS floor division, no exceptions)
         # v1.9.6: `#` is the new line-comment character.
         # `//` with or without spaces is always integer floor division: 10 // 3 → 3
+        # v1.9.12: `///` is a doc-comment line — skip like a line comment.
         if ch == "/" and self.current == "/":
             self.advance()  # consume second /
+            if self.current == "/":
+                self.advance()  # consume third /
+                self._skip_line_comment()
+                return
             self._emit(TT.SLASH_SLASH, "//", sl, sc)
             return
         if ch == "/" and self.current == "*":
