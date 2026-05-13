@@ -2470,7 +2470,13 @@ class Interpreter(Visitor):
     def visit_RangeExpr(self, node: RangeExpr) -> Any:
         start = self.visit(node.start)
         end   = self.visit(node.end)
-        return InScriptRange(start, end, inclusive=node.inclusive)
+        # v2.0.1: optional `step` expression
+        if node.step is not None:
+            step = self.visit(node.step)
+        else:
+            # Auto-descend: if start > end, default step to -1
+            step = -1 if int(start) > int(end) else 1
+        return InScriptRange(start, end, step=step, inclusive=node.inclusive)
 
     def visit_AwaitExpr(self, node: AwaitExpr) -> Any:
         """

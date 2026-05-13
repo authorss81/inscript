@@ -1772,6 +1772,12 @@ class Analyzer(Visitor):
         if s not in (T_INT, T_ANY) or e not in (T_INT, T_ANY):
             self._error(f"Range bounds must be int, got '{s}' and '{e}'",
                         node.line, node.col)
+        # v2.0.1: validate optional step expression
+        if node.step is not None:
+            st = self.visit(node.step)
+            if st not in (T_INT, T_ANY):
+                self._error(f"Range step must be int, got '{st}'",
+                            node.line, node.col)
         return InScriptType("Range", [T_INT])
 
     def visit_LambdaExpr(self, node: LambdaExpr) -> InScriptType:

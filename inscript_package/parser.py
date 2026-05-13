@@ -1555,13 +1555,19 @@ class Parser:
         line, col = self._pos()
         left = self.parse_shift()
 
-        # Range: start..end  or  start..=end
+        # Range: start..end  or  start..=end  or  start..end step n  (v2.0.1)
         if self.check(TT.DOTDOT, TT.DOTDOT_EQ):
             inclusive = (self.current.type == TT.DOTDOT_EQ)
             self.advance()
             right = self.parse_shift()
+            # Optional `step` suffix: 0..20 step 2
+            step_expr = None
+            if (self.current and self.current.type == TT.IDENT
+                    and self.current.value == "step"):
+                self.advance()  # consume 'step'
+                step_expr = self.parse_shift()
             return RangeExpr(start=left, end=right, inclusive=inclusive,
-                             line=line, col=col)
+                             step=step_expr, line=line, col=col)
 
         # Membership: x in collection  /  x not in collection
         if self.check(TT.IN):

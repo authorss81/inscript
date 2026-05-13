@@ -281,16 +281,25 @@ class InScriptRange:
         self.inclusive = inclusive
 
     def __iter__(self):
-        stop = self.end + 1 if self.inclusive else self.end
+        # v2.0.1: support negative step (descending ranges)
+        if self.step > 0:
+            stop = self.end + 1 if self.inclusive else self.end
+        else:
+            stop = self.end - 1 if self.inclusive else self.end
         return iter(range(self.start, stop, self.step))
 
     def __len__(self):
-        stop = self.end + 1 if self.inclusive else self.end
-        return max(0, (stop - self.start + self.step - 1) // self.step)
+        if self.step > 0:
+            stop = self.end + 1 if self.inclusive else self.end
+            return max(0, (stop - self.start + self.step - 1) // self.step)
+        else:
+            stop = self.end - 1 if self.inclusive else self.end
+            return max(0, (self.start - stop + (-self.step) - 1) // (-self.step))
 
     def __repr__(self):
         op = "..=" if self.inclusive else ".."
-        return f"{self.start}{op}{self.end}"
+        s = f" step {self.step}" if self.step not in (1, -1) else ("" if self.step == 1 else " step -1")
+        return f"{self.start}{op}{self.end}{s}"
 
 
 class InScriptGenerator:

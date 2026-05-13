@@ -195,10 +195,11 @@ class LambdaExpr(Node):
 
 @dataclass
 class RangeExpr(Node):
-    """0..10 (exclusive)  |  0..=10 (inclusive)"""
+    """0..10 (exclusive)  |  0..=10 (inclusive)  |  0..10 step 2  (v2.0.1)"""
     start:     Node
     end:       Node
-    inclusive: bool = False
+    inclusive: bool  = False
+    step:      object = None   # None = auto (1, or -1 if start > end)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -560,10 +561,11 @@ class PropertyDecl(Node):
 
 @dataclass
 class RangeExpr(Node):
-    """0..10 (exclusive)  |  0..=10 (inclusive)"""
+    """0..10 (exclusive)  |  0..=10 (inclusive)  |  0..10 step 2  (v2.0.1)"""
     start:     Node
     end:       Node
-    inclusive: bool = False
+    inclusive: bool   = False
+    step:      object = None   # None = auto (1 ascending, -1 descending)
 
 @dataclass
 class LambdaExpr(Node):

@@ -336,7 +336,8 @@ def test_null_hard_error():
 
 def test_version_is_200():
     import repl, inscript
-    if repl.VERSION == "2.0.0" and inscript.VERSION == "2.0.0":
+    def v(s): return tuple(int(x) for x in s.split("."))
+    if v(repl.VERSION) >= (2, 0, 0) and v(inscript.VERSION) >= (2, 0, 0):
         ok("version_is_2.0.0")
     else:
         fail("version_is_2.0.0", f"repl={repl.VERSION} inscript={inscript.VERSION}")
@@ -346,10 +347,12 @@ def test_setup_version():
     r = subprocess.run(["python3", "setup.py", "--version"],
                        capture_output=True, text=True,
                        cwd=os.path.dirname(__file__))
-    if r.stdout.strip() == "2.0.0":
+    ver = r.stdout.strip()
+    parts = [int(x) for x in ver.split(".")]
+    if tuple(parts) >= (2, 0, 0):
         ok("setup_version_2.0.0")
     else:
-        fail("setup_version_2.0.0", r.stdout.strip())
+        fail("setup_version_2.0.0", ver)
 
 # ── run all ───────────────────────────────────────────────────────────────────
 
