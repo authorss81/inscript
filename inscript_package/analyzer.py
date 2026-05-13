@@ -402,6 +402,18 @@ class Analyzer(Visitor):
                 )
             return t
 
+        # v1.9.13: Array<T>, Dict<K,V>, Promise<T> with explicit generic syntax
+        if ann.name == "Array":
+            inner = self._resolve_type_ann(ann.generics[0]) if ann.generics else T_ANY
+            return array_type(inner)
+        if ann.name == "Dict" and ann.generics:
+            k = self._resolve_type_ann(ann.generics[0])
+            v = self._resolve_type_ann(ann.generics[1]) if len(ann.generics) > 1 else T_ANY
+            return dict_type(k, v)
+        if ann.name == "Promise" and ann.generics:
+            inner = self._resolve_type_ann(ann.generics[0])
+            return InScriptType("Promise", [inner])
+
         # v1.8.2: registered type aliases
         if ann.name in self._type_aliases:
             return self._type_aliases[ann.name]
@@ -1218,6 +1230,10 @@ class Analyzer(Visitor):
                 node.line, node.col
             )
 
+        # v1.9.13: ++ string concatenation operator → always T_STRING
+        if op == "++":
+            return T_STRING
+
         return T_ANY
 
     def visit_UnaryExpr(self, node: UnaryExpr) -> InScriptType:
@@ -1340,7 +1356,15 @@ class Analyzer(Visitor):
                             f"expected '{p_type}', got '{arg_type}'",
                             getattr(arg.value, 'line', node.line)
                         )
-                return self._resolve_type_ann(fn.return_type)
+                # v1.9.13: if no return annotation, infer from body
+                if fn.return_type is not None:
+                    ret = self._resolve_type_ann(fn.return_type)
+                else:
+                    ret = self._infer_fn_return_type(fn)
+                # wrap async fn results in Promise<T>
+                if getattr(fn, 'is_async', False) and ret not in (T_ANY, T_VOID):
+                    ret = InScriptType("Promise", [ret])
+                return ret
             if sym:
                 if sym.kind == "struct":
                     return InScriptType(sym.name)
@@ -1445,7 +1469,8 @@ class Analyzer(Visitor):
         if obj_type == T_STRING:
             if method in ("trim", "upper", "lower", "replace", "strip",
                           "lstrip", "rstrip", "pad_left", "pad_right",
-                          "repeat", "reverse", "slice"):
+                          "repeat", "reverse", "slice",
+                          "substr"):  # v1.9.13: substr added
                 return T_STRING
             if method in ("len", "count", "index_of", "find"):
                 return T_INT
@@ -1474,7 +1499,11 @@ class Analyzer(Visitor):
             struct = self._struct_defs[obj_type.name]
             for m in (struct.methods or []):
                 if m.name == method:
-                    return self._resolve_type_ann(m.return_type)
+                    # v1.9.13: infer from body when no annotation
+                    if m.return_type is not None:
+                        return self._resolve_type_ann(m.return_type)
+                    else:
+                        return self._infer_fn_return_type(m)
 
         # ── v1.9.11: async module method return types ─────────────────────────
         # http.get_async(url) → Promise<string>
@@ -1584,11 +1613,24 @@ class Analyzer(Visitor):
         fn_arg = call_node.args[arg_index].value
 
         # Handle both lambda `fn(x) { return x * 2 }` and named refs
+        # v1.9.13: also resolve named fn references (e.g. .map(double))
+        from ast_nodes import IdentExpr
         params = None; body = None
         if isinstance(fn_arg, FunctionDecl) or isinstance(fn_arg, LambdaExpr):
             params = getattr(fn_arg, 'params', [])
             body   = getattr(fn_arg, 'body', None)
+        elif isinstance(fn_arg, IdentExpr):
+            # Named function reference — look it up and return its return type
+            sym = self._scope.lookup(fn_arg.name)
+            if sym and sym.fn_node:
+                fn_node = sym.fn_node
+                if fn_node.return_type is not None:
+                    return self._resolve_type_ann(fn_node.return_type)
+                else:
+                    return self._infer_fn_return_type(fn_node)
+            return T_ANY
         else:
+            return T_ANY
             return T_ANY
 
         # Stash and suppress the real error list
