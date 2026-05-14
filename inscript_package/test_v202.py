@@ -248,7 +248,8 @@ def test_analyzer_match_expr_mismatch():
 
 def test_version_is_202():
     import repl
-    if repl.VERSION == "2.0.2":
+    parts = [int(x) for x in repl.VERSION.split(".")]
+    if tuple(parts) >= (2, 0, 2):
         ok("version_is_2.0.2")
     else:
         fail("version_is_2.0.2", f"got {repl.VERSION}")

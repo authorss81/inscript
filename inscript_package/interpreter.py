@@ -993,7 +993,17 @@ class Interpreter(Visitor):
         return self.visit(node.expr)
 
     def visit_PrintStmt(self, node: PrintStmt) -> Any:
-        parts = [_inscript_str(self.visit(a)) for a in node.args]
+        # v2.0.3: spread args in print(...arr)
+        parts = []
+        for a in node.args:
+            if isinstance(a, SpreadExpr):
+                val = self.visit(a.expr)
+                if isinstance(val, list):
+                    parts.extend(_inscript_str(v) for v in val)
+                else:
+                    parts.append(_inscript_str(val))
+            else:
+                parts.append(_inscript_str(self.visit(a)))
         print(" ".join(parts))
         return None
 
@@ -2425,10 +2435,22 @@ class Interpreter(Visitor):
             fields[field.name] = self.visit(field.default) if field.default else None
 
         # Then overrides from initializer
+        # v2.0.3: spread syntax — P{...defaults, x: 5}
         provided_names = set()
         for name, value_node in node.fields:
-            fields[name] = self.visit(value_node)
-            provided_names.add(name)
+            if name == "..." and isinstance(value_node, SpreadExpr):
+                # Spread a dict, struct instance, or dict-like object
+                spread_val = self.visit(value_node.expr)
+                if isinstance(spread_val, InScriptInstance):
+                    for k, v in spread_val.fields.items():
+                        fields[k] = v; provided_names.add(k)
+                elif isinstance(spread_val, dict):
+                    for k, v in spread_val.items():
+                        if not str(k).startswith("_"):
+                            fields[k] = v; provided_names.add(k)
+            else:
+                fields[name] = self.visit(value_node)
+                provided_names.add(name)
 
         # BUG-16 fix: warn about required fields (no default) that were not provided
         missing_required = [

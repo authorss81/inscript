@@ -1369,12 +1369,19 @@ class Parser:
 
         self.expect(TT.LPAREN, "Expected '(' after 'print'")
         args = []
+        def _parse_print_arg():
+            # v2.0.3: allow spread in print(...args)
+            if self.check(TT.ELLIPSIS):
+                sl2, sc2 = self._pos()
+                self.advance()
+                return SpreadExpr(expr=self.parse_expr(), line=sl2, col=sc2)
+            return self.parse_expr()
         if not self.check(TT.RPAREN):
-            args.append(self.parse_expr())
+            args.append(_parse_print_arg())
             while self.match(TT.COMMA):
                 if self.check(TT.RPAREN):
                     break
-                args.append(self.parse_expr())
+                args.append(_parse_print_arg())
         self.expect(TT.RPAREN, "Expected ')' after print arguments")
         self.match(TT.SEMICOLON)
         return PrintStmt(args=args, line=line, col=col)
@@ -2072,17 +2079,28 @@ class Parser:
         result = (
             self.check(TT.RBRACE)   # empty  Counter {}
             or (self.current.type == TT.IDENT and self.peek.type == TT.COLON)
+            or self.current.type == TT.ELLIPSIS  # v2.0.3: spread P{...d}
         )
         self.pos = saved
         return result
 
     def parse_struct_init(self, name: str, line: int, col: int) -> StructInitExpr:
-        """Player { pos: Vec2(0,0), health: 100 }"""
+        """Player { pos: Vec2(0,0), health: 100 }
+        v2.0.3: spread syntax: Player { ...defaults, health: 100 }
+        """
         self.advance()  # consume '{'
         fields = []
 
         while not self.check(TT.RBRACE) and not self.is_at_end():
             if self.match(TT.SEMICOLON) or self.match(TT.COMMA):
+                continue
+            # v2.0.3: spread field — P{...defaults, x: 5}
+            if self.check(TT.ELLIPSIS):
+                sl2, sc2 = self._pos()
+                self.advance()  # consume '...'
+                spread_expr = self.parse_expr()
+                fields.append(("...", SpreadExpr(expr=spread_expr, line=sl2, col=sc2)))
+                self.match(TT.COMMA)
                 continue
             field_name = self.expect_ident("Expected field name in struct initializer")
             self.expect(TT.COLON, f"Expected ':' after field name '{field_name}'")
