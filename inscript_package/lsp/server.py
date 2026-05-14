@@ -85,7 +85,7 @@ def _make_diagnostics(uri: str, source: str) -> list:
 if HAS_PYGLS:
     server = LanguageServer(
         name="inscript-lsp",
-        version="1.0.0",
+        version="2.1.0",
         text_document_sync_kind=TextDocumentSyncKind.Full,
     )
 

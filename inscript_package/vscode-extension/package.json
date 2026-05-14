@@ -1,0 +1,61 @@
+{
+  "name": "inscript-lang",
+  "displayName": "InScript",
+  "description": "InScript language support — syntax highlighting, diagnostics, completions, hover docs",
+  "version": "2.1.0",
+  "publisher": "authorss81",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/authorss81/inscript"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Programming Languages", "Linters"],
+  "activationEvents": ["onLanguage:inscript"],
+  "main": "./extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "inscript",
+        "aliases": ["InScript", "inscript"],
+        "extensions": [".ins"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "inscript",
+        "scopeName": "source.inscript",
+        "path": "./syntaxes/inscript.tmLanguage.json"
+      }
+    ],
+    "configuration": {
+      "title": "InScript",
+      "properties": {
+        "inscript.pythonPath": {
+          "type": "string",
+          "default": "python3",
+          "description": "Path to the Python interpreter used to run the InScript LSP server."
+        },
+        "inscript.serverPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the inscript_package directory. Leave empty to auto-detect from pip install."
+        },
+        "inscript.trace.server": {
+          "type": "string",
+          "enum": ["off", "messages", "verbose"],
+          "default": "off",
+          "description": "Trace LSP communication between VS Code and the InScript server."
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.0"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0"
+  }
+}

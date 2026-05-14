@@ -1,0 +1,194 @@
+{
+  "name": "InScript",
+  "scopeName": "source.inscript",
+  "fileTypes": ["ins"],
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#strings" },
+    { "include": "#keywords" },
+    { "include": "#types" },
+    { "include": "#functions" },
+    { "include": "#numbers" },
+    { "include": "#operators" },
+    { "include": "#constants" },
+    { "include": "#interpolated-string" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.number-sign.inscript",
+          "match": "#.*$"
+        },
+        {
+          "name": "comment.line.doc.inscript",
+          "match": "///.*$"
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.inscript",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            { "name": "constant.character.escape.inscript", "match": "\\\\." }
+          ]
+        },
+        {
+          "name": "string.quoted.single.inscript",
+          "begin": "'",
+          "end": "'",
+          "patterns": [
+            { "name": "constant.character.escape.inscript", "match": "\\\\." }
+          ]
+        }
+      ]
+    },
+    "interpolated-string": {
+      "patterns": [
+        {
+          "name": "string.interpolated.inscript",
+          "begin": "\\$\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "meta.embedded.inscript",
+              "begin": "\\{",
+              "end": "\\}",
+              "patterns": [{ "include": "$self" }]
+            },
+            { "name": "constant.character.escape.inscript", "match": "\\\\." }
+          ]
+        },
+        {
+          "name": "string.interpolated.fstring.inscript",
+          "begin": "f\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "meta.embedded.inscript",
+              "begin": "\\{",
+              "end": "\\}",
+              "patterns": [{ "include": "$self" }]
+            },
+            { "name": "constant.character.escape.inscript", "match": "\\\\." }
+          ]
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.inscript",
+          "match": "\\b(if|else|for|while|in|break|continue|return|match|case|try|catch|throw|select|yield)\\b"
+        },
+        {
+          "name": "keyword.declaration.inscript",
+          "match": "\\b(let|const|fn|struct|enum|interface|type|impl|extends|implements|mixin|export|import|from|abstract)\\b"
+        },
+        {
+          "name": "keyword.operator.inscript",
+          "match": "\\b(and|or|not|in|is|as|step|await|async|div)\\b"
+        },
+        {
+          "name": "storage.modifier.inscript",
+          "match": "\\b(pub|priv|static|override)\\b"
+        }
+      ]
+    },
+    "types": {
+      "patterns": [
+        {
+          "name": "support.type.inscript",
+          "match": "\\b(int|float|string|bool|nil|any|never|void|Array|Dict|Promise|Range|Result)\\b"
+        },
+        {
+          "name": "entity.name.type.inscript",
+          "match": "\\b[A-Z][A-Za-z0-9_]*\\b"
+        }
+      ]
+    },
+    "functions": {
+      "patterns": [
+        {
+          "name": "entity.name.function.inscript",
+          "match": "\\b(fn)\\s+([a-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.declaration.inscript" },
+            "2": { "name": "entity.name.function.inscript" }
+          }
+        },
+        {
+          "name": "support.function.inscript",
+          "match": "\\b(print|string|int|float|bool|typeof|range|len|sqrt|abs|floor|ceil|round|min|max|sum|push|pop|map|filter|reduce|sort|contains|join|split|trim|upper|lower|replace|has_key|keys|values|entries|delete|merge|is_nil|is_int|is_float|is_str|is_bool|is_array|is_dict|Ok|Err|sleep|fields_of|implements|parse_int|parse_float)\\b"
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.float.inscript",
+          "match": "\\b[0-9]+\\.[0-9]+\\b"
+        },
+        {
+          "name": "constant.numeric.integer.inscript",
+          "match": "\\b[0-9]+\\b"
+        },
+        {
+          "name": "constant.numeric.hex.inscript",
+          "match": "\\b0x[0-9A-Fa-f]+\\b"
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.range.inscript",
+          "match": "\\.\\.[=]?"
+        },
+        {
+          "name": "keyword.operator.spread.inscript",
+          "match": "\\.\\.\\."
+        },
+        {
+          "name": "keyword.operator.arithmetic.inscript",
+          "match": "\\+\\+|\\*\\*|//|[+\\-*/%]"
+        },
+        {
+          "name": "keyword.operator.comparison.inscript",
+          "match": "==|!=|<=|>=|<|>"
+        },
+        {
+          "name": "keyword.operator.logical.inscript",
+          "match": "&&|\\|\\||!"
+        },
+        {
+          "name": "keyword.operator.arrow.inscript",
+          "match": "->|=>"
+        },
+        {
+          "name": "keyword.operator.assignment.inscript",
+          "match": "="
+        }
+      ]
+    },
+    "constants": {
+      "patterns": [
+        {
+          "name": "constant.language.boolean.inscript",
+          "match": "\\b(true|false)\\b"
+        },
+        {
+          "name": "constant.language.nil.inscript",
+          "match": "\\b(nil)\\b"
+        },
+        {
+          "name": "variable.language.self.inscript",
+          "match": "\\bself\\b"
+        }
+      ]
+    }
+  }
+}

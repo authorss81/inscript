@@ -24,7 +24,7 @@ from errors   import (InScriptError, LexerError, ParseError,
                        SemanticError, InScriptRuntimeError,
                        MultiError, InScriptWarning)
 
-VERSION = "2.0.3"
+VERSION = "2.1.0"
 
 MANIFEST_FILENAME = "inscript.toml"
 LOCK_FILENAME     = "inscript.lock"
@@ -2161,7 +2161,9 @@ Examples:
         return 0
 
     if args.lsp:
-        from inscript_package.lsp.server import main as lsp_main
+        import os as _os
+        sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+        from lsp.server import main as lsp_main
         lsp_main()
         return 0
 

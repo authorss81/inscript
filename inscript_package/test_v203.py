@@ -204,7 +204,8 @@ def test_spread_in_for_accumulator():
 
 def test_version_is_203():
     import repl
-    if repl.VERSION == "2.0.3":
+    parts = [int(x) for x in repl.VERSION.split(".")]
+    if tuple(parts) >= (2, 0, 3):
         ok("version_is_2.0.3")
     else:
         fail("version_is_2.0.3", f"got {repl.VERSION}")
