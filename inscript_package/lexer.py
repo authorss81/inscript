@@ -126,6 +126,7 @@ class TT(Enum):
     HASH        = auto()        # #   (attribute / annotation)
     AT          = auto()        # @   (decorator)
     NULLISH     = auto()        # ??  (nullish coalescing)
+    NULLISH_EQ  = auto()        # ??= (null-coalescing assignment)  v2.2.0
     QUESTION_DOT= auto()        # ?.  (optional chaining)
     PIPE_GT     = auto()        # |>  (pipe operator)
     FSTRING     = auto()        # f"..." (interpolated string — value is raw template)
@@ -574,7 +575,9 @@ class Lexer:
             if self.match(":"): emit(TT.DOUBLE_COLON, "::")
             else:               emit(TT.COLON,         ":")
         elif ch == "?":
-            if self.match("?"):  emit(TT.NULLISH,       "??")
+            if self.match("?"):
+                if self.match("="): emit(TT.NULLISH_EQ,   "??=")   # v2.2.0
+                else:               emit(TT.NULLISH,       "??")
             elif self.match("."): emit(TT.QUESTION_DOT, "?.")
             else:                emit(TT.QUESTION,       "?")
         elif ch == "#":

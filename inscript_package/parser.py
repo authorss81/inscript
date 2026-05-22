@@ -402,8 +402,24 @@ class Parser:
         line, col = self._pos()
 
         # Tuple type: (int, float)  — used for multiple return values
+        # v2.2.0: named return type (min: float, max: float)
         if self.check(TT.LPAREN):
             self.advance()  # consume '('
+            # Detect named tuple: (IDENT COLON ...)
+            if (self.current.type == TT.IDENT
+                    and self.peek.type == TT.COLON):
+                named_fields = []
+                while True:
+                    fname = self.expect_ident("Expected field name in named return type")
+                    self.expect(TT.COLON, "Expected ':' after field name")
+                    ftype = self.parse_type_annotation()
+                    named_fields.append((fname, ftype))
+                    if not self.match(TT.COMMA):
+                        break
+                self.expect(TT.RPAREN, "Expected ')' to close named return type")
+                ann = TypeAnnotation(name="NamedTuple", line=line, col=col)
+                ann.named_fields = named_fields
+                return ann
             # Just consume the tuple type contents and treat it as "Tuple"
             depth = 1
             while not self.is_at_end() and depth > 0:
@@ -416,12 +432,16 @@ class Parser:
             self.advance()  # consume final ')'
             return TypeAnnotation(name="Tuple", line=line, col=col)
 
-        # Array type: [int]
+        # Array type: [int]  or bare [] (any-element array)
         if self.match(TT.LBRACKET):
-            inner = self.parse_type_annotation()
-            self.expect(TT.RBRACKET, "Expected ']' to close array type")
-            ann = TypeAnnotation(name="Array", is_array=True,
-                                 generics=[inner], line=line, col=col)
+            if self.check(TT.RBRACKET):
+                self.advance()  # consume ']'  — bare [] means Array<any>
+                ann = TypeAnnotation(name="Array", is_array=True, line=line, col=col)
+            else:
+                inner = self.parse_type_annotation()
+                self.expect(TT.RBRACKET, "Expected ']' to close array type")
+                ann = TypeAnnotation(name="Array", is_array=True,
+                                     generics=[inner], line=line, col=col)
         # Dict type: {string: int}
         elif self.match(TT.LBRACE):
             key = self.parse_type_annotation()
@@ -647,6 +667,47 @@ class Parser:
         elif self.check(TT.ELLIPSIS):
             self.advance()   # consume '...'  (alias for variadic)
             is_variadic = True
+
+        # v2.2.0: dict destructuring param — fn f({x, y}: Point)
+        if self.check(TT.LBRACE):
+            self.advance()  # consume '{'
+            names = []
+            rest  = None
+            while not self.check(TT.RBRACE) and not self.check(TT.EOF):
+                if self.check(TT.ELLIPSIS):
+                    self.advance()
+                    rest = self.expect_ident("Expected rest name after '...'")
+                    break
+                names.append(self.expect_ident("Expected field name"))
+                self.match(TT.COMMA)
+            self.expect(TT.RBRACE, "Expected '}' to close destructuring param")
+            type_ann = None
+            if self.match(TT.COLON):
+                type_ann = self.parse_type_annotation()
+            from ast_nodes import DestructParam
+            return DestructParam(kind='dict', names=names, rest=rest,
+                                 type_ann=type_ann, line=line, col=col)
+
+        # v2.2.0: array destructuring param — fn f([head, ...tail]: [])
+        if self.check(TT.LBRACKET):
+            self.advance()  # consume '['
+            names = []
+            rest  = None
+            while not self.check(TT.RBRACKET) and not self.check(TT.EOF):
+                if self.check(TT.ELLIPSIS):
+                    self.advance()
+                    rest = self.expect_ident("Expected rest name after '...'")
+                    break
+                names.append(self.expect_ident("Expected element binding"))
+                self.match(TT.COMMA)
+            self.expect(TT.RBRACKET, "Expected ']' to close destructuring param")
+            type_ann = None
+            if self.match(TT.COLON):
+                type_ann = self.parse_type_annotation()
+            from ast_nodes import DestructParam
+            return DestructParam(kind='array', names=names, rest=rest,
+                                 type_ann=type_ann, line=line, col=col)
+
         name = self.expect_ident("Expected parameter name")
         type_ann = None
         if self.match(TT.COLON):
@@ -1418,6 +1479,7 @@ class Parser:
             TT.CARET_EQ:   "^=",
             TT.LSHIFT_EQ:  "<<=",
             TT.RSHIFT_EQ:  ">>=",
+            TT.NULLISH_EQ: "??=",   # v2.2.0
         }
 
         if self.current.type in ASSIGN_OPS:
@@ -1427,7 +1489,8 @@ class Parser:
 
             # Extract the binary operator from compound ops (strip trailing =)
             # e.g. "+=" → "+", "**=" → "**"
-            binop = op.rstrip("=") if op != "=" else None
+            # "??=" is special — not a binary op, handled by interpreter directly
+            binop = op.rstrip("=") if op not in ("=", "??=") else None
 
             # Determine which assignment node to create
             if isinstance(expr, IdentExpr):
@@ -1594,8 +1657,32 @@ class Parser:
         while self.check(TT.LT, TT.GT, TT.LTE, TT.GTE):
             op    = self.advance().value
             right = self.parse_shift()
-            left  = BinaryExpr(left=left, op=op, right=right,
-                                line=line, col=col)
+            node  = BinaryExpr(left=left, op=op, right=right,
+                               line=line, col=col)
+            # v2.2.0: chained comparisons — 0 < x < 10 → (0<x) and (x<10)
+            # If another comparison operator follows, desugar into `and`
+            if self.check(TT.LT, TT.GT, TT.LTE, TT.GTE):
+                left  = node   # left side of `and` is current comparison
+                # `right` becomes the new LHS for the next comparison
+                # We need to avoid evaluating `right` twice, but in a simple
+                # interpreter it's safe to reuse the same AST node (no side effects
+                # on simple expressions).  Build: node AND (right op next)
+                op2   = self.advance().value
+                right2 = self.parse_shift()
+                rhs   = BinaryExpr(left=right, op=op2, right=right2,
+                                   line=line, col=col)
+                left  = BinaryExpr(left=node, op="&&", right=rhs,
+                                   line=line, col=col)
+                while self.check(TT.LT, TT.GT, TT.LTE, TT.GTE):
+                    op3   = self.advance().value
+                    right3 = self.parse_shift()
+                    rhs3  = BinaryExpr(left=right2, op=op3, right=right3,
+                                       line=line, col=col)
+                    left  = BinaryExpr(left=left, op="&&", right=rhs3,
+                                       line=line, col=col)
+                    right2 = right3
+                return left
+            left = node
         return left
 
     def parse_shift(self) -> Node:
@@ -1879,6 +1966,25 @@ class Parser:
         # Grouped expression: (expr)  OR  Tuple: (expr, expr, ...)
         if tok.type == TT.LPAREN:
             self.advance()  # consume '('
+            # v2.2.0: named return tuple literal — (name: expr, name: expr, ...)
+            # Detect: IDENT COLON pattern at the start
+            if (self.current.type == TT.IDENT
+                    and self.peek.type == TT.COLON):
+                pairs = []
+                while True:
+                    key = self.expect_ident("Expected field name in named tuple")
+                    self.expect(TT.COLON, "Expected ':' after field name")
+                    val = self.parse_expr()
+                    pairs.append((key, val))
+                    if not self.match(TT.COMMA):
+                        break
+                self.expect(TT.RPAREN, "Expected ')' to close named tuple")
+                # Return as a DictLiteralExpr with string-key pairs
+                return DictLiteralExpr(
+                    pairs=[(StringLiteralExpr(value=k, line=line, col=col), v)
+                           for k, v in pairs],
+                    line=line, col=col
+                )
             first = self.parse_expr()
             if self.check(TT.COMMA):
                 # It's a tuple literal
@@ -1948,6 +2054,23 @@ class Parser:
                 self.advance()  # consume 'comptime'
                 body = self.parse_block()
                 return ComptimeExpr(body=body, line=line, col=col)
+            # v2.2.0: with expr { .field = val, ... } — clone-and-modify
+            if tok.value == "with":
+                self.advance()  # consume 'with'
+                obj = self.parse_postfix()
+                self.expect(TT.LBRACE, "Expected '{' after 'with <expr>'")
+                fields = []
+                while not self.check(TT.RBRACE) and not self.check(TT.EOF):
+                    self.expect(TT.DOT, "Expected '.field = val' inside with block")
+                    field_name = self.expect_ident("Expected field name after '.'")
+                    self.expect(TT.ASSIGN, "Expected '=' after field name in with block")
+                    val = self.parse_expr()
+                    fields.append((field_name, val))
+                    self.match(TT.COMMA)
+                    self.match(TT.NEWLINE) if hasattr(TT, 'NEWLINE') else None
+                self.expect(TT.RBRACE, "Expected '}' to close with block")
+                from ast_nodes import WithExpr
+                return WithExpr(obj=obj, fields=fields, line=line, col=col)
             return self.parse_ident_or_struct_init()
 
         # Type keywords used as constructors: Vec2(…) → these lex as IDENT anyway

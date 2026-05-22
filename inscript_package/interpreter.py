@@ -1950,7 +1950,13 @@ class Interpreter(Visitor):
         op  = node.op
         target = node.target
 
-        if op != "=":
+        if op == "??=":
+            # v2.2.0: null-coalescing assignment — only assign if current value is nil
+            cur = self.visit(target)
+            if cur is not None:
+                return cur      # already non-nil, do nothing
+            # fall through to write val
+        elif op != "=":
             # Compound assignment: strip '=' to get operator ("+=" → "+", "**=" → "**")
             cur = self.visit(target)
             sym_op = op.rstrip("=")
@@ -2314,6 +2320,22 @@ class Interpreter(Visitor):
                     if getattr(param, 'is_variadic', False):
                         env.define(param.name, avs[i:]); break
                     val = avs[i] if i < len(avs) else (self.visit(param.default) if param.default else None)
+                    # v2.2.0: DestructParam — dict or array destructuring
+                    from ast_nodes import DestructParam as _DP
+                    if isinstance(param, _DP):
+                        if param.kind == 'dict':
+                            src = val if isinstance(val, dict) else (val.__dict__ if hasattr(val, '__dict__') else {})
+                            for fname in param.names:
+                                env.define(fname, src.get(fname))
+                            if param.rest:
+                                env.define(param.rest, {k: v for k, v in src.items() if k not in param.names})
+                        else:  # array
+                            src = list(val) if val is not None else []
+                            for j, fname in enumerate(param.names):
+                                env.define(fname, src[j] if j < len(src) else None)
+                            if param.rest:
+                                env.define(param.rest, src[len(param.names):])
+                        continue
                     if param.type_ann and val is not None:
                         ann_name = param.type_ann.name
                         if ann_name in generic_bindings:
@@ -2676,6 +2698,29 @@ class Interpreter(Visitor):
         """left ?? right — evaluates right only if left is null."""
         val = self.visit(node.left)
         return self.visit(node.right) if val is None else val
+
+    def visit_WithExpr(self, node) -> Any:
+        """v2.2.0: with obj { .field = val, ... } — clone and modify."""
+        from stdlib_values import InScriptInstance
+        base = self.visit(node.obj)
+        if isinstance(base, InScriptInstance):
+            clone = InScriptInstance(
+                struct_name=base.struct_name,
+                fields=dict(base.fields),
+            )
+        elif isinstance(base, dict):
+            clone = dict(base)
+        else:
+            import copy; clone = copy.copy(base)
+        for field_name, val_expr in node.fields:
+            val = self.visit(val_expr)
+            if isinstance(clone, InScriptInstance):
+                clone.fields[field_name] = val
+            elif isinstance(clone, dict):
+                clone[field_name] = val
+            else:
+                _set_attr(clone, field_name, val, node.line, self)
+        return clone
 
     def visit_PipeExpr(self, node: PipeExpr) -> Any:
         """value |> fn — calls fn(value)."""

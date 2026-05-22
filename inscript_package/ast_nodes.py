@@ -735,3 +735,19 @@ class SelectStmt(Node):
     Each clause: {"kind": "recv"/"send"/"timeout", "var":str|None, "channel":expr|None, "value":expr|None, "duration":expr|None, "body":BlockStmt}
     """
     clauses: list   # list of clause dicts
+
+# ── v2.2.0 new nodes ─────────────────────────────────────────────────────────
+
+@dataclass
+class WithExpr(Node):
+    """with expr { .field = val, ... }  — clone-and-modify pattern."""
+    obj:    object   # expression producing the base object
+    fields: list     # list of (str field_name, expr value)
+
+@dataclass
+class DestructParam(Node):
+    """Destructuring parameter: fn f({x, y}: Point) or fn f([head, ...tail]: [])"""
+    kind:     str    # 'dict' or 'array'
+    names:    list   # list of str (field/element names to bind)
+    rest:     object # str name for rest element (...tail), or None
+    type_ann: object # TypeAnnotation or None
