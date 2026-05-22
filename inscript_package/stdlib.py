@@ -1063,7 +1063,78 @@ except KeyError:
         "sleep_sync": _timer_sleep_sync,  # synchronous fallback
         "now":        lambda: int(_time_mod.time() * 1000),  # ms since epoch
         "now_sec":    lambda: _time_mod.time(),              # seconds since epoch
+        # v2.3.0: after / every / cancel
+        "after":      None,   # patched below
+        "every":      None,   # patched below
+        "cancel":     None,   # patched below
     })
+
+# v2.3.0: patch timer.after / timer.every / timer.cancel
+try:
+    import threading as _thr_mod
+    from stdlib_values import InScriptTimerHandle as _THndl
+
+    def _timer_after(ms, fn):
+        """timer.after(ms, fn) — call fn() once after ms milliseconds."""
+        def _fire():
+            try: fn([])
+            except Exception: pass
+        t = _thr_mod.Timer(int(ms) / 1000.0, _fire)
+        t.daemon = True
+        t.start()
+        return _THndl(t)
+
+    def _timer_every(ms, fn):
+        """timer.every(ms, fn) — call fn() every ms milliseconds until cancelled."""
+        handle = [None]
+        def _tick():
+            try: fn([])
+            except Exception: pass
+            t = _thr_mod.Timer(int(ms) / 1000.0, _tick)
+            t.daemon = True
+            handle[0] = t
+            t.start()
+        t0 = _thr_mod.Timer(int(ms) / 1000.0, _tick)
+        t0.daemon = True
+        handle[0] = t0
+        t0.start()
+        class _EveryHandle:
+            def cancel(self): handle[0] and handle[0].cancel()
+            def __repr__(self): return "<TimerHandle periodic>"
+        return _EveryHandle()
+
+    def _timer_cancel(handle):
+        if hasattr(handle, 'cancel'): handle.cancel()
+
+    _MODULES["timer"]["after"]  = _timer_after
+    _MODULES["timer"]["every"]  = _timer_every
+    _MODULES["timer"]["cancel"] = _timer_cancel
+except Exception as _te:
+    pass
+
+# v2.3.0: channel, mutex, rwlock as global builtins
+try:
+    from stdlib_values import InScriptChannel as _ISChannel
+    from stdlib_values import InScriptMutex   as _ISMutex
+    from stdlib_values import InScriptRWLock  as _ISRWLock
+
+    def _make_channel(capacity=0):
+        cap = capacity[0] if isinstance(capacity, list) and capacity else (capacity or 0)
+        return _ISChannel(int(cap))
+
+    def _make_mutex(value=None):
+        v = value[0] if isinstance(value, list) and value else value
+        return _ISMutex(v)
+
+    def _make_rwlock(value=None):
+        v = value[0] if isinstance(value, list) and value else value
+        return _ISRWLock(v)
+
+    # Register as global builtins (not modules)
+    # channel/mutex/rwlock are registered directly in the interpreter globals (interpreter.py)
+    pass
+except Exception as _ce:
+    pass
 
 
 

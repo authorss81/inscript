@@ -326,3 +326,151 @@ class InScriptGenerator:
         except StopIteration:
             self._done = True
             return None
+
+
+# ── v2.3.0: Concurrency primitives ───────────────────────────────────────────
+
+import threading as _threading
+import queue as _queue
+
+class InScriptTask:
+    """
+    v2.3.0: Handle returned by `spawn expr`.
+    Runs a callable in a background thread.
+    """
+    def __init__(self, fn, args):
+        self._result  = None
+        self._error   = None
+        self._done    = _threading.Event()
+        self._thread  = _threading.Thread(target=self._run, args=(fn, args), daemon=True)
+        self._thread.start()
+
+    def _run(self, fn, args):
+        try:
+            self._result = fn()
+        except Exception as e:
+            self._error = e
+        finally:
+            self._done.set()
+
+    def join(self, timeout=None):
+        """Block until task completes. Returns result or raises."""
+        self._done.wait(timeout)
+        if self._error:
+            raise self._error
+        return self._result
+
+    @property
+    def done(self):
+        return self._done.is_set()
+
+    def __repr__(self):
+        return f"<Task {'done' if self.done else 'running'}>"
+
+
+class InScriptChannel:
+    """
+    v2.3.0: `channel<T>(capacity)` — typed message-passing queue.
+    .send(v)       — put value (blocks if full, capacity=0 means unbounded)
+    .recv()        — get value (blocks until available)
+    .try_recv()    — get value or nil (non-blocking)
+    .close()       — mark channel closed
+    .closed        — bool
+    """
+    def __init__(self, capacity: int = 0):
+        self._q      = _queue.Queue(maxsize=capacity)
+        self._closed = False
+
+    def send(self, value):
+        if self._closed:
+            raise RuntimeError("send on closed channel")
+        self._q.put(value)
+
+    def recv(self):
+        return self._q.get()
+
+    def try_recv(self):
+        try:
+            return self._q.get_nowait()
+        except _queue.Empty:
+            return None
+
+    def close(self):
+        self._closed = True
+
+    @property
+    def closed(self):
+        return self._closed
+
+    def __repr__(self):
+        return f"<Channel size={self._q.qsize()} closed={self._closed}>"
+
+
+class InScriptMutex:
+    """
+    v2.3.0: `mutex(value)` — thread-safe value wrapper.
+    .lock(fn)    — call fn(value) under lock, returns fn's result
+    .value       — read current value (unsafe, prefer lock())
+    .set(v)      — set value under lock
+    """
+    def __init__(self, value):
+        self._value = value
+        self._lock  = _threading.Lock()
+
+    def lock(self, fn):
+        with self._lock:
+            result = fn([self._value]) if callable(fn) else None
+            return result
+
+    def set(self, value):
+        with self._lock:
+            self._value = value
+
+    @property
+    def value(self):
+        return self._value
+
+    def __repr__(self):
+        return f"<Mutex value={self._value!r}>"
+
+
+class InScriptRWLock:
+    """
+    v2.3.0: `rwlock(value)` — reader/writer lock.
+    .read(fn)    — call fn(value) under read lock
+    .write(fn)   — call fn(value) under write lock, fn may return new value
+    """
+    def __init__(self, value):
+        self._value  = value
+        self._lock   = _threading.RLock()   # simplified: use reentrant lock
+
+    def read(self, fn):
+        with self._lock:
+            return fn([self._value]) if callable(fn) else self._value
+
+    def write(self, fn):
+        with self._lock:
+            result = fn([self._value]) if callable(fn) else None
+            if result is not None:
+                self._value = result
+            return result
+
+    @property
+    def value(self):
+        return self._value
+
+    def __repr__(self):
+        return f"<RWLock value={self._value!r}>"
+
+
+class InScriptTimerHandle:
+    """Handle returned by timer.after / timer.every for cancellation."""
+    def __init__(self, timer_obj):
+        self._timer = timer_obj   # threading.Timer or periodic wrapper
+
+    def cancel(self):
+        if hasattr(self._timer, 'cancel'):
+            self._timer.cancel()
+
+    def __repr__(self):
+        return "<TimerHandle>"

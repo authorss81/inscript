@@ -147,6 +147,12 @@ class Parser:
 
         # --- Async/Await ---
         if tok.type == TT.ASYNC:
+            # v2.3.0: async for var in channel { } — iterate over async iterable
+            if self.peek.type == TT.FOR:
+                self.advance()  # consume 'async'
+                node = self.parse_for_in()
+                node._async_iter = True  # flag for interpreter
+                return node
             return self.parse_async_fn()
 
         # --- Await expr ---
@@ -1817,6 +1823,26 @@ class Parser:
                 args = self.parse_arg_list()
                 expr = CallExpr(callee=expr, args=args, line=line, col=col)
 
+            # v2.3.0: generic builtin call: channel<T>(cap) / Stack<T>() etc.
+            # Pattern: IDENT < TYPE_OR_IDENT > (
+            elif (self.check(TT.LT)
+                  and isinstance(expr, IdentExpr)
+                  and self.peek.type in (TT.INT_TYPE, TT.FLOAT_TYPE, TT.STRING_TYPE,
+                                         TT.BOOL_TYPE, TT.IDENT, TT.VOID_TYPE)):
+                saved = self.pos
+                self.advance()  # consume '<'
+                self.advance()  # consume type name
+                if self.check(TT.GT):
+                    self.advance()  # consume '>'
+                    if self.check(TT.LPAREN):
+                        # It's a generic call — type param is stripped (runtime ignores it)
+                        args = self.parse_arg_list()
+                        expr = CallExpr(callee=expr, args=args, line=line, col=col)
+                        continue
+                # Not a generic call — backtrack and stop postfix chain
+                self.pos = saved
+                break
+
             # Optional chaining: expr?.member  or  expr?.method(args)
             elif self.check(TT.QUESTION_DOT):
                 self.advance()  # consume '?.'
@@ -2038,6 +2064,13 @@ class Parser:
             self.advance()  # consume 'await'
             expr = self.parse_unary()
             return AwaitExpr(expr=expr, line=line, col=col)
+
+        # v2.3.0: spawn <expr> — concurrency task
+        if tok.type == TT.SPAWN:
+            self.advance()  # consume 'spawn'
+            expr = self.parse_unary()
+            from ast_nodes import TaskSpawnExpr
+            return TaskSpawnExpr(expr=expr, line=line, col=col)
 
         # try { expr } catch e { expr } — try as expression (returns value)
         if tok.type == TT.TRY:

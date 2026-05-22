@@ -751,3 +751,8 @@ class DestructParam(Node):
     names:    list   # list of str (field/element names to bind)
     rest:     object # str name for rest element (...tail), or None
     type_ann: object # TypeAnnotation or None
+
+@dataclass
+class TaskSpawnExpr(Node):
+    """v2.3.0: spawn <expr> — run expression concurrently, return InScriptTask."""
+    expr: object

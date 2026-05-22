@@ -421,13 +421,16 @@ class Interpreter(Visitor):
             "is_bool":     lambda v: isinstance(v, bool),
             "is_array":    lambda v: isinstance(v, list),
             "is_dict":     lambda v: isinstance(v, dict),
-            # ── Concurrency (lightweight stubs, full impl via async/await) ─────
-            "thread":      lambda fn, *args: self._spawn_thread(fn, list(args)),
-            "channel":      lambda cap=0: {"_type":"channel","_channel":__import__("queue").SimpleQueue(),"_cap":int(cap)},
-            "make_channel": lambda cap=0: {"_type":"channel","_channel":__import__("queue").SimpleQueue(),"_cap":int(cap)},
-            "chan_send":    lambda ch, v: ch["_channel"].put(v) if isinstance(ch,dict) and "_channel" in ch else None,
-            "chan_recv":    lambda ch: ch["_channel"].get(timeout=5) if isinstance(ch,dict) and "_channel" in ch else None,
-            "sleep":       lambda s: __import__('time').sleep(s),
+            # ── Concurrency v2.3.0 ───────────────────────────────────────────
+            "thread":       lambda fn, *args: self._spawn_thread(fn, list(args)),
+            "channel":      lambda cap=0: __import__('stdlib_values').InScriptChannel(int(cap) if cap else 0),
+            "make_channel": lambda cap=0: __import__('stdlib_values').InScriptChannel(int(cap) if cap else 0),
+            "chan_send":     lambda ch, v: ch.send(v) if hasattr(ch, 'send') else (ch["_channel"].put(v) if isinstance(ch, dict) and "_channel" in ch else None),
+            "chan_recv":     lambda ch: ch.recv() if hasattr(ch, 'recv') else (ch["_channel"].get(timeout=5) if isinstance(ch, dict) and "_channel" in ch else None),
+            "chan_try_recv": lambda ch: ch.try_recv() if hasattr(ch, 'try_recv') else None,
+            "mutex":        lambda v=None: __import__('stdlib_values').InScriptMutex(v),
+            "rwlock":       lambda v=None: __import__('stdlib_values').InScriptRWLock(v),
+            "sleep":        lambda s: __import__('time').sleep(s),
             # ── JSON ──────────────────────────────────────────────────────────
             "json_encode": lambda v: __import__('json').dumps(v),
             "json_decode": lambda s: __import__('json').loads(s),
@@ -1080,6 +1083,30 @@ class Interpreter(Visitor):
         if isinstance(iterable, dict) and iterable.get("_enum_definition"):
             variants = [v for k, v in iterable.items() if not k.startswith("_")]
             iterable = variants
+        # v2.3.0: async for var in channel { } — drain channel until closed
+        from stdlib_values import InScriptChannel as _ISCh
+        if isinstance(iterable, _ISCh) and getattr(node, '_async_iter', False):
+            while not (iterable.closed and iterable._q.empty()):
+                val = iterable.try_recv()
+                if val is None:
+                    if iterable.closed:
+                        break
+                    import time as _t; _t.sleep(0.001)
+                    continue
+                self._push("for")
+                self._env.define(node.var_name, val)
+                try:
+                    self._exec_block_no_scope(node.body)
+                except BreakSignal as sig:
+                    self._pop()
+                    if sig.label: raise
+                    break
+                except ContinueSignal as sig:
+                    self._pop()
+                    if sig.label: raise
+                    continue
+                self._pop()
+            return
         # Support list, range, InScriptRange, string, dict, generator
         if isinstance(iterable, InScriptRange):
             it = iter(iterable)
@@ -2524,11 +2551,10 @@ class Interpreter(Visitor):
 
     def visit_AwaitExpr(self, node: AwaitExpr) -> Any:
         """
-        v1.9.7: True async/await.
-        - InScriptCoroutine → drive via Python coroutine protocol (sync driver).
-        - Plain value → passthrough (backwards compatible).
-        - Exceptions from inside the coroutine are converted to InScriptRuntimeError
-          so they are catchable by InScript try/catch blocks.
+        v2.3.0: await <expr>
+        InScript async fns return InScriptCoroutine. We drive them to completion
+        using send(None) — the coroutine body runs synchronously and raises
+        StopIteration(result) immediately (InScript has no real IO yields).
         """
         val = self.visit(node.expr)
         if isinstance(val, InScriptCoroutine):
@@ -2538,17 +2564,77 @@ class Interpreter(Visitor):
             except StopIteration as e:
                 return e.value
             except InScriptRuntimeError:
-                raise   # already an InScript error, let it propagate
+                raise
             except Exception as e:
-                # Convert Python exceptions to InScriptRuntimeError so
-                # they are catchable by InScript try/catch blocks.
                 err = InScriptRuntimeError(str(e), getattr(node, 'line', 0))
                 err.thrown_value = str(e)
                 raise err
-        return val   # plain value: passthrough
+        return val   # plain value passthrough
 
-    def visit_SpawnExpr(self, node: SpawnExpr) -> Any:
-        return None   # Phase 6 (ECS)
+    def visit_SpawnExpr(self, node) -> Any:
+        """ECS spawn — handled by game backend; stub in core interpreter."""
+        return None
+
+    def visit_TaskSpawnExpr(self, node) -> Any:
+        """v2.3.0: spawn <expr> — run in background thread, return InScriptTask."""
+        from stdlib_values import InScriptTask
+        expr_val = self.visit(node.expr)
+        if isinstance(expr_val, InScriptCoroutine):
+            coro = expr_val.coro
+            def _run_coro():
+                try:
+                    coro.send(None)
+                except StopIteration as e:
+                    return e.value
+                return None
+            task = InScriptTask(_run_coro, None)
+        elif callable(expr_val):
+            fn = expr_val
+            def _run_fn():
+                return self._call_fn(fn, [])
+            task = InScriptTask(_run_fn, None)
+        else:
+            val = expr_val
+            task = InScriptTask(lambda: val, None)
+        return task
+
+    def visit_SelectStmt(self, node) -> Any:
+        """v2.3.0: select { case x = ch.recv() { } case ch.send(v) { } case timeout(t) { } }"""
+        from stdlib_values import InScriptChannel
+        from ast_nodes import CallExpr, GetAttrExpr
+        for clause in node.clauses:
+            kind = clause.get("kind")
+            if kind == "recv":
+                # clause["channel"] is CallExpr(callee=GetAttr(ch, "recv"), args=[])
+                call_expr = clause.get("channel")
+                if call_expr and isinstance(call_expr, CallExpr):
+                    ch = self.visit(call_expr.callee.obj)
+                else:
+                    ch = None
+                if isinstance(ch, InScriptChannel):
+                    val = ch.try_recv()
+                    if val is not None:
+                        var = clause.get("var")
+                        if var:
+                            self._env.define(var, val)
+                        self.visit(clause["body"])
+                        return
+            elif kind == "send":
+                # clause["channel"] is CallExpr(callee=GetAttr(ch, "send"), args=[val])
+                call_expr = clause.get("channel")
+                if call_expr and isinstance(call_expr, CallExpr):
+                    ch  = self.visit(call_expr.callee.obj)
+                    val = self.visit(call_expr.args[0].value) if call_expr.args else None
+                else:
+                    ch = val = None
+                if isinstance(ch, InScriptChannel) and not ch._q.full():
+                    ch.send(val)
+                    self.visit(clause["body"])
+                    return
+            elif kind == "timeout":
+                # Timeout clause fires as fallback — always last resort
+                self.visit(clause["body"])
+                return
 
     def visit_MatchArm(self, node: MatchArm) -> Any:
         return self.visit(node.body)
@@ -2869,6 +2955,41 @@ def _arr_count(lst, fn_or_val, interp):
 
 
 def _get_attr(obj: Any, name: str, line: int, interp: Interpreter) -> Any:
+    # v2.3.0: concurrency primitive attribute dispatch
+    from stdlib_values import InScriptTask, InScriptChannel, InScriptMutex, InScriptRWLock, InScriptTimerHandle
+
+    if isinstance(obj, InScriptTask):
+        if name == "join":   return lambda timeout=None: obj.join(timeout)
+        if name == "done":   return obj.done
+        if name == "result": return obj._result
+        interp._error(f"Task has no member '{name}'. Available: join, done, result", line)
+
+    if isinstance(obj, InScriptChannel):
+        if name == "send":      return lambda v: obj.send(v)
+        if name == "recv":      return lambda: obj.recv()
+        if name == "try_recv":  return lambda: obj.try_recv()
+        if name == "close":     return lambda: obj.close()
+        if name == "closed":    return obj.closed
+        if name == "size":      return obj._q.qsize()
+        if name == "is_empty":  return obj._q.empty()
+        interp._error(f"Channel has no member '{name}'. Available: send, recv, try_recv, close, closed, size", line)
+
+    if isinstance(obj, InScriptMutex):
+        if name == "lock":   return lambda fn: obj.lock(lambda args: interp._call_fn(fn, args))
+        if name == "set":    return lambda v: obj.set(v)
+        if name == "value":  return obj.value
+        interp._error(f"Mutex has no member '{name}'. Available: lock, set, value", line)
+
+    if isinstance(obj, InScriptRWLock):
+        if name == "read":   return lambda fn: obj.read(lambda args: interp._call_fn(fn, args))
+        if name == "write":  return lambda fn: obj.write(lambda args: interp._call_fn(fn, args))
+        if name == "value":  return obj.value
+        interp._error(f"RWLock has no member '{name}'. Available: read, write, value", line)
+
+    if isinstance(obj, InScriptTimerHandle):
+        if name == "cancel": return lambda: obj.cancel()
+        interp._error(f"TimerHandle has no member '{name}'. Available: cancel", line)
+
     # StructDecl used as namespace for static method access: M.sq(5)
     if isinstance(obj, StructDecl):
         if hasattr(obj, '_static_ns') and name in obj._static_ns:
