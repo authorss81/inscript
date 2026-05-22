@@ -24,7 +24,7 @@ from errors   import (InScriptError, LexerError, ParseError,
                        SemanticError, InScriptRuntimeError,
                        MultiError, InScriptWarning)
 
-VERSION = "2.3.0"
+VERSION = "2.4.0"
 
 MANIFEST_FILENAME = "inscript.toml"
 LOCK_FILENAME     = "inscript.lock"
@@ -389,17 +389,164 @@ def info_package(pkg_name: str) -> int:
 
 
 def run_file(path: str, type_check: bool = True) -> int:
-    """Load and execute an InScript source file. Returns exit code."""
+    """Load and execute an InScript source file (or .ibc bytecode). Returns exit code."""
     if not os.path.exists(path):
         print(f"[InScript] Error: file not found: '{path}'", file=sys.stderr)
         return 1
+    # v2.4.0: transparent .ibc execution via bytecode VM
+    if path.endswith(".ibc"):
+        return _run_ibc(path)
     if not path.endswith(".ins"):
         print(f"[InScript] Warning: expected .ins extension, got '{path}'", file=sys.stderr)
-
     with open(path, "r", encoding="utf-8") as f:
         source = f.read()
-
     return run_source(source, filename=path, type_check=type_check)
+
+
+# ── v2.4.0: Real Bytecode Pipeline ───────────────────────────────────────────
+
+def _ibc_path_for(src: str, out: str | None = None) -> str:
+    if out:
+        return out
+    base = src[:-4] if src.endswith(".ins") else src
+    return base + ".ibc"
+
+
+def _compile_cmd(src_path: str, out_path, target: str,
+                 dce: bool, incremental: bool) -> int:
+    """v2.4.0: AOT-compile .ins → .ibc using the real register-based VM compiler."""
+    if not os.path.exists(src_path):
+        print(f"[InScript] compile: file not found: '{src_path}'", file=sys.stderr)
+        return 1
+
+    # WASM / native — honest stubs with roadmap info
+    if target in ("wasm", "native"):
+        print(f"[InScript] --target {target} is planned for v2.5.x.")
+        print(f"  WASM output:   requires LLVM/Emscripten toolchain")
+        print(f"  Native output: requires transpile-to-C pipeline")
+        print(f"  Today's target: inscript --compile {src_path} --target ibc")
+        return 0
+
+    dest = _ibc_path_for(src_path, out_path)
+
+    # Incremental: skip if .ibc is up to date
+    if incremental and os.path.exists(dest):
+        if os.path.getmtime(dest) >= os.path.getmtime(src_path):
+            print(f"[InScript] compile: {dest} is up to date (--incremental)")
+            return 0
+
+    with open(src_path, "r", encoding="utf-8") as f:
+        source = f.read()
+
+    # Parse + compile to FnProto bytecode
+    try:
+        from compiler import compile_source
+        from vm_code  import write_ibc
+        proto = compile_source(source, filename=src_path)
+    except Exception as e:
+        print(f"[InScript] compile error: {e}", file=sys.stderr)
+        return 1
+
+    # Dead-code elimination at the proto level
+    if dce:
+        n_removed = _dce_proto(proto)
+        if n_removed:
+            print(f"[InScript] DCE: pruned {n_removed} unreachable nested proto(s)")
+
+    # Write .ibc
+    try:
+        write_ibc(proto, dest)
+    except Exception as e:
+        print(f"[InScript] serialize error: {e}", file=sys.stderr)
+        return 1
+
+    src_size = os.path.getsize(src_path)
+    ibc_size = os.path.getsize(dest)
+    dce_tag  = " +DCE" if dce else ""
+    print(f"[InScript] compiled{dce_tag}: {src_path}  →  {dest}")
+    print(f"           source {src_size:,}B  →  bytecode {ibc_size:,}B  "
+          f"({ibc_size/src_size*100:.0f}% of source)")
+    return 0
+
+
+def _run_ibc(path: str) -> int:
+    """v2.4.0: Load and execute a pre-compiled .ibc bytecode file."""
+    try:
+        from vm_code import read_ibc
+        from vm      import VM
+        proto = read_ibc(path)
+    except ValueError as e:
+        print(f"[InScript] run: {e}", file=sys.stderr)
+        return 1
+    except Exception as e:
+        print(f"[InScript] run: failed to load '{path}': {e}", file=sys.stderr)
+        return 1
+    try:
+        vm = VM(filename=path)
+        vm.run(proto)
+        return 0
+    except Exception as e:
+        print(f"[InScript] runtime error: {e}", file=sys.stderr)
+        return 1
+
+
+def _dce_proto(proto) -> int:
+    """
+    v2.4.0: Dead-code elimination at the FnProto level.
+    Removes nested protos whose names are never referenced in the parent's
+    name table. Returns the number of protos removed.
+    """
+    if not proto.protos:
+        return 0
+    referenced = set(proto.names)
+    before = len(proto.protos)
+    # Recurse into survivors first
+    for sub in proto.protos:
+        _dce_proto(sub)
+    # Remove unreferenced nested protos
+    proto.protos = [p for p in proto.protos if p.name in referenced or p.name == "<main>"]
+    removed = before - len(proto.protos)
+    return removed
+
+
+def _dce_pass(program):
+    """AST-level DCE (used by test_v240 for unit-testing DCE logic)."""
+    from ast_nodes import FunctionDecl, IdentExpr, Program
+
+    referenced: set = set()
+
+    def _walk(node):
+        if node is None: return
+        if isinstance(node, IdentExpr):
+            referenced.add(node.name)
+            return
+        for attr in (vars(node).values() if hasattr(node, '__dict__') else []):
+            if hasattr(attr, '__dict__'):
+                _walk(attr)
+            elif isinstance(attr, list):
+                for item in attr:
+                    if hasattr(item, '__dict__'): _walk(item)
+            elif isinstance(attr, tuple):
+                for item in attr:
+                    if hasattr(item, '__dict__'): _walk(item)
+
+    for stmt in program.body:
+        _walk(stmt)
+
+    kept = []
+    removed = 0
+    for stmt in program.body:
+        if isinstance(stmt, FunctionDecl) and stmt.name not in referenced:
+            if not getattr(stmt, 'exported', False):
+                removed += 1
+                continue
+        kept.append(stmt)
+
+    if removed:
+        print(f"[InScript] DCE: eliminated {removed} unreferenced function(s)")
+    return Program(body=kept)
+
+
 
 
 # ─── v1.6.0 helpers ──────────────────────────────────────────────────────────
@@ -2108,11 +2255,34 @@ Examples:
                         help="Window height for --game mode (default: 600)")
     parser.add_argument("--fps",    type=int, default=60,
                         help="Target FPS for --game mode   (default: 60)")
+    # ── v2.4.0: compilation flags ────────────────────────────────────────────
+    parser.add_argument("--compile", metavar="FILE",
+                        help="v2.4.0: AOT-compile FILE.ins → FILE.ibc bytecode")
+    parser.add_argument("--output", "-o", metavar="OUT",
+                        help="v2.4.0: Output path for --compile (default: same dir as input)")
+    parser.add_argument("--target", metavar="TARGET", default="interpreter",
+                        choices=["interpreter", "wasm", "native", "ibc"],
+                        help="v2.4.0: Compilation target: interpreter (default), ibc, wasm, native")
+    parser.add_argument("--no-dce", action="store_true",
+                        help="v2.4.0: Disable dead-code elimination before compilation")
+    parser.add_argument("--incremental", action="store_true",
+                        help="v2.4.0: Skip recompile if .ibc is newer than source")
     args = parser.parse_args()
 
     if args.version:
         print(f"InScript {VERSION}")
         return
+
+    # ── v2.4.0: --compile ────────────────────────────────────────────────────
+    if args.compile:
+        import sys as _sys
+        _sys.exit(_compile_cmd(
+            src_path   = args.compile,
+            out_path   = args.output,
+            target     = args.target,
+            dce        = not args.no_dce,
+            incremental= args.incremental,
+        ) or 0)
 
     # ── inscript --fmt / --fmt-check / --fmt-dry-run ─────────────────────────
     if args.fmt or args.fmt_check or args.fmt_dry_run:

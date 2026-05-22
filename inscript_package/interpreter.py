@@ -28,6 +28,9 @@ from errors import (
 # INTERPRETER
 # ─────────────────────────────────────────────────────────────────────────────
 
+# v2.4.0: sentinel for inline cache misses (faster than None since None is valid)
+_CACHE_MISS = object()
+
 class Interpreter(Visitor):
     """
     Tree-walking interpreter.  Visits each AST node and returns a Python value.
@@ -48,6 +51,9 @@ class Interpreter(Visitor):
         self._current_fn: object = None
         # v1.4.0: defer stack — list of exprs to run at end of current function
         self._deferred: list = []
+        # v2.4.0: inline caches — monomorphic site caching for hot paths
+        self._ic_struct_fields: dict = {}   # struct_name -> {field: default_idx}
+        self._ic_fn_lookup:     dict = {}   # fn_name -> InScriptFunction (global scope)
 
         self._register_builtins()
 
@@ -533,6 +539,8 @@ class Interpreter(Visitor):
         # v1.9.7: mark async functions
         fn.is_async     = getattr(node, 'is_async', False)
         self._env.define(node.name, fn)
+        # v2.4.0: invalidate inline cache if this function was cached
+        self._ic_fn_lookup.pop(node.name, None)
         return fn
 
     def visit_GeneratorFnDecl(self, node) -> Any:
@@ -1574,10 +1582,18 @@ class Interpreter(Visitor):
                     decl = None
                 parent_decl = getattr(decl, '_resolved_parent', None)
                 if parent_decl is not None:
-                    # Return a SuperProxy that knows the parent and self
                     return _SuperProxy(self_val, parent_decl, self)
             self._error("'super' only valid in a struct that extends another", node.line)
-        return self._env.get(node.name, node.line)
+        # v2.4.0: inline cache — fast path for global function lookups
+        name = node.name
+        ic = self._ic_fn_lookup.get(name)
+        if ic is not None:
+            return ic
+        val = self._env.get(name, node.line)
+        # Populate cache for top-level InScriptFunctions (stable globals only)
+        if isinstance(val, InScriptFunction) and self._env is self._globals:
+            self._ic_fn_lookup[name] = val
+        return val
 
     def visit_ArrayLiteralExpr(self, node: ArrayLiteralExpr) -> Any:
         result = []
@@ -2037,6 +2053,11 @@ class Interpreter(Visitor):
 
     def visit_GetAttrExpr(self, node: GetAttrExpr) -> Any:
         obj = self.visit(node.obj)
+        # v2.4.0: inline cache for struct field access — skip full _get_attr for hot path
+        if isinstance(obj, InScriptInstance):
+            val = obj.fields.get(node.attr, _CACHE_MISS)
+            if val is not _CACHE_MISS:
+                return val
         return _get_attr(obj, node.attr, node.line, self)
 
     def visit_IndexExpr(self, node: IndexExpr) -> Any:
@@ -2955,16 +2976,16 @@ def _arr_count(lst, fn_or_val, interp):
 
 
 def _get_attr(obj: Any, name: str, line: int, interp: Interpreter) -> Any:
-    # v2.3.0: concurrency primitive attribute dispatch
-    from stdlib_values import InScriptTask, InScriptChannel, InScriptMutex, InScriptRWLock, InScriptTimerHandle
-
-    if isinstance(obj, InScriptTask):
+    # v2.3.0/v2.4.0: concurrency primitive attribute dispatch
+    # Only import when obj is one of the concurrency types (type-name fast check)
+    _tname = type(obj).__name__
+    if _tname == "InScriptTask":
+        import stdlib_values as _sv
         if name == "join":   return lambda timeout=None: obj.join(timeout)
         if name == "done":   return obj.done
         if name == "result": return obj._result
         interp._error(f"Task has no member '{name}'. Available: join, done, result", line)
-
-    if isinstance(obj, InScriptChannel):
+    elif _tname == "InScriptChannel":
         if name == "send":      return lambda v: obj.send(v)
         if name == "recv":      return lambda: obj.recv()
         if name == "try_recv":  return lambda: obj.try_recv()
@@ -2973,20 +2994,17 @@ def _get_attr(obj: Any, name: str, line: int, interp: Interpreter) -> Any:
         if name == "size":      return obj._q.qsize()
         if name == "is_empty":  return obj._q.empty()
         interp._error(f"Channel has no member '{name}'. Available: send, recv, try_recv, close, closed, size", line)
-
-    if isinstance(obj, InScriptMutex):
-        if name == "lock":   return lambda fn: obj.lock(lambda args: interp._call_fn(fn, args))
-        if name == "set":    return lambda v: obj.set(v)
-        if name == "value":  return obj.value
+    elif _tname == "InScriptMutex":
+        if name == "lock":  return lambda fn: obj.lock(lambda args: interp._call_fn(fn, args))
+        if name == "set":   return lambda v: obj.set(v)
+        if name == "value": return obj.value
         interp._error(f"Mutex has no member '{name}'. Available: lock, set, value", line)
-
-    if isinstance(obj, InScriptRWLock):
-        if name == "read":   return lambda fn: obj.read(lambda args: interp._call_fn(fn, args))
-        if name == "write":  return lambda fn: obj.write(lambda args: interp._call_fn(fn, args))
-        if name == "value":  return obj.value
+    elif _tname == "InScriptRWLock":
+        if name == "read":  return lambda fn: obj.read(lambda args: interp._call_fn(fn, args))
+        if name == "write": return lambda fn: obj.write(lambda args: interp._call_fn(fn, args))
+        if name == "value": return obj.value
         interp._error(f"RWLock has no member '{name}'. Available: read, write, value", line)
-
-    if isinstance(obj, InScriptTimerHandle):
+    elif _tname == "InScriptTimerHandle":
         if name == "cancel": return lambda: obj.cancel()
         interp._error(f"TimerHandle has no member '{name}'. Available: cancel", line)
 
