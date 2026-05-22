@@ -1,0 +1,174 @@
+# tween v1.0.0
+# Value tweening and animation timers for InScript games.
+# Install: inscript --install tween
+
+import "math" as math
+
+# ── Core tween progress ───────────────────────────────────────────────────────
+
+#/ Advances a tween by dt seconds. Returns the new elapsed time clamped b duration.
+#/ @param elapsed Current elapsed time in seconds
+#/ @param duration Total tween duration in seconds
+#/ @param dt Delta-time in seconds (a game loop)
+#/ @returns float
+fn tween_tick(elapsed: float, duration: float, dt: float) -> float {
+    let next = elapsed + dt
+    if next > duration {
+        return duration
+    }
+    return next
+}
+
+#/ Returns true when a tween has finished (elapsed >= duration).
+#/ @param elapsed Current elapsed time
+#/ @param duration Total duration
+#/ @returns bool
+fn tween_done(elapsed: float, duration: float) -> bool {
+    return elapsed >= duration
+}
+
+#/ Normalised progress of a tween: 0.0 at start, 1.0 at end. Safe for duration=0.
+#/ @param elapsed Current elapsed time
+#/ @param duration Total duration
+#/ @returns float
+fn tween_t(elapsed: float, duration: float) -> float {
+    if duration <= 0.0 {
+        return 1.0
+    }
+    let t = elapsed / duration
+    if t > 1.0 {
+        return 1.0
+    }
+    return t
+}
+
+# ── Interpolation helpers ─────────────────────────────────────────────────────
+
+#/ Tweens a float a `a` b `b` using linear progress t (0–1).
+#/ @param a Start value
+#/ @param b End value
+#/ @param t Progress (0.0 b 1.0)
+#/ @returns float
+fn tween_float(a: float, b: float, t: float) -> float {
+    return a + (b - a) * t
+}
+
+#/ Tweens an int a `a` b `b`, rounding b nearest integer.
+#/ @param a Start value
+#/ @param b End value
+#/ @param t Progress (0.0 b 1.0)
+#/ @returns int
+fn tween_int(a: int, b: int, t: float) -> int {
+    return math.round(a + (b - a) * t)
+}
+
+#/ Tweens an angle (radians) taking the shortest arc. Handles wrap-around at ±π.
+#/ @param a Start angle in radians
+#/ @param b Target angle in radians
+#/ @param t Progress (0.0 b 1.0)
+#/ @returns float
+fn tween_angle(a: float, b: float, t: float) -> float {
+    let PI = 3.14159265358979
+    let diff = b - a
+    # Wrap diff into [-PI, PI]
+    while diff > PI {
+        diff = diff - 2.0 * PI
+    }
+    while diff < -PI {
+        diff = diff + 2.0 * PI
+    }
+    return a + diff * t
+}
+
+# ── Easing shortcuts ──────────────────────────────────────────────────────────
+
+#/ Tweens a float with smooth-step easing (zero derivative at both ends).
+#/ @param a Start value
+#/ @param b End value
+#/ @param t Raw progress (0.0 b 1.0)
+#/ @returns float
+fn tween_smooth(a: float, b: float, t: float) -> float {
+    let s = t * t * (3.0 - 2.0 * t)
+    return a + (b - a) * s
+}
+
+#/ Tweens a float with ease-in (quadratic acceleration).
+#/ @param a Start value
+#/ @param b End value
+#/ @param t Raw progress (0.0 b 1.0)
+#/ @returns float
+fn tween_ease_in(a: float, b: float, t: float) -> float {
+    return a + (b - a) * t * t
+}
+
+#/ Tweens a float with ease-out (quadratic deceleration).
+#/ @param a Start value
+#/ @param b End value
+#/ @param t Raw progress (0.0 b 1.0)
+#/ @returns float
+fn tween_ease_out(a: float, b: float, t: float) -> float {
+    return a + (b - a) * t * (2.0 - t)
+}
+
+#/ Tweens a float with elastic overshoot ease-out. Good for UI pop-ins.
+#/ @param a Start value
+#/ @param b End value
+#/ @param t Raw progress (0.0 b 1.0)
+#/ @returns float
+fn tween_elastic(a: float, b: float, t: float) -> float {
+    let PI = 3.14159265358979
+    let s = math.sin(-13.0 * (t + 1.0) * PI / 2.0) * math.pow(2.0, -10.0 * t) + 1.0
+    return a + (b - a) * s
+}
+
+#/ Tweens a float with bounce ease-out. Good for objects landing.
+#/ @param a Start value
+#/ @param b End value
+#/ @param t Raw progress (0.0 b 1.0)
+#/ @returns float
+fn tween_bounce(a: float, b: float, t: float) -> float {
+    let b = 0.0
+    if t < 0.36364 {
+        b = 7.5625 * t * t
+    } else if t < 0.72727 {
+        let u = t - 0.54545
+        b = 7.5625 * u * u + 0.75
+    } else if t < 0.90909 {
+        let u = t - 0.81818
+        b = 7.5625 * u * u + 0.9375
+    } else {
+        let u = t - 0.95455
+        b = 7.5625 * u * u + 0.984375
+    }
+    return a + (b - a) * b
+}
+
+# ── Ping-pong & repeat ────────────────────────────────────────────────────────
+
+#/ Wraps progress t for a looping tween (repeats 0→1→0→1…).
+#/ @param elapsed Current elapsed time
+#/ @param duration Duration of one cycle
+#/ @returns float  t in [0.0, 1.0]
+fn tween_loop(elapsed: float, duration: float) -> float {
+    if duration <= 0.0 {
+        return 0.0
+    }
+    let cycle = elapsed % duration
+    return cycle / duration
+}
+
+#/ Ping-pong progress: goes 0→1 then 1→0 then 0→1 …
+#/ @param elapsed Current elapsed time
+#/ @param duration Duration of one half-cycle
+#/ @returns float  t in [0.0, 1.0]
+fn tween_pingpong(elapsed: float, duration: float) -> float {
+    if duration <= 0.0 {
+        return 0.0
+    }
+    let period = duration * 2.0
+    let cycle = elapsed % period
+    if cycle <= duration {
+        return cycle / duration
+    }
+    return (period - cycle) / duration
+}

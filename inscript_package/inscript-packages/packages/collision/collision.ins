@@ -1,0 +1,127 @@
+# collision v1.0.0
+# 2D collision detection for InScript games.
+# All shapes use plain values (no structs) for maximum compatibility.
+# Install: inscript --install collision
+
+import "math" as math
+
+# ── Circle vs Circle ─────────────────────────────────────────────────────────
+
+#/ Returns true if two circles overlap.
+fn circle_circle(ax: float, ay: float, ar: float, bx: float, by: float, br: float) -> bool {
+    let dx = ax - bx
+    let dy = ay - by
+    let radii = ar + br
+    return dx * dx + dy * dy <= radii * radii
+}
+
+#/ Returns overlap depth (negative = no overlap).
+fn circle_circle_depth(ax: float, ay: float, ar: float, bx: float, by: float, br: float) -> float {
+    let dx = ax - bx
+    let dy = ay - by
+    let dist = math.sqrt(dx * dx + dy * dy)
+    return ar + br - dist
+}
+
+# ── AABB vs AABB ─────────────────────────────────────────────────────────────
+
+#/ Returns true if two axis-aligned rects overlap. Rects are (left, top, width, height).
+fn aabb_aabb(ax: float, ay: float, aw: float, ah: float, bx: float, by: float, bw: float, bh: float) -> bool {
+    if ax + aw <= bx { return false }
+    if bx + bw <= ax { return false }
+    if ay + ah <= by { return false }
+    if by + bh <= ay { return false }
+    return true
+}
+
+#/ Returns {dx, dy} minimum translation vector. {dx:0, dy:0} if no overlap.
+fn aabb_aabb_mtv(ax: float, ay: float, aw: float, ah: float, bx: float, by: float, bw: float, bh: float) -> dict {
+    let cx_a = ax + aw / 2.0
+    let cy_a = ay + ah / 2.0
+    let cx_b = bx + bw / 2.0
+    let cy_b = by + bh / 2.0
+    let ox = (aw + bw) / 2.0 - math.abs(cx_a - cx_b)
+    let oy = (ah + bh) / 2.0 - math.abs(cy_a - cy_b)
+    if ox <= 0.0 { return {"dx": 0.0, "dy": 0.0} }
+    if oy <= 0.0 { return {"dx": 0.0, "dy": 0.0} }
+    if ox < oy {
+        let sign = 1.0
+        if cx_a < cx_b { sign = -1.0 }
+        return {"dx": ox * sign, "dy": 0.0}
+    }
+    let sign = 1.0
+    if cy_a < cy_b { sign = -1.0 }
+    return {"dx": 0.0, "dy": oy * sign}
+}
+
+# ── Circle vs AABB ───────────────────────────────────────────────────────────
+
+#/ Returns true if a circle overlaps an axis-aligned rect.
+fn circle_aabb(cx: float, cy: float, cr: float, rx: float, ry: float, rw: float, rh: float) -> bool {
+    let nx = cx
+    if cx < rx { nx = rx }
+    if cx > rx + rw { nx = rx + rw }
+    let ny = cy
+    if cy < ry { ny = ry }
+    if cy > ry + rh { ny = ry + rh }
+    let dx = cx - nx
+    let dy = cy - ny
+    return dx * dx + dy * dy <= cr * cr
+}
+
+# ── Point tests ───────────────────────────────────────────────────────────────
+
+#/ Returns true if point (px, py) is inside an AABB.
+fn point_in_aabb(px: float, py: float, rx: float, ry: float, rw: float, rh: float) -> bool {
+    if px < rx { return false }
+    if px > rx + rw { return false }
+    if py < ry { return false }
+    if py > ry + rh { return false }
+    return true
+}
+
+#/ Returns true if point (px, py) is inside a circle.
+fn point_in_circle(px: float, py: float, cx: float, cy: float, cr: float) -> bool {
+    let dx = px - cx
+    let dy = py - cy
+    return dx * dx + dy * dy <= cr * cr
+}
+
+# ── Raycast ───────────────────────────────────────────────────────────────────
+
+#/ Ray vs AABB. Returns hit distance along ray, or -1.0 for miss.
+#/ Ray: origin (ox, oy), normalised direction (rdx, rdy).
+fn ray_aabb(ox: float, oy: float, rdx: float, rdy: float, rx: float, ry: float, rw: float, rh: float) -> float {
+    let t_min = 0.0
+    let t_max = 1.0e30
+    if math.abs(rdx) > 0.000001 {
+        let ta = (rx - ox) / rdx
+        let tb = (rx + rw - ox) / rdx
+        let t1 = ta
+        let t2 = tb
+        if ta > tb { t1 = tb }
+        if ta > tb { t2 = ta }
+        if t1 > t_min { t_min = t1 }
+        if t2 < t_max { t_max = t2 }
+        if t_min > t_max { return -1.0 }
+    } else {
+        if ox < rx { return -1.0 }
+        if ox > rx + rw { return -1.0 }
+    }
+    if math.abs(rdy) > 0.000001 {
+        let ta = (ry - oy) / rdy
+        let tb = (ry + rh - oy) / rdy
+        let t1 = ta
+        let t2 = tb
+        if ta > tb { t1 = tb }
+        if ta > tb { t2 = ta }
+        if t1 > t_min { t_min = t1 }
+        if t2 < t_max { t_max = t2 }
+        if t_min > t_max { return -1.0 }
+    } else {
+        if oy < ry { return -1.0 }
+        if oy > ry + rh { return -1.0 }
+    }
+    if t_min < 0.0 { return -1.0 }
+    return t_min
+}

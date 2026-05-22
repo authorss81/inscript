@@ -1,0 +1,162 @@
+# vector2 v1.0.0
+# 2D vector math for InScript games.
+# Install: inscript --install vector2
+
+import "math" as math
+
+#/ Returns the length (magnitude) of vector (x, y).
+#/ @param x X component
+#/ @param y Y component
+#/ @returns float
+fn vec2_len(x: float, y: float) -> float {
+    return math.sqrt(x * x + y * y)
+}
+
+#/ Returns the squared length of vector (x, y). Faster than vec2_len when only comparing distances.
+#/ @param x X component
+#/ @param y Y component
+#/ @returns float
+fn vec2_len_sq(x: float, y: float) -> float {
+    return x * x + y * y
+}
+
+#/ Normalises vector (x, y) to unit length. Returns {x, y} dict. Returns {x:0, y:0} for zero vector.
+#/ @param x X component
+#/ @param y Y component
+#/ @returns dict
+fn vec2_norm(x: float, y: float) -> dict {
+    let l = vec2_len(x, y)
+    if l == 0.0 {
+        return {"x": 0.0, "y": 0.0}
+    }
+    return {"x": x / l, "y": y / l}
+}
+
+#/ Dot product of two vectors.
+#/ @param ax X of vector A
+#/ @param ay Y of vector A
+#/ @param bx X of vector B
+#/ @param by Y of vector B
+#/ @returns float
+fn vec2_dot(ax: float, ay: float, bx: float, by: float) -> float {
+    return ax * bx + ay * by
+}
+
+#/ 2D cross product (scalar z component of the 3D cross). Positive = B is to the left of A.
+#/ @param ax X of vector A
+#/ @param ay Y of vector A
+#/ @param bx X of vector B
+#/ @param by Y of vector B
+#/ @returns float
+fn vec2_cross(ax: float, ay: float, bx: float, by: float) -> float {
+    return ax * by - ay * bx
+}
+
+#/ Adds two vectors, returns {x, y}.
+#/ @param ax X of vector A
+#/ @param ay Y of vector A
+#/ @param bx X of vector B
+#/ @param by Y of vector B
+#/ @returns dict
+fn vec2_add(ax: float, ay: float, bx: float, by: float) -> dict {
+    return {"x": ax + bx, "y": ay + by}
+}
+
+#/ Subtracts vector B from A, returns {x, y}.
+#/ @param ax X of vector A
+#/ @param ay Y of vector A
+#/ @param bx X of vector B
+#/ @param by Y of vector B
+#/ @returns dict
+fn vec2_sub(ax: float, ay: float, bx: float, by: float) -> dict {
+    return {"x": ax - bx, "y": ay - by}
+}
+
+#/ Scales vector (x, y) by scalar s, returns {x, y}.
+#/ @param x X component
+#/ @param y Y component
+#/ @param s Scale factor
+#/ @returns dict
+fn vec2_scale(x: float, y: float, s: float) -> dict {
+    return {"x": x * s, "y": y * s}
+}
+
+#/ Euclidean distance between two points.
+#/ @param ax X of point A
+#/ @param ay Y of point A
+#/ @param bx X of point B
+#/ @param by Y of point B
+#/ @returns float
+fn vec2_dist(ax: float, ay: float, bx: float, by: float) -> float {
+    let dx = ax - bx
+    let dy = ay - by
+    return math.sqrt(dx * dx + dy * dy)
+}
+
+#/ Squared distance between two points. Cheaper than vec2_dist for comparisons.
+#/ @param ax X of point A
+#/ @param ay Y of point A
+#/ @param bx X of point B
+#/ @param by Y of point B
+#/ @returns float
+fn vec2_dist_sq(ax: float, ay: float, bx: float, by: float) -> float {
+    let dx = ax - bx
+    let dy = ay - by
+    return dx * dx + dy * dy
+}
+
+#/ Linear interpolation between vectors A and B by t.
+#/ @param ax X of vector A
+#/ @param ay Y of vector A
+#/ @param bx X of vector B
+#/ @param by Y of vector B
+#/ @param t Blend factor (0.0=A, 1.0=B)
+#/ @returns dict
+fn vec2_lerp(ax: float, ay: float, bx: float, by: float, t: float) -> dict {
+    return {"x": ax + (bx - ax) * t, "y": ay + (by - ay) * t}
+}
+
+#/ Rotates vector (x, y) by angle radians around the origin. Returns {x, y}.
+#/ @param x X component
+#/ @param y Y component
+#/ @param angle Rotation in radians
+#/ @returns dict
+fn vec2_rotate(x: float, y: float, angle: float) -> dict {
+    let c = math.cos(angle)
+    let s = math.sin(angle)
+    return {"x": x * c - y * s, "y": x * s + y * c}
+}
+
+#/ Angle of vector (x, y) in radians, measured from positive X axis.
+#/ @param x X component
+#/ @param y Y component
+#/ @returns float
+fn vec2_angle(x: float, y: float) -> float {
+    return math.atan2(y, x)
+}
+
+#/ Reflects vector (x, y) off a surface with given unit normal (nx, ny). Returns {x, y}.
+#/ @param x X of incoming vector
+#/ @param y Y of incoming vector
+#/ @param nx X of surface normal (must be unit length)
+#/ @param ny Y of surface normal (must be unit length)
+#/ @returns dict
+fn vec2_reflect(x: float, y: float, nx: float, ny: float) -> dict {
+    let d = 2.0 * (x * nx + y * ny)
+    return {"x": x - d * nx, "y": y - d * ny}
+}
+
+#/ Projects vector A onto vector B. Returns {x, y}.
+#/ @param ax X of vector A
+#/ @param ay Y of vector A
+#/ @param bx X of vector B (does not need to be normalised)
+#/ @param by Y of vector B
+#/ @returns dict
+fn vec2_project(ax: float, ay: float, bx: float, by: float) -> dict {
+    let denom = bx * bx + by * by
+    if denom == 0.0 {
+        return {"x": 0.0, "y": 0.0}
+    }
+    let t = (ax * bx + ay * by) / denom
+    return {"x": bx * t, "y": by * t}
+}

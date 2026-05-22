@@ -86,6 +86,7 @@ jobs:
           python test_v202.py
           python test_v203.py
           python test_v210.py
+          python test_v211.py
 
   build:
     name: Build distribution

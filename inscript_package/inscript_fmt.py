@@ -29,7 +29,7 @@ from lexer import Lexer, TT, Token
 
 # ── Token categories ─────────────────────────────────────────────────────────
 _BINARY_OPS = {
-    TT.PLUS, TT.MINUS, TT.STAR, TT.SLASH, TT.PERCENT, TT.POWER, TT.EQ, TT.NEQ, TT.LT, TT.GT, TT.LTE, TT.GTE, TT.AND, TT.OR, TT.BIT_AND, TT.BIT_OR, TT.BIT_XOR, TT.LSHIFT, TT.RSHIFT, TT.ASSIGN, TT.PLUS_EQ, TT.MINUS_EQ, TT.STAR_EQ, TT.SLASH_EQ, TT.PERCENT_EQ, TT.POWER_EQ, TT.LSHIFT_EQ, TT.RSHIFT_EQ, TT.AMP_EQ, TT.PIPE_EQ, TT.CARET_EQ, TT.PIPE_GT, TT.PLUSPLUS, TT.DOTDOT, TT.DOTDOT_EQ, TT.FAT_ARROW
+    TT.PLUS, TT.MINUS, TT.STAR, TT.SLASH, TT.PERCENT, TT.POWER, TT.EQ, TT.NEQ, TT.LT, TT.GT, TT.LTE, TT.GTE, TT.AND, TT.OR, TT.BIT_AND, TT.BIT_OR, TT.BIT_XOR, TT.LSHIFT, TT.RSHIFT, TT.ASSIGN, TT.PLUS_EQ, TT.MINUS_EQ, TT.STAR_EQ, TT.SLASH_EQ, TT.PERCENT_EQ, TT.POWER_EQ, TT.LSHIFT_EQ, TT.RSHIFT_EQ, TT.AMP_EQ, TT.PIPE_EQ, TT.CARET_EQ, TT.PIPE_GT, TT.PLUSPLUS, TT.FAT_ARROW
 }
 _OPEN_DELIM  = {TT.LBRACE, TT.LBRACKET, TT.LPAREN}
 _CLOSE_DELIM = {TT.RBRACE, TT.RBRACKET, TT.RPAREN}
@@ -87,6 +87,11 @@ class Formatter:
         indent_level = 0
         prev: Token | None = None
         prev2: Token | None = None
+        # v2.1.1: context tracking for inline case arms and struct fields
+        _in_case       = False   # True after 'case <pat>' — next { stays inline
+        _struct_depths = []      # indent_levels at which struct bodies were opened
+        _brace_stack   = []      # 'dict' or 'block' for each open brace
+        _in_generic    = 0       # v2.1.1: depth counter for Array<T> generics
 
         def cur_indent():
             return ' ' * (indent_level * self.indent)
@@ -120,27 +125,87 @@ class Formatter:
 
             # ── opening brace → same line, then newline ──────────────────
             if tt == TT.LBRACE:
+                # v2.1.1: dict/object literal { stays inline when preceded by
+                # an assignment, operator, (, [, or , — not a block opener
+                _dict_ctx_types = {
+                    TT.ASSIGN, TT.PLUS_EQ, TT.MINUS_EQ,
+                    TT.LPAREN, TT.LBRACKET, TT.COMMA, TT.COLON,
+                    TT.PLUS, TT.MINUS, TT.STAR, TT.SLASH, TT.PERCENT,
+                    TT.RETURN, TT.FAT_ARROW,
+                }
+                _is_dict_literal = prev and prev.type in _dict_ctx_types
                 # Put { on same line with a space
                 if current_line and current_line[-1] not in ('', ' ', '\t'):
                     current_line.append(' ')
                 current_line.append('{')
                 indent_level += 1
+                # v2.1.1: track struct/interface bodies for field-separator newlines
+                # prev is the struct NAME (e.g. 'Player'), prev2 is the 'struct' keyword
+                if prev2 and _get_attr(prev2) in ('struct', 'interface', 'mixin'):
+                    _struct_depths.append(indent_level)
+                # v2.1.1: dict literal — keep contents on same line, don't flush
+                _brace_stack.append('dict' if _is_dict_literal else 'block')
+                if _is_dict_literal:
+                    prev = tok; i += 1
+                    continue
+                # v2.1.1: case arm inline — if _in_case, keep { expr } on same line
+                if _in_case:
+                    _in_case = False
+                    # Collect tokens until matching } into same line
+                    depth2 = 1; j = i + 1
+                    inline_toks = []
+                    while j < n and depth2 > 0:
+                        t2 = toks[j]
+                        if t2.type == TT.LBRACE: depth2 += 1
+                        elif t2.type == TT.RBRACE: depth2 -= 1
+                        if depth2 > 0: inline_toks.append(t2)
+                        j += 1
+                    # Only inline if content is simple (no newlines, single expr)
+                    has_nested = any(t2.type == TT.LBRACE for t2 in inline_toks)
+                    if not has_nested and len(inline_toks) <= 8:
+                        # Emit inline
+                        current_line.append(' ')
+                        for t2 in inline_toks:
+                            v2 = _get_attr(t2)
+                            if t2.type == TT.STRING: current_line.append('"'+v2+'"')
+                            elif t2.type == TT.FSTRING: current_line.append('$"'+v2+'"')
+                            else: current_line.append(str(v2) if v2 else t2.type.name.lower())
+                            current_line.append(' ')
+                        current_line.append('}')
+                        indent_level -= 1
+                        if _struct_depths and indent_level < _struct_depths[-1]:
+                            _struct_depths.pop()
+                        flush()
+                        prev = toks[j-1]; i = j
+                        continue
                 flush()
                 prev = tok; i += 1
                 continue
 
             # ── closing brace → dedent then } ────────────────────────────
             if tt == TT.RBRACE:
-                flush()
+                _brace_kind = _brace_stack.pop() if _brace_stack else 'block'
                 indent_level = max(0, indent_level - 1)
-                current_line.append(cur_indent() + '}')
-                # If next token is 'else', 'catch', 'finally' — stay on same line
-                if nxt and _get_attr(nxt) in ('else', 'catch', 'finally'):
-                    current_line.append(' ')
+                # v2.1.1: pop struct depth tracking
+                if _struct_depths and indent_level < _struct_depths[-1]:
+                    _struct_depths.pop()
+                if _brace_kind == 'dict':
+                    # Dict literal: emit } inline, no flush (keeps content on same line)
+                    current_line.append('}')
+                    prev = tok; i += 1
+                    continue
                 else:
-                    flush()
-                prev = tok; i += 1
-                continue
+                    # Block: flush pending content then emit } at correct indent
+                    if current_line and ''.join(current_line).strip():
+                        flush()
+                    current_line.append(cur_indent() + '}')
+                    # If next token is 'else', 'catch', 'finally' — stay on same line
+                    if nxt and _get_attr(nxt) in ('else', 'catch', 'finally'):
+                        current_line.append(' ')
+                    else:
+                        flush()
+                    prev = tok; i += 1
+                    continue
 
             # ── semicolons → newline ──────────────────────────────────────
             if tt == TT.SEMICOLON:
@@ -149,6 +214,14 @@ class Formatter:
                 continue
 
             # ── start of a new token on a new line ───────────────────────
+            # v2.1.1: struct field separator — flush before next field
+            # Must come BEFORE `if not current_line` so indent isn't doubled
+            if _struct_depths and indent_level == _struct_depths[-1]:
+                if (tt == TT.IDENT and nxt and nxt.type == TT.COLON and
+                        current_line and ''.join(current_line).strip()):
+                    flush()  # let `if not current_line` add the indent
+                    prev = None  # reset spacing context — fresh line
+
             if not current_line:
                 # blank line before top-level declarations (except first)
                 if needs_blank_before(tok) and result_lines and result_lines[-1] != '':
@@ -157,20 +230,24 @@ class Formatter:
 
             # ── spacing logic ─────────────────────────────────────────────
             needs_space = False
-            if prev is not None:
+            _line_is_indent_only = current_line and ''.join(current_line).strip() == ''
+            if prev is not None and not _line_is_indent_only:
                 ptt = prev.type
                 pv  = _get_attr(prev)
+                # v2.1.1: always space after colon (type annotations, dict literals)
+                if ptt == TT.COLON and tt not in _CLOSE_DELIM and tt != TT.COLON:
+                    needs_space = True
                 # Always space after comma
                 if ptt == TT.COMMA:
                     needs_space = True
                 # Space around binary ops
-                elif tt in _BINARY_OPS and pv not in ('', ' '):
+                elif tt in _BINARY_OPS and pv not in ('', ' ') and _in_generic == 0:
                     # Check it's actually binary (not unary minus after operator/open)
                     if ptt not in _OPEN_DELIM and ptt not in _BINARY_OPS:
                         needs_space = True
                     elif tt == TT.ASSIGN:
                         needs_space = True
-                elif ptt in _BINARY_OPS:
+                elif ptt in _BINARY_OPS and _in_generic == 0:
                     needs_space = True
                 # No space before these
                 elif tt in _NO_SPACE_BEFORE:
@@ -201,12 +278,42 @@ class Formatter:
 
             # ── emit token ────────────────────────────────────────────────
             if tt == TT.FSTRING:
-                current_line.append('f"' + v + '"')
+                # v2.1.1: always emit $"..." (preferred syntax since v1.9.15)
+                current_line.append('$"' + v + '"')
             elif tt == TT.STRING:
                 # Preserve original quotes
                 current_line.append('"' + v.replace('"', '\\"') + '"')
+            elif tt == TT.LT and prev and prev.type == TT.IDENT and _get_attr(prev) and _get_attr(prev)[0].isupper():
+                # v2.1.1: Array<T> — enter generic mode, suppress spaces around <>
+                if current_line and current_line[-1] == ' ':
+                    current_line.pop()
+                _in_generic += 1
+                current_line.append('<')
+                prev = tok; i += 1
+                continue
+            elif tt == TT.GT and _in_generic > 0:
+                # v2.1.1: closing generic >
+                _in_generic -= 1
+                current_line.append('>')
+                prev = tok; i += 1
+                continue
+            elif tt == TT.GTE and _in_generic > 0:
+                # v2.1.1: lexer fused '>=' — split into > (close generic) + = (assign)
+                _in_generic -= 1
+                current_line.append('>')
+                current_line.append(' ')
+                current_line.append('=')
+                current_line.append(' ')
+                prev = tok; i += 1
+                continue
             elif tt == TT.ARROW:
+                # v2.1.1: spaces around -> (return type annotation)
+                if current_line and current_line[-1] not in (' ', ''):
+                    current_line.append(' ')
                 current_line.append('->')
+                current_line.append(' ')
+                prev = tok; i += 1
+                continue
             elif tt == TT.FAT_ARROW:
                 current_line.append('=>')
             elif tt == TT.PLUSPLUS:
@@ -219,11 +326,28 @@ class Formatter:
                 current_line.append('?.')
             elif tt == TT.PIPE_GT:
                 current_line.append('|>')
-            elif v is not None:
+            elif v:
                 current_line.append(str(v))
             else:
                 current_line.append(tok.type.name.lower())
 
+            # v2.1.1: track CASE keyword for inline arm formatting
+            if tt == TT.CASE:
+                _in_case = True
+            elif _in_case and tt == TT.LBRACE:
+                pass  # handled above
+            elif _in_case and tt not in (
+                    TT.IDENT, TT.INT, TT.FLOAT, TT.STRING,
+                    TT.INT_TYPE, TT.FLOAT_TYPE, TT.STRING_TYPE, TT.BOOL_TYPE,
+                    TT.PIPE, TT.IF, TT.CASE, TT.NOT,
+                    TT.NIL, TT.BOOL,
+                    TT.DOTDOT, TT.DOTDOT_EQ,
+                    # guard expression operators: case h if h > 5
+                    TT.EQ, TT.NEQ, TT.LT, TT.GT, TT.LTE, TT.GTE,
+                    TT.AND, TT.OR, TT.PLUS, TT.MINUS, TT.STAR, TT.SLASH,
+                    TT.PERCENT, TT.LPAREN, TT.RPAREN):
+                _in_case = False
+            prev2 = prev
             prev = tok
             i += 1
 
