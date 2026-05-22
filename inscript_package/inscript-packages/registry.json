@@ -22,5 +22,29 @@
     "tags": ["animation", "tween", "easing", "game"],
     "min_inscript": "1.9.0",
     "author": "Shreyasi Sarkar"
+  },
+  "vector2": {
+    "version": "1.0.0",
+    "description": "2D vector math: len, normalise, dot, cross, add, sub, scale, dist, lerp, rotate, reflect, project",
+    "url": "https://raw.githubusercontent.com/authorss81/inscript-packages/main/packages/vector2/vector2.ins",
+    "tags": ["math", "vector", "2d", "game"],
+    "min_inscript": "2.1.2",
+    "author": "Shreyasi Sarkar"
+  },
+  "tween": {
+    "version": "1.0.0",
+    "description": "Value tweening and animation timers: tick, done, float/int/angle lerp, smooth/ease/elastic/bounce, loop, pingpong",
+    "url": "https://raw.githubusercontent.com/authorss81/inscript-packages/main/packages/tween/tween.ins",
+    "tags": ["animation", "tween", "easing", "game"],
+    "min_inscript": "2.1.2",
+    "author": "Shreyasi Sarkar"
+  },
+  "collision": {
+    "version": "1.0.0",
+    "description": "2D collision detection: circle/circle, aabb/aabb, circle/aabb, point tests, ray vs AABB",
+    "url": "https://raw.githubusercontent.com/authorss81/inscript-packages/main/packages/collision/collision.ins",
+    "tags": ["collision", "physics", "2d", "game"],
+    "min_inscript": "2.1.2",
+    "author": "Shreyasi Sarkar"
   }
 }
