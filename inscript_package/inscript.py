@@ -24,7 +24,7 @@ from errors   import (InScriptError, LexerError, ParseError,
                        SemanticError, InScriptRuntimeError,
                        MultiError, InScriptWarning)
 
-VERSION = "2.5.0"
+VERSION = "2.6.0"
 
 MANIFEST_FILENAME = "inscript.toml"
 LOCK_FILENAME     = "inscript.lock"
@@ -40,12 +40,470 @@ REGISTRY_URL = "https://raw.githubusercontent.com/authorss81/inscript-packages/m
 def _parse_pkg_spec(spec: str):
     """
     v1.9.9: Parse 'PKG@version' or just 'PKG'.
-    Returns (name, version_or_None).
+    v2.6.0: Also handles scoped packages '@scope/name' and '@scope/name@version'.
+    Examples:
+      'math-utils'            -> ('math-utils', None)
+      'math-utils@1.2.0'      -> ('math-utils', '1.2.0')
+      '@authorss81/ecs'       -> ('@authorss81/ecs', None)
+      '@authorss81/ecs@2.0.0' -> ('@authorss81/ecs', '2.0.0')
+    Returns (canonical_name, version_or_None).
     """
+    spec = spec.strip()
+    # Scoped package: starts with @scope/name, optional @version at the end
+    if spec.startswith("@"):
+        # Find the version separator — it's a '@' that comes AFTER the first '/'
+        slash_idx = spec.find("/")
+        if slash_idx == -1:
+            # Malformed scoped spec, treat whole thing as name
+            return spec, None
+        remainder = spec[slash_idx + 1:]  # name[@version]
+        scope = spec[:slash_idx + 1]       # @scope/
+        if "@" in remainder:
+            name_part, ver = remainder.split("@", 1)
+            return (scope + name_part).strip(), ver.strip()
+        return (scope + remainder).strip(), None
+    # Plain package, possibly with @version
     if "@" in spec:
-        idx  = spec.index("@")
-        return spec[:idx].strip(), spec[idx+1:].strip()
-    return spec.strip(), None
+        idx = spec.index("@")
+        return spec[:idx].strip(), spec[idx + 1:].strip()
+    return spec, None
+
+
+def _pkg_to_dir_name(pkg_name: str) -> str:
+    """v2.6.0: Convert canonical package name (possibly scoped) to a filesystem-safe dir name.
+    '@authorss81/ecs' -> '__authorss81__ecs'
+    'math-utils'      -> 'math-utils'
+    """
+    if pkg_name.startswith("@"):
+        return pkg_name.lstrip("@").replace("/", "__")
+    return pkg_name
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# v2.6.0: CONFIG — private registry and global preferences
+# ─────────────────────────────────────────────────────────────────────────────
+
+CONFIG_PATH = os.path.join(os.path.expanduser("~"), ".inscript", "config.json")
+
+
+def _read_config() -> dict:
+    """v2.6.0: Read ~/.inscript/config.json. Returns {} if missing."""
+    if not os.path.exists(CONFIG_PATH):
+        return {}
+    try:
+        import json as _j
+        with open(CONFIG_PATH, encoding="utf-8") as f:
+            return _j.load(f)
+    except Exception:
+        return {}
+
+
+def _write_config(data: dict) -> None:
+    """v2.6.0: Write ~/.inscript/config.json atomically."""
+    import json as _j
+    os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
+    tmp = CONFIG_PATH + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        _j.dump(data, f, indent=2)
+    os.replace(tmp, CONFIG_PATH)
+
+
+def _get_registry_url() -> str:
+    """v2.6.0: Return active registry URL (private registry overrides global default)."""
+    cfg = _read_config()
+    return cfg.get("registry", REGISTRY_URL)
+
+
+def cmd_config(args_rest: list) -> int:
+    """
+    v2.6.0: inscript config <subcommand> [args]
+    Subcommands:
+      set <key> <value>   — persist a config value
+      get <key>           — print a config value
+      list                — show all config values
+    Common keys:
+      registry   — private registry URL  (e.g. https://pkg.mygame.dev)
+      api_key    — API key for inscript publish
+    """
+    cfg = _read_config()
+    if not args_rest:
+        print("[InScript config] Usage: inscript --config set <key> <value>", file=sys.stderr)
+        return 1
+    sub = args_rest[0]
+    if sub == "list":
+        if not cfg:
+            print("[InScript config] No config values set. Using defaults.")
+        for k, v in sorted(cfg.items()):
+            masked = "*" * len(v) if "key" in k or "token" in k or "secret" in k else v
+            print(f"  {k} = {masked}")
+        return 0
+    if sub == "get":
+        if len(args_rest) < 2:
+            print("[InScript config] Usage: inscript --config get <key>", file=sys.stderr)
+            return 1
+        key = args_rest[1]
+        val = cfg.get(key)
+        if val is None:
+            print(f"[InScript config] '{key}' is not set (default will be used).")
+        else:
+            print(val)
+        return 0
+    if sub == "set":
+        if len(args_rest) < 3:
+            print("[InScript config] Usage: inscript --config set <key> <value>", file=sys.stderr)
+            return 1
+        key, value = args_rest[1], args_rest[2]
+        cfg[key] = value
+        _write_config(cfg)
+        masked = "*" * len(value) if "key" in key or "token" in key or "secret" in key else value
+        print(f"[InScript config] ✅ Set {key} = {masked}")
+        print(f"[InScript config] Config saved to {CONFIG_PATH}")
+        return 0
+    if sub == "unset":
+        if len(args_rest) < 2:
+            print("[InScript config] Usage: inscript --config unset <key>", file=sys.stderr)
+            return 1
+        key = args_rest[1]
+        if key not in cfg:
+            print(f"[InScript config] '{key}' was not set.")
+            return 0
+        del cfg[key]
+        _write_config(cfg)
+        print(f"[InScript config] ✅ Unset '{key}'.")
+        return 0
+    print(f"[InScript config] Unknown subcommand '{sub}'. Use: set, get, list, unset", file=sys.stderr)
+    return 1
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# v2.6.0: PUBLISH — upload a package to the registry
+# ─────────────────────────────────────────────────────────────────────────────
+
+def publish_package(directory: str = ".") -> int:
+    """
+    v2.6.0: inscript publish — pack and upload the current directory as an InScript package.
+
+    Requires:
+      - inscript.toml with [package] section (name, version, description)
+      - API key set via: inscript --config set api_key <token>
+      - Registry that supports PUT /packages/<name>@<version>
+
+    Steps:
+      1. Read inscript.toml [package] section
+      2. Validate package name, version, and .ins entry point
+      3. Bundle .ins files into a tar.gz archive
+      4. POST to registry endpoint with API key auth header
+      5. Report success / error
+    """
+    import json as _j, tarfile, io
+    manifest_path = os.path.join(directory, MANIFEST_FILENAME)
+    if not os.path.isfile(manifest_path):
+        print(f"[InScript publish] No '{MANIFEST_FILENAME}' found in '{directory}'.", file=sys.stderr)
+        print(f"[InScript publish] Run 'inscript --init' to create one.", file=sys.stderr)
+        return 1
+
+    try:
+        with open(manifest_path, encoding="utf-8") as f:
+            data = _parse_toml_simple(f.read())
+    except Exception as e:
+        print(f"[InScript publish] Cannot parse '{manifest_path}': {e}", file=sys.stderr)
+        return 1
+
+    pkg = data.get("package", {})
+    name    = pkg.get("name", "").strip()
+    version = pkg.get("version", "").strip()
+    desc    = pkg.get("description", "").strip()
+
+    if not name:
+        print("[InScript publish] 'name' is required in [package] section of inscript.toml.", file=sys.stderr)
+        return 1
+    if not version:
+        print("[InScript publish] 'version' is required in [package] section of inscript.toml.", file=sys.stderr)
+        return 1
+
+    cfg     = _read_config()
+    api_key = cfg.get("api_key", "").strip()
+    if not api_key:
+        print("[InScript publish] No API key configured.", file=sys.stderr)
+        print("[InScript publish] Run: inscript --config set api_key <your-token>", file=sys.stderr)
+        return 1
+
+    registry_base = _get_registry_url()
+    # Strip /registry.json suffix if present to get base URL
+    if registry_base.endswith("registry.json"):
+        registry_base = registry_base[: registry_base.rfind("/")]
+
+    # Collect .ins files in directory
+    ins_files = []
+    for root, _, files in os.walk(directory):
+        # Skip hidden dirs and __pycache__
+        if any(part.startswith(".") or part == "__pycache__" for part in root.split(os.sep)):
+            continue
+        for fn in files:
+            if fn.endswith(".ins"):
+                ins_files.append(os.path.join(root, fn))
+
+    if not ins_files:
+        print(f"[InScript publish] No .ins files found in '{directory}'.", file=sys.stderr)
+        return 1
+
+    print(f"[InScript publish] Packing {name}@{version} ({len(ins_files)} .ins file(s))...")
+
+    # Build in-memory tar.gz
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+        for path in ins_files:
+            arcname = os.path.relpath(path, directory)
+            tar.add(path, arcname=os.path.join(f"{name}-{version}", arcname))
+        # Include manifest
+        tar.add(manifest_path, arcname=os.path.join(f"{name}-{version}", MANIFEST_FILENAME))
+    payload = buf.getvalue()
+
+    import hashlib
+    sha256 = hashlib.sha256(payload).hexdigest()
+    print(f"[InScript publish] SHA-256: {sha256}")
+    print(f"[InScript publish] Bundle size: {len(payload):,} bytes")
+
+    # POST to registry
+    import urllib.request
+    upload_url = f"{registry_base}/publish"
+    req = urllib.request.Request(
+        upload_url,
+        data=payload,
+        method="POST",
+        headers={
+            "Content-Type": "application/octet-stream",
+            "X-InScript-Name": name,
+            "X-InScript-Version": version,
+            "X-InScript-Description": desc,
+            "X-InScript-SHA256": sha256,
+            "Authorization": f"Bearer {api_key}",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            body = resp.read().decode()
+            print(f"[InScript publish] ✅ Published {name}@{version}")
+            print(f"[InScript publish] Registry response: {body[:200]}")
+        return 0
+    except Exception as e:
+        # Provide actionable guidance even when the registry is not live yet
+        print(f"[InScript publish] Registry upload failed: {e}", file=sys.stderr)
+        print(f"[InScript publish] Package bundle is ready locally (SHA-256 verified).", file=sys.stderr)
+        print(f"[InScript publish] When the registry at {upload_url} is live, re-run this command.", file=sys.stderr)
+        return 1
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# v2.6.0: AUDIT — vulnerability scan for installed packages
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Well-known vulnerability advisory URL (same host as registry, advisory endpoint)
+ADVISORY_URL = "https://raw.githubusercontent.com/authorss81/inscript-packages/main/advisories.json"
+
+
+def audit_packages(project_dir: str = ".") -> int:
+    """
+    v2.6.0: inscript audit — scan installed packages against the advisory database.
+
+    Advisory format (advisories.json):
+      {
+        "math-utils": [
+          {"affected": "<1.0.1", "severity": "low", "description": "Off-by-one in gcd()", "fixed_in": "1.0.1"}
+        ]
+      }
+    Returns exit code 0 if no vulnerabilities, 1 if any found.
+    """
+    import urllib.request, json as _j
+    lock_path = os.path.join(project_dir, LOCK_FILENAME)
+    locked    = _read_lock(lock_path)
+
+    if not locked:
+        print("[InScript audit] No inscript.lock found. Run 'inscript lock' first.")
+        return 0
+
+    print(f"[InScript audit] Scanning {len(locked)} package(s)...")
+
+    # Fetch advisory database
+    advisory_url = _read_config().get("advisory_url", ADVISORY_URL)
+    try:
+        with urllib.request.urlopen(advisory_url, timeout=10) as resp:
+            advisories = _j.loads(resp.read().decode())
+    except Exception as e:
+        print(f"[InScript audit] Advisory database unavailable ({e}).", file=sys.stderr)
+        print(f"[InScript audit] Performing offline structural checks only...")
+        advisories = {}
+
+    vulnerabilities = []
+    for pkg_name, pkg_version in sorted(locked.items()):
+        pkg_advisories = advisories.get(pkg_name, [])
+        for adv in pkg_advisories:
+            affected_constraint = adv.get("affected", "")
+            try:
+                if _semver_satisfies(pkg_version, affected_constraint):
+                    vulnerabilities.append({
+                        "package": pkg_name,
+                        "version": pkg_version,
+                        "severity": adv.get("severity", "unknown"),
+                        "description": adv.get("description", ""),
+                        "fixed_in": adv.get("fixed_in", ""),
+                    })
+            except Exception:
+                pass  # Skip unparseable constraint
+
+        # Structural check: warn if package dir is missing (tampered/broken install)
+        dir_name = _pkg_to_dir_name(pkg_name)
+        pkg_dir  = os.path.join(PACKAGES_DIR, dir_name)
+        if not os.path.exists(pkg_dir):
+            print(f"  ⚠  {pkg_name}@{pkg_version} — installed in lock file but directory missing (run 'inscript install')")
+
+    if not vulnerabilities:
+        print(f"[InScript audit] ✅ No known vulnerabilities found in {len(locked)} package(s).")
+        return 0
+
+    # Group by severity
+    SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3, "unknown": 4}
+    vulnerabilities.sort(key=lambda v: (SEVERITY_ORDER.get(v["severity"], 4), v["package"]))
+
+    print(f"\n[InScript audit] ⚠  Found {len(vulnerabilities)} vulnerability/ies:\n")
+    for v in vulnerabilities:
+        sev  = v["severity"].upper()
+        fix  = f" → fixed in {v['fixed_in']}" if v["fixed_in"] else ""
+        print(f"  [{sev}] {v['package']}@{v['version']}: {v['description']}{fix}")
+
+    print(f"\n[InScript audit] Run 'inscript --update <pkg>' to upgrade affected packages.")
+    return 1
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# v2.6.0: MONOREPO / WORKSPACE SUPPORT
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _resolve_workspace_packages(project_dir: str) -> list:
+    """
+    v2.6.0: Read workspace = ["packages/*"] from inscript.toml and return
+    a list of (package_name, package_dir) for each matched workspace member.
+    Returns [] if no workspace key is set.
+    """
+    import glob as _glob
+    manifest_path = os.path.join(project_dir, MANIFEST_FILENAME)
+    if not os.path.isfile(manifest_path):
+        return []
+    try:
+        with open(manifest_path, encoding="utf-8") as f:
+            data = _parse_toml_simple(f.read())
+    except Exception:
+        return []
+
+    patterns = data.get("workspace", [])
+    # Also accept workspace declared inside the [package] section (common in practice)
+    if not patterns:
+        patterns = data.get("package", {}).get("workspace", [])
+    if isinstance(patterns, str):
+        patterns = [patterns]
+    if not patterns:
+        return []
+
+    members = []
+    for pattern in patterns:
+        full_pattern = os.path.join(project_dir, pattern)
+        for match in sorted(_glob.glob(full_pattern)):
+            if not os.path.isdir(match):
+                continue
+            member_manifest = os.path.join(match, MANIFEST_FILENAME)
+            if not os.path.isfile(member_manifest):
+                continue
+            try:
+                with open(member_manifest, encoding="utf-8") as f:
+                    mdata = _parse_toml_simple(f.read())
+                pkg_name = mdata.get("package", {}).get("name") or os.path.basename(match)
+                members.append((pkg_name, match))
+            except Exception:
+                members.append((os.path.basename(match), match))
+    return members
+
+
+def workspace_install(project_dir: str = ".") -> int:
+    """
+    v2.6.0: Install dependencies for all workspace members.
+    Reads workspace = ["packages/*"] from root inscript.toml.
+    """
+    members = _resolve_workspace_packages(project_dir)
+    if not members:
+        # Fall back to regular install if no workspace defined
+        return install_all_from_toml(project_dir)
+
+    print(f"[InScript workspace] Found {len(members)} workspace member(s):")
+    for name, path in members:
+        rel = os.path.relpath(path, project_dir)
+        print(f"  • {name}  ({rel})")
+
+    failed = 0
+    for pkg_name, pkg_dir in members:
+        print(f"\n[InScript workspace] Installing deps for '{pkg_name}'...")
+        ret = install_all_from_toml(pkg_dir)
+        if ret != 0:
+            failed += 1
+
+    if failed:
+        print(f"\n[InScript workspace] {failed} member(s) had install failures.", file=sys.stderr)
+        return 1
+    print(f"\n[InScript workspace] ✅ All {len(members)} workspace members installed.")
+    return 0
+
+
+def workspace_list(project_dir: str = ".") -> int:
+    """v2.6.0: List all workspace members and their versions."""
+    members = _resolve_workspace_packages(project_dir)
+    if not members:
+        print("[InScript workspace] No workspace members found.")
+        print(f"[InScript workspace] Add 'workspace = [\"packages/*\"]' to {MANIFEST_FILENAME}")
+        return 0
+
+    print(f"[InScript workspace] {len(members)} member(s):\n")
+    for pkg_name, pkg_dir in members:
+        lock_path = os.path.join(pkg_dir, LOCK_FILENAME)
+        locked    = _read_lock(lock_path) if os.path.isfile(lock_path) else {}
+        rel       = os.path.relpath(pkg_dir, project_dir)
+        deps_str  = f"{len(locked)} locked dep(s)" if locked else "no lock file"
+        print(f"  {pkg_name}  [{rel}]  — {deps_str}")
+    return 0
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# v2.6.0: STDLIB VERSIONING
+# ─────────────────────────────────────────────────────────────────────────────
+
+def check_stdlib_version(project_dir: str = ".") -> int:
+    """
+    v2.6.0: Verify that the running InScript stdlib version satisfies the
+    constraint declared in inscript.toml [package] stdlib = ">=2.5.0".
+    Prints a warning (not a hard error) on mismatch so old projects still run.
+    """
+    manifest_path = os.path.join(project_dir, MANIFEST_FILENAME)
+    if not os.path.isfile(manifest_path):
+        return 0
+    try:
+        with open(manifest_path, encoding="utf-8") as f:
+            data = _parse_toml_simple(f.read())
+    except Exception:
+        return 0
+
+    required_stdlib = data.get("package", {}).get("stdlib", "").strip()
+    if not required_stdlib:
+        return 0
+
+    try:
+        ok = _semver_satisfies(VERSION, required_stdlib)
+    except Exception:
+        print(f"[InScript] Warning: could not parse stdlib constraint '{required_stdlib}' in {MANIFEST_FILENAME}")
+        return 0
+
+    if not ok:
+        print(f"[InScript] ⚠  stdlib version mismatch: running v{VERSION}, project requires stdlib {required_stdlib}")
+        print(f"[InScript]    Upgrade InScript or change the 'stdlib' field in {MANIFEST_FILENAME}")
+        return 1
+    return 0
 
 
 def _read_lock(lock_path: str) -> dict:
@@ -2245,6 +2703,17 @@ Examples:
                         help="Search the registry: inscript --search math")
     parser.add_argument("--info", metavar="PKG",
                         help="Show package info: inscript --info math-utils")
+    # v2.6.0: publish, audit, config, workspace, stdlib-check
+    parser.add_argument("--publish", metavar="DIR", nargs="?", const=".",
+                        help="v2.6.0: Publish package in DIR (default: current dir)")
+    parser.add_argument("--audit", metavar="DIR", nargs="?", const=".",
+                        help="v2.6.0: Scan installed packages for vulnerabilities")
+    parser.add_argument("--config", metavar="ARGS", nargs="+",
+                        help="v2.6.0: Config: set/get/list/unset. E.g. --config set registry <url>")
+    parser.add_argument("--workspace", metavar="CMD", nargs="?", const="install",
+                        help="v2.6.0: Workspace commands: install, list (default: install)")
+    parser.add_argument("--stdlib-check", metavar="DIR", nargs="?", const=".",
+                        help="v2.6.0: Verify stdlib version satisfies inscript.toml constraint")
     parser.add_argument("--lsp", action="store_true",
                         help="Start the Language Server (requires: pip install pygls)")
     parser.add_argument("--game", action="store_true",
@@ -2420,6 +2889,21 @@ Examples:
     if getattr(args, 'spec', None) is not None or '--spec' in sys.argv:
         out = args.spec if hasattr(args, 'spec') and isinstance(args.spec, str) else None
         return _generate_spec(output_path=out)
+
+    # ── v2.6.0 commands ───────────────────────────────────────────────────────
+    if getattr(args, 'publish', None) is not None:
+        return publish_package(args.publish)
+    if getattr(args, 'audit', None) is not None:
+        return audit_packages(args.audit)
+    if getattr(args, 'config', None) is not None:
+        return cmd_config(args.config)
+    if getattr(args, 'workspace', None) is not None:
+        sub = args.workspace or "install"
+        if sub == "list":
+            return workspace_list(".")
+        return workspace_install(".")
+    if getattr(args, 'stdlib_check', None) is not None:
+        return check_stdlib_version(args.stdlib_check)
 
     # v1.9.1: --no-typecheck is deprecated — emit a warning and honour it
     if getattr(args, 'no_typecheck', False):

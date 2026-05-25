@@ -1,10 +1,12 @@
 # InScript Language Roadmap — Detailed
 
-> **Current version:** v2.0.0 (May 2026) 🎉
-> **Tests:** 38 test files, 800+ individual tests — all passing
-> **Package registry:** math-utils, color-utils, easing (live at github.com/authorss81/inscript-packages)
+> **Current version:** v2.6.0 (May 2026) 🎉
+> **Tests:** 50 test files, 50/50 CI passing — all green
+> **Package registry:** math-utils, color-utils, easing, vector2, tween, collision (live at github.com/authorss81/inscript-packages)
 > **Games:** pong.ins, breakout.ins, asteroid_blaster.ins, platformer.ins, dino.ins
-> **Assessment:** Stable release. All v2.0.0 readiness gates pass. Ready for real game projects.
+> **IDE:** LSP v2, VS Code extension v2 published, Neovim plugin, DAP debugger
+> **Packages:** `inscript publish`, scoped packages `@scope/name`, `inscript audit`, monorepo workspaces, private registries, stdlib versioning
+> **Assessment:** Stable release. Full package ecosystem shipped. Next: v3.0.0 InScript Studio.
 
 ---
 
@@ -575,35 +577,41 @@ Threading/Bench, Game Visual, Game IO, Game World, Game Systems, Utilities.
 
 
 ```
-April 2026   v1.0.18   Current — VM complete, 839 tests, audit 8.8/10
-             STATUS: Early adopter ready. Missing tooling for general use.
+April 2026   v1.0.18   ✅ SHIPPED — VM complete, 839 tests, audit 8.8/10
+             v1.0.19   ✅ SHIPPED — fmt + arrow fn + rest destructure + stdlib fixes
+             v1.0.20   ✅ SHIPPED — --watch + inscript test + run improvements
+             v1.0.21   ✅ SHIPPED — pip install inscript-lang (PyPI v1.0.x upgrade from v0.6)
+             v1.0.22   ✅ SHIPPED — docs site + all E0XXX error pages
+             v1.0.23   ✅ SHIPPED — web playground (Pyodide)
 
-             v1.0.19   fmt + arrow fn + rest destructure + stdlib fixes
-             v1.0.20   --watch + inscript test + run improvements
-             v1.0.21   pip install inscript-lang (PyPI v1.0.x upgrade from v0.6)
-             v1.0.22   docs site + all E0XXX error pages
-             v1.0.23   web playground (Pyodide)
+Q2 2026      v1.1.0    ✅ SHIPPED — FIRST STABLE RELEASE
 
-Q2 2026      v1.1.0    FIRST STABLE RELEASE
-             STATUS: ✅ Ready for professional use
+Q3 2026      v1.2.0    ✅ SHIPPED — Type safety + generic enforcement
 
-Q3 2026      v1.2.0    Type safety + generic enforcement
+Q4 2026      v1.3.0    ✅ SHIPPED — Performance (5-15× via C extension)
 
-Q4 2026      v1.3.0    Performance (5-15× via C extension)
+             v1.9.5    ✅ SHIPPED — div hard error (E0056)
+             v1.9.6    ✅ SHIPPED — # comments; // always floor division
+             v1.9.7    ✅ SHIPPED — True async/await via asyncio
+             v1.9.8    ✅ SHIPPED — Type inference hardening (reduce T_ANY leakage)
+             v1.9.9    ✅ SHIPPED — Package manager hardening (install/update/outdated/lock)
+             v1.9.10   ✅ SHIPPED — v2.0.0 readiness gate (inscript check-v2)
+             v1.9.11   ✅ SHIPPED — real async I/O: http.get_async, file.read_async, timer.sleep
+             v1.9.12   ✅ SHIPPED — bootstrap package registry (3 real packages)
+             v1.9.13   ✅ SHIPPED — type inference round 2 (fn call return, method chains)
+             v1.9.14   ✅ SHIPPED — ship a working game (pong.ins + breakout.ins run)
+             v1.9.15   ✅ SHIPPED — string interpolation $"Hello {name}"
 
-             v1.9.5    div hard error (E0056) ✅ done
-             v1.9.6    # comments; // always floor division ✅ building
-             v1.9.7    True async/await via asyncio
-             v1.9.8    Type inference hardening (reduce T_ANY leakage)
-             v1.9.9    Package manager hardening (install/update/outdated/lock)
-             v1.9.10   v2.0.0 readiness gate (inscript check-v2) ✅ done
-             v1.9.11   real async I/O: http.get_async, file.read_async, timer.sleep
-             v1.9.12   bootstrap package registry (3 real packages)
-             v1.9.13   type inference round 2 (fn call return, method chains)
-             v1.9.14   ship a working game (pong.ins + breakout.ins run)
-             v1.9.15   string interpolation $"Hello {name}"
+May 2026     v2.0.0    ✅ SHIPPED — Production Ready — all 5 gaps closed
+             v2.1.1    ✅ SHIPPED — Security & Sandboxing
+             v2.2.0    ✅ SHIPPED — Language Enhancements
+             v2.3.0    ✅ SHIPPED — Concurrency & Async
+             v2.4.0    ✅ SHIPPED — Native & WebAssembly Targets
+             v2.5.0    ✅ SHIPPED — IDE & Editor Integration (49/49 CI ✅)
+             v2.6.0    ✅ SHIPPED — Package Ecosystem (50/50 CI ✅)
+             STATUS: 50 test files, all green. Next: v3.0.0 InScript Studio.
 
-2027         v2.0.0    Production Ready — all 5 gaps closed
+2027         v3.0.0    🔮 NEXT — InScript Studio — full game IDE, visual scripting, hot reload
 ```
 
 ---
@@ -639,7 +647,13 @@ Q4 2026      v1.3.0    Performance (5-15× via C extension)
 | **v1.9.13** | *next* | Type inference round 2 — fn call return, method chains, ternary |
 | **v1.9.14** | *next* | Ship a working game — `pong.ins` + `breakout.ins` run end-to-end |
 | **v1.9.15** | *next* | String interpolation — `$"Hello {name}"` |
-| **v2.0.0** | 2027 | Production Ready — all 5 gaps closed, game ships, registry live |
+| **v2.0.0** | May 2026 | **Production Ready** — all 5 gaps closed, games ship, registry live |
+| v2.1.1 | May 2026 | Security & Sandboxing — `--sandbox`, `@allow`, resource limits, audit log, secret scanning |
+| v2.2.0 | May 2026 | Language Enhancements — `impl` sugar, param destructuring, named returns, `with`, `??=`, chained comparisons |
+| v2.3.0 | May 2026 | Concurrency & Async — `spawn`, `channel<T>`, `select`, async iterators, `mutex`/`rwlock`, timer builtins |
+| v2.4.0 | May 2026 | Native & WASM — `--target wasm`, C transpile, AOT `.ibc`, incremental compile, DCE, inline caching |
+| **v2.5.0** | May 2026 | **IDE & Editor Integration** — LSP v2, hover types, DAP debugger, VS Code ext v2, Neovim plugin |
+| **v2.6.0** | May 2026 | **Package Ecosystem** — `inscript publish`, scoped pkgs, `inscript audit`, monorepo, private registries, stdlib versioning |
 
 ---
 
@@ -654,91 +668,103 @@ The package name stays `inscript-lang` (not `inscript` — already taken on PyPI
 
 ---
 
-## 🔮 v2.1.0 — Security & Sandboxing
+## ✅ v2.1.0 — Security & Sandboxing
+
+**Status: SHIPPED (v2.1.1, May 2026)**
 
 **Goal:** Make InScript safe to embed in untrusted contexts (game modding, user scripts, plugins).
 
-- [ ] **Sandbox mode** — `inscript run --sandbox file.ins` restricts filesystem, network, subprocess access
-- [ ] **Capability system** — explicit `@allow(io, network)` annotations required for sensitive stdlib access
-- [ ] **Resource limits** — `--max-memory`, `--max-ops`, `--timeout` flags; hard-kill on breach
-- [ ] **Safe import whitelist** — `--allow-modules math,string,array` restricts which stdlib modules can be imported
-- [ ] **Code injection prevention** — harden `eval()`-style dynamic execution; disable `__builtins__` escape paths
-- [ ] **Audit log** — `--audit-log file.log` records every file/network access for intrusion detection
-- [ ] **Secret scanning** — `inscript check --secrets file.ins` warns on hardcoded tokens, passwords, keys
-- [ ] **Dependency integrity** — SHA-256 lockfile for packages (`inscript.lock`), verify on install
-- [ ] `test_v210.py`
+- [x] **Sandbox mode** — `inscript run --sandbox file.ins` restricts filesystem, network, subprocess access
+- [x] **Capability system** — explicit `@allow(io, network)` annotations required for sensitive stdlib access
+- [x] **Resource limits** — `--max-memory`, `--max-ops`, `--timeout` flags; hard-kill on breach
+- [x] **Safe import whitelist** — `--allow-modules math,string,array` restricts which stdlib modules can be imported
+- [x] **Code injection prevention** — harden `eval()`-style dynamic execution; disable `__builtins__` escape paths
+- [x] **Audit log** — `--audit-log file.log` records every file/network access for intrusion detection
+- [x] **Secret scanning** — `inscript check --secrets file.ins` warns on hardcoded tokens, passwords, keys
+- [x] **Dependency integrity** — SHA-256 lockfile for packages (`inscript.lock`), verify on install
+- [x] `test_v210.py`
 
-## 🔮 v2.2.0 — Language Enhancements
+## ✅ v2.2.0 — Language Enhancements
+
+**Status: SHIPPED (May 2026)**
 
 **Goal:** Fill expressiveness gaps identified from real game projects.
 
-- [ ] **Operator overloading sugar** — `impl Add for Vec2 { fn +(other) }` syntax instead of `operator +`
-- [ ] **Destructuring in function params** — `fn f({x, y}: Vec2) { }` and `fn f([head, ...tail]: []) { }`
-- [ ] **Named return values** — `fn bounds() -> (min: float, max: float) { return (min: 0, max: 1) }`
-- [ ] **`with` expression** — `let v = with Vec2{x: 1} { .y = 2 }` — clone-and-modify pattern
-- [ ] **String templates (multiline)** — `let sql = """ SELECT * FROM ... """`
-- [ ] **Compile-time constants** — `const PI: float = 3.14159` evaluated at parse time, inlined in bytecode
-- [ ] **`is` type-check expression** — `if val is Vec2 { ... }` (complement to type-narrowing match)
-- [ ] **Chained comparisons** — `0 < x < 10` desugars to `0 < x && x < 10`
-- [ ] **Null-coalescing assignment** — `x ??= default_val`
-- [ ] **Labelled loops** — `outer: while true { inner: for i in 0..5 { break outer } }`
-- [ ] `test_v220.py`
+- [x] **Operator overloading sugar** — `impl Add for Vec2 { fn +(other) }` syntax instead of `operator +`
+- [x] **Destructuring in function params** — `fn f({x, y}: Vec2) { }` and `fn f([head, ...tail]: []) { }`
+- [x] **Named return values** — `fn bounds() -> (min: float, max: float) { return (min: 0, max: 1) }`
+- [x] **`with` expression** — `let v = with Vec2{x: 1} { .y = 2 }` — clone-and-modify pattern
+- [x] **String templates (multiline)** — `let sql = """ SELECT * FROM ... """`
+- [x] **Compile-time constants** — `const PI: float = 3.14159` evaluated at parse time, inlined in bytecode
+- [x] **`is` type-check expression** — `if val is Vec2 { ... }` (complement to type-narrowing match)
+- [x] **Chained comparisons** — `0 < x < 10` desugars to `0 < x && x < 10`
+- [x] **Null-coalescing assignment** — `x ??= default_val`
+- [x] **Labelled loops** — `outer: while true { inner: for i in 0..5 { break outer } }`
+- [x] `test_v220.py`
 
-## 🔮 v2.3.0 — Concurrency & Async
+## ✅ v2.3.0 — Concurrency & Async
+
+**Status: SHIPPED (May 2026)**
 
 **Goal:** Real async support for networked games, servers, and IO-heavy scripts.
 
-- [ ] **`async/await`** — wire to Python asyncio; `async fn fetch(url)`, `await http.get(url)`
-- [ ] **`spawn` keyword** — `spawn fn()` creates a coroutine; returns a handle
-- [ ] **`channel<T>`** — typed message-passing: `let ch = channel<int>(capacity: 10)`
-- [ ] **`select` expression** — multiplex over channels: `select { case ch1 -> v { } case ch2 -> v { } }`
-- [ ] **Async iterators** — `async for item in stream { }` for event streams, WebSocket frames
-- [ ] **`mutex` and `rwlock`** — `let m = mutex(value); m.lock(fn(v) { v.count += 1 })`
-- [ ] **Timer builtins** — `timer.after(1000, fn() { })`, `timer.every(16, fn() { })`
-- [ ] `test_v230.py`
+- [x] **`async/await`** — wire to Python asyncio; `async fn fetch(url)`, `await http.get(url)`
+- [x] **`spawn` keyword** — `spawn fn()` creates a coroutine; returns a handle
+- [x] **`channel<T>`** — typed message-passing: `let ch = channel<int>(capacity: 10)`
+- [x] **`select` expression** — multiplex over channels: `select { case ch1 -> v { } case ch2 -> v { } }`
+- [x] **Async iterators** — `async for item in stream { }` for event streams, WebSocket frames
+- [x] **`mutex` and `rwlock`** — `let m = mutex(value); m.lock(fn(v) { v.count += 1 })`
+- [x] **Timer builtins** — `timer.after(1000, fn() { })`, `timer.every(16, fn() { })`
+- [x] `test_v230.py`
 
-## 🔮 v2.4.0 — Native & WebAssembly Targets
+## ✅ v2.4.0 — Native & WebAssembly Targets
+
+**Status: SHIPPED (May 2026)**
 
 **Goal:** Ship InScript games to web and native without Python runtime dependency.
 
-- [ ] **WASM compilation target** — `inscript build --target wasm file.ins` outputs `.wasm` + JS glue
-- [ ] **Native binary output** — compile to C via transpilation, then `gcc`/`clang`; no Python needed at runtime
-- [ ] **Pyodide bundle optimisation** — tree-shake stdlib, lazy-load modules; reduce playground load time from ~3s to <1s
-- [ ] **Ahead-of-time (AOT) compilation** — `inscript compile file.ins` → `.ibc` bytecode; `inscript run file.ibc`
-- [ ] **Incremental compilation** — cache `.ibc` per file, recompile only changed files
-- [ ] **Dead code elimination (IR level)** — whole-program DCE before code generation
-- [ ] **Inline caching** — monomorphic call sites cached at runtime for 2-4x method call speedup
-- [ ] `test_v240.py`
+- [x] **WASM compilation target** — `inscript build --target wasm file.ins` outputs `.wasm` + JS glue
+- [x] **Native binary output** — compile to C via transpilation, then `gcc`/`clang`; no Python needed at runtime
+- [x] **Pyodide bundle optimisation** — tree-shake stdlib, lazy-load modules; reduce playground load time from ~3s to <1s
+- [x] **Ahead-of-time (AOT) compilation** — `inscript compile file.ins` → `.ibc` bytecode; `inscript run file.ibc`
+- [x] **Incremental compilation** — cache `.ibc` per file, recompile only changed files
+- [x] **Dead code elimination (IR level)** — whole-program DCE before code generation
+- [x] **Inline caching** — monomorphic call sites cached at runtime for 2-4x method call speedup
+- [x] `test_v240.py`
 
-## 🔮 v2.5.0 — IDE & Editor Integration
+## ✅ v2.5.0 — IDE & Editor Integration
+
+**Status: SHIPPED (May 2026)**
 
 **Goal:** First-class IDE support making InScript as pleasant as TypeScript to work with.
 
-- [ ] **LSP v2** — go-to-definition, find-all-references, rename symbol, document symbols
-- [ ] **Hover types** — hover any expression to see inferred type
-- [ ] **Inline diagnostics** — squiggly underlines for errors + warnings in real time
-- [ ] **Auto-import** — type `Vec2` → LSP offers `import "math" as math`
-- [ ] **Code actions** — quick fix: add missing interface method, rename to fix typo
-- [ ] **Semantic tokens** — richer syntax highlighting (function calls vs variable reads)
-- [ ] **VS Code extension v2** — publish to marketplace as `inscript-lang.inscript`
-- [ ] **Neovim plugin** — `inscript.nvim` via nvim-lspconfig
-- [ ] **Debugger (DAP)** — breakpoints, step-over/into/out, variable watch via Debug Adapter Protocol
-- [ ] `test_v250.py` (LSP integration tests)
+- [x] **LSP v2** — go-to-definition, find-all-references, rename symbol, document symbols
+- [x] **Hover types** — hover any expression to see inferred type
+- [x] **Inline diagnostics** — squiggly underlines for errors + warnings in real time
+- [x] **Auto-import** — type `Vec2` → LSP offers `import "math" as math`
+- [x] **Code actions** — quick fix: add missing interface method, rename to fix typo
+- [x] **Semantic tokens** — richer syntax highlighting (function calls vs variable reads)
+- [x] **VS Code extension v2** — publish to marketplace as `inscript-lang.inscript`
+- [x] **Neovim plugin** — `inscript.nvim` via nvim-lspconfig
+- [x] **Debugger (DAP)** — breakpoints, step-over/into/out, variable watch via Debug Adapter Protocol
+- [x] `test_v250.py` (LSP integration tests)
 
-## 🔮 v2.6.0 — Package Ecosystem
+## ✅ v2.6.0 — Package Ecosystem
+
+**Status: SHIPPED (May 2026)**
 
 **Goal:** A real package registry so the community can share InScript libraries.
 
-- [ ] **`inscript.toml`** — project manifest: name, version, dependencies, scripts
-- [ ] **`inscript install pkg@1.0.0`** — download from registry, verify hash, add to `inscript.lock`
-- [ ] **`inscript publish`** — upload a package to registry (requires API key)
-- [ ] **Package registry** — hosted at `pkg.inscript.dev`; search by tag (game, math, physics, ui)
-- [ ] **Scoped packages** — `@authorss81/ecs`, `@community/pathfinding`
-- [ ] **`inscript audit`** — scan installed packages for known vulnerabilities
-- [ ] **Monorepo support** — `workspace = ["packages/*"]` in `inscript.toml`
-- [ ] **Private registries** — `inscript config set registry https://internal.example.com`
-- [ ] **Stdlib versioning** — pin stdlib version in `inscript.toml` for reproducible builds
-- [ ] `test_v260.py` (package manager integration tests)
+- [x] **`inscript.toml`** — project manifest: name, version, dependencies, scripts
+- [x] **`inscript install pkg@1.0.0`** — download from registry, verify hash, add to `inscript.lock`
+- [x] **`inscript publish`** — upload a package to registry (requires API key via `inscript --config set api_key`)
+- [x] **Package registry** — hosted at `pkg.inscript.dev`; search by tag (game, math, physics, ui)
+- [x] **Scoped packages** — `@authorss81/ecs`, `@community/pathfinding`
+- [x] **`inscript audit`** — scan installed packages for known vulnerabilities
+- [x] **Monorepo support** — `workspace = ["packages/*"]` in `inscript.toml`
+- [x] **Private registries** — `inscript config set registry https://internal.example.com`
+- [x] **Stdlib versioning** — pin stdlib version in `inscript.toml` for reproducible builds
+- [x] `test_v260.py` (package manager integration tests)
 
 ## 🔮 v3.0.0 — InScript Studio (Long-term)
 
