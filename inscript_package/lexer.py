@@ -40,6 +40,11 @@ class TT(Enum):
     ON_UPDATE   = auto()
     ON_DRAW     = auto()
     ON_EXIT     = auto()
+    # v2.7.0 — Scene System
+    NODE        = auto()   # node keyword
+    ON_READY    = auto()   # _ready lifecycle
+    ON_NODE_UPDATE = auto()  # _update lifecycle (node variant)
+    ON_NODE_DRAW   = auto()  # _draw  lifecycle (node variant)
     INT_TYPE    = auto()
     FLOAT_TYPE  = auto()
     BOOL_TYPE   = auto()
@@ -169,6 +174,11 @@ KEYWORDS: dict = {
     "on_update": TT.ON_UPDATE,
     "on_draw":   TT.ON_DRAW,
     "on_exit":   TT.ON_EXIT,
+    # v2.7.0
+    "node":      TT.NODE,
+    "_ready":    TT.ON_READY,
+    "_update":   TT.ON_NODE_UPDATE,
+    "_draw":     TT.ON_NODE_DRAW,
     "int":       TT.INT_TYPE,
     "float":     TT.FLOAT_TYPE,
     "bool":      TT.BOOL_TYPE,

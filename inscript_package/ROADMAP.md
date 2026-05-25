@@ -1,12 +1,9 @@
 # InScript Language Roadmap — Detailed
 
-> **Current version:** v2.6.0 (May 2026) 🎉
-> **Tests:** 50 test files, 50/50 CI passing — all green
-> **Package registry:** math-utils, color-utils, easing, vector2, tween, collision (live at github.com/authorss81/inscript-packages)
-> **Games:** pong.ins, breakout.ins, asteroid_blaster.ins, platformer.ins, dino.ins
-> **IDE:** LSP v2, VS Code extension v2 published, Neovim plugin, DAP debugger
-> **Packages:** `inscript publish`, scoped packages `@scope/name`, `inscript audit`, monorepo workspaces, private registries, stdlib versioning
-> **Assessment:** Stable release. Full package ecosystem shipped. Next: v3.0.0 InScript Studio.
+> **Current version:** v2.8.0 (May 2026) 🎉
+> **Tests:** 53 test files, 53/53 CI passing — all green
+> **Assets:** `@texture/@sound/@tilemap/@font` decorators, `AssetRegistry`, `--asset-manifest`, `--bundle`, hot-reload mtime watching
+> **Assessment:** Asset pipeline complete. 4 more versions before v3.0.0. Next: v2.9.0 Hot Reload.
 
 ---
 
@@ -609,9 +606,11 @@ May 2026     v2.0.0    ✅ SHIPPED — Production Ready — all 5 gaps closed
              v2.4.0    ✅ SHIPPED — Native & WebAssembly Targets
              v2.5.0    ✅ SHIPPED — IDE & Editor Integration (49/49 CI ✅)
              v2.6.0    ✅ SHIPPED — Package Ecosystem (50/50 CI ✅)
-             STATUS: 50 test files, all green. Next: v3.0.0 InScript Studio.
+             v2.7.0    ✅ SHIPPED — Scene System (51/51 CI ✅)
+             v2.8.0    ✅ SHIPPED — Asset Pipeline (53/53 CI ✅)
+             STATUS: 53 test files, all green. Next: v2.9.0 Hot Reload.
 
-2027         v3.0.0    🔮 NEXT — InScript Studio — full game IDE, visual scripting, hot reload
+2027         v3.0.0    🔮 — InScript Studio (Electron IDE, visual scripting, hot reload)
 ```
 
 ---
@@ -766,7 +765,24 @@ The package name stays `inscript-lang` (not `inscript` — already taken on PyPI
 - [x] **Stdlib versioning** — pin stdlib version in `inscript.toml` for reproducible builds
 - [x] `test_v260.py` (package manager integration tests)
 
-## 🔮 v3.0.0 — InScript Studio (Long-term)
+## ✅ v2.7.0 — Scene System
+
+**Status: SHIPPED (May 2026)**
+
+**Goal:** A proper scene tree that v3.0.0 Studio can edit. Without this the Studio's scene editor has nothing to work with.
+
+- [x] **`node` keyword** — `node PlayerNode { _ready() {} _update(dt) {} _draw() {} }` — lexer, parser, `NodeDecl` AST
+- [x] **`NodeBlueprint`** — immutable compiled description; registered in interpreter env by name
+- [x] **`NodeInstance`** — live instance; isolated `_props` dict so 100s of instances can coexist
+- [x] **`_ready` / `_update(dt)` / `_draw`** — node lifecycle hooks with depth-first propagation
+- [x] **Scene tree ops** — `add_child`, `remove_child`, `get_node`, `get_children`, `child_count`, reparenting
+- [x] **`SceneTree`** — root container; drives `start` / `update(dt)` / `draw` / `stop`
+- [x] **`SceneManager`** — `switch_to`, `push`, `pop`, scene stack, frame-safe pending transitions
+- [x] **`scene_manager`** — bound in game env; callable from .ins scripts
+- [x] **`.inscene` serialisation** — `save_inscene(tree, path)` / `load_inscene(path, sm)` — human-editable TOML-like format
+- [x] **Backward compat** — legacy `scene GameScene { on_start ... }` unchanged
+- [x] **`scene_tree.py`** — new module (450 lines)
+- [x] `test_v270.py` (62/62)
 
 **Goal:** A complete game development environment built around InScript.
 
@@ -780,3 +796,93 @@ The package name stays `inscript-lang` (not `inscript` — already taken on PyPI
 - [ ] **Mobile export** — iOS/Android via Kivy or BeeWare bridge
 - [ ] **Console export** — Nintendo Switch / PlayStation via platform SDK wrappers
 
+
+---
+
+## ✅ v2.8.0 — Asset Pipeline
+
+**Status: SHIPPED (May 2026)**
+
+**Goal:** `@texture`, `@sound`, `@tilemap`, `@font` annotations + `AssetRegistry`. Studio's asset browser needs this before v3.0.0.
+
+- [x] **`AssetHandle`** — lazy-loading descriptor; type-validated; SHA-256 integrity; `exists()`, `reload()`
+- [x] **`AssetRegistry`** — global singleton; `load_all(base_dir)`, `check_for_changes()` (mtime hot-reload), `clear()`
+- [x] **`asset` stdlib module** — `asset.texture(path)`, `asset.sound(path)`, `asset.tilemap(path)`, `asset.font(path, size)`
+- [x] **`@texture` / `@sound` / `@tilemap` / `@font`** — decorator form on `let` decl; special-cased in `visit_DecoratedDecl`
+- [x] **`asset.registry`** proxy — `count()`, `all()`, `load_all()`, `export_manifest()`, `bundle()` callable from InScript
+- [x] **`export_manifest(path)`** — writes `assets.toml` with type, path, SHA-256, exists for every asset
+- [x] **`bundle(src, dest)`** — copies all referenced asset files; skip_missing flag; copy summary
+- [x] **`--watch` hot-reload** — after each .ins save, calls `check_for_changes()` on all registered assets
+- [x] **`--asset-manifest DIR`** — CLI command; runs .ins, dumps `assets.toml` to DIR
+- [x] **`--bundle DIR`** — CLI command; runs .ins, copies assets to `DIR/dist/assets`
+- [x] **`stdlib_assets.py`** — new module (240 lines)
+- [x] `test_v280.py` (72/72)
+
+---
+
+## 🔮 v2.9.0 — Hot Reload
+
+**Goal:** True state-preserving hot reload for game development iteration speed. Studio's live preview depends on this.
+
+- [ ] **Module-level hot reload** — `inscript run --hot file.ins`; file watcher detects saves
+- [ ] **Function patching** — reparse changed functions, patch interpreter env; running code picks up new version next frame
+- [ ] **Struct/node method patching** — update method bodies on live instances without resetting props
+- [ ] **`@hot_reload`** — opt-in annotation; skip reload for functions marked stable
+- [ ] **State preservation** — `let` vars at scene level survive reload; struct instances keep field values
+- [ ] **Reload boundary** — on syntax/type error, keep old version running; show error overlay in game window
+- [ ] **Reload events** — `on_reload()` hook called after a successful hot reload (re-register assets, reset physics)
+- [ ] `test_v290.py`
+
+---
+
+## 🔮 v2.10.0 — Physics & Multiplayer
+
+**Goal:** The two feature categories Studio-tier games universally need.
+
+- [ ] **`physics.world(gravity)`** — 2D physics world via `pymunk`
+- [ ] **`physics.body(mass, shape)`** — dynamic / static / kinematic body
+- [ ] **`physics.collider(body, shape)`** — attach shapes; circle, box, polygon, segment
+- [ ] **Collision callbacks** — `on_collide(body_a, body_b, impulse)` registered per body
+- [ ] **`physics.ray_cast(origin, dir, distance)`** — returns first hit body + normal
+- [ ] **`net.connect(url)`** — WebSocket client (wraps asyncio + websockets)
+- [ ] **`net.serve(port)`** — simple game server; handles N clients
+- [ ] **`net.broadcast(data)`** — send to all connected peers
+- [ ] **`net.sync(state_dict)`** — delta-compress and broadcast struct state
+- [ ] **`net.on_message(fn)`** — callback on incoming message
+- [ ] `test_v2100.py`
+
+---
+
+## 🔮 v2.11.0 — Export Pipeline
+
+**Goal:** `inscript build` produces runnable artefacts. Studio's "Export Game" button needs this.
+
+- [ ] **Project structure spec** — `project/src/`, `project/assets/`, `project/scenes/`, `inscript.toml`
+- [ ] **`inscript build --target desktop`** — bundles Python + InScript runtime → `.exe` / `.app` / `.AppImage`
+- [ ] **`inscript build --target web`** — game-oriented WASM (Pyodide + assets) with index.html shell
+- [ ] **`inscript build --target android`** — APK via BeeWare Briefcase
+- [ ] **Asset embedding** — all `@texture` / `@sound` / `@tilemap` assets bundled into output
+- [ ] **Dependency bundling** — stdlib + installed packages embedded; no runtime install needed
+- [ ] **Build manifest** — `build.toml` records target, version, asset hashes, entry point
+- [ ] **`inscript new <name>`** — scaffold a new project with standard layout and starter scene
+- [ ] `test_v2110.py`
+
+---
+
+## 🔮 v2.12.0 — Studio Readiness Gate
+
+**Goal:** Prove the runtime is solid enough for v3.0.0 to build an Electron IDE on top of it.
+
+- [ ] **60fps performance gate** — benchmark: 1000 active `NodeInstance`s, each with `_update`, at ≥60fps on mid-range hardware
+- [ ] **Memory gate** — no leaks over 10-minute game loop (measured via `tracemalloc`)
+- [ ] **Language stability audit** — zero open E0xxx regressions; all edge-case tests green
+- [ ] **Electron bridge PoC** — `studio_bridge.py`: JSON-RPC server the Electron shell calls for run/stop/hot-reload/scene-list
+- [ ] **Plugin API** — `inscript_studio_api.py`: stable extension points (scene serialise, asset list, error stream, breakpoint API)
+- [ ] **Error stream** — structured JSON error output (`--json-errors`) for IDE error-panel consumption
+- [ ] **Project introspection** — `inscript inspect project/` → JSON list of scenes, nodes, exports; consumed by Studio
+- [ ] **v3.0.0 readiness checklist** — all 7 items above pass; gate script `inscript check-v3` exits 0
+- [ ] `test_v2120.py`
+
+---
+
+## 🔮 v3.0.0 — InScript Studio (Long-term)

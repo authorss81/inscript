@@ -1157,3 +1157,9 @@ try:
     import stdlib_game  # noqa: F401
 except Exception as _e3:
     import sys; print(f'[stdlib_game load error] {_e3}', file=sys.stderr)
+
+# ── Asset pipeline (v2.8.0): AssetHandle, AssetRegistry, `asset` module
+try:
+    import stdlib_assets  # noqa: F401
+except Exception as _e4:
+    import sys; print(f'[stdlib_assets load error] {_e4}', file=sys.stderr)

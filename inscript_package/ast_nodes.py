@@ -383,6 +383,41 @@ class SceneDecl(Node):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# v2.7.0 — NODE DECLARATION
+# ─────────────────────────────────────────────────────────────────────────────
+
+@dataclass
+class NodeLifecycleHook(Node):
+    """
+    _ready()          — called once when node enters the scene tree
+    _update(dt)       — called every frame with delta-time
+    _draw()           — called every frame for rendering
+    """
+    hook_type: str          # "_ready" | "_update" | "_draw"
+    params:    List         # list of Param nodes
+    body:      "Block"
+
+
+@dataclass
+class NodeDecl(Node):
+    """
+    v2.7.0: node PlayerNode {
+        let hp: int = 100
+        _ready()       { ... }
+        _update(dt)    { ... }
+        _draw()        { ... }
+        fn shoot() { ... }
+    }
+
+    Compiles to an InScript class with lifecycle methods and tree participation.
+    """
+    name:    str
+    vars:    List[VarDecl]
+    hooks:   List[NodeLifecycleHook]
+    methods: List[FunctionDecl]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # AI DECLARATION
 # ─────────────────────────────────────────────────────────────────────────────
 

@@ -190,6 +190,9 @@ class Parser:
         if tok.type == TT.SCENE:
             return self.parse_scene_decl()
 
+        if tok.type == TT.NODE:                         # v2.7.0
+            return self.parse_node_decl()
+
         # --- AI block ---
         if tok.type == TT.IDENT and tok.value == "ai":
             return self.parse_ai_decl()
@@ -1063,6 +1066,57 @@ class Parser:
         body = self.parse_block()
         return LifecycleHook(hook_type=hook_type, params=params,
                              body=body, line=line, col=col)
+
+    # ─────────────────────────────────────────────
+    # v2.7.0: NODE DECLARATION
+    # ─────────────────────────────────────────────
+
+    def parse_node_decl(self) -> "NodeDecl":
+        """
+        node PlayerNode {
+            let hp: int = 100
+            _ready()       { ... }
+            _update(dt)    { ... }
+            _draw()        { ... }
+            fn shoot() { ... }
+        }
+        """
+        line, col = self._pos()
+        self.advance()  # consume 'node'
+        name = self.expect_ident("Expected node name")
+        self.expect(TT.LBRACE, "Expected '{' after node name")
+
+        vars_   = []
+        hooks   = []
+        methods = []
+
+        while not self.check(TT.RBRACE) and not self.is_at_end():
+            if self.match(TT.SEMICOLON):
+                continue
+            tok = self.current
+            if tok.type in (TT.LET, TT.CONST):
+                vars_.append(self.parse_var_decl())
+            elif tok.type == TT.FN:
+                methods.append(self.parse_function_decl(is_method=True))
+            elif tok.type in (TT.ON_READY, TT.ON_NODE_UPDATE, TT.ON_NODE_DRAW):
+                hooks.append(self.parse_node_lifecycle_hook())
+            else:
+                self._error(f"Unexpected token in node body: '{tok.value}'")
+
+        self.expect(TT.RBRACE, "Expected '}' to close node")
+        return NodeDecl(name=name, vars=vars_, hooks=hooks, methods=methods,
+                        line=line, col=col)
+
+    def parse_node_lifecycle_hook(self) -> "NodeLifecycleHook":
+        line, col = self._pos()
+        hook_type = self.current.value   # "_ready", "_update", "_draw"
+        self.advance()
+        params = []
+        if self.check(TT.LPAREN):
+            params = self.parse_param_list()
+        body = self.parse_block()
+        return NodeLifecycleHook(hook_type=hook_type, params=params,
+                                 body=body, line=line, col=col)
 
     # ─────────────────────────────────────────────
     # AI DECLARATION

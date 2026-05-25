@@ -24,7 +24,7 @@ from errors   import (InScriptError, LexerError, ParseError,
                        SemanticError, InScriptRuntimeError,
                        MultiError, InScriptWarning)
 
-VERSION = "2.6.0"
+VERSION = "2.8.0"
 
 MANIFEST_FILENAME = "inscript.toml"
 LOCK_FILENAME     = "inscript.lock"
@@ -2714,6 +2714,11 @@ Examples:
                         help="v2.6.0: Workspace commands: install, list (default: install)")
     parser.add_argument("--stdlib-check", metavar="DIR", nargs="?", const=".",
                         help="v2.6.0: Verify stdlib version satisfies inscript.toml constraint")
+    # v2.8.0: asset pipeline
+    parser.add_argument("--asset-manifest", metavar="DIR", nargs="?", const=".",
+                        help="v2.8.0: Generate assets.toml manifest for DIR (default: current dir)")
+    parser.add_argument("--bundle", metavar="DIR", nargs="?", const=".",
+                        help="v2.8.0: Copy all referenced assets into <DIR>/dist/assets")
     parser.add_argument("--lsp", action="store_true",
                         help="Start the Language Server (requires: pip install pygls)")
     parser.add_argument("--game", action="store_true",
@@ -2792,6 +2797,14 @@ Examples:
                     if last_mtime is not None:
                         print(f"\033[2m--- reloading {args.file} ---\033[0m")
                     os.system(f"{sys.executable} {__file__} {args.file}")
+                    # v2.8.0: hot-reload any changed asset files
+                    try:
+                        from stdlib_assets import get_registry
+                        _reloaded = get_registry().check_for_changes()
+                        if _reloaded:
+                            print(f"\033[33m[watch] hot-reloaded {len(_reloaded)} asset(s)\033[0m")
+                    except ImportError:
+                        pass
                 _time.sleep(0.5)
             except KeyboardInterrupt:
                 print(f"\033[2m[watch] stopped\033[0m"); break
@@ -2904,6 +2917,40 @@ Examples:
         return workspace_install(".")
     if getattr(args, 'stdlib_check', None) is not None:
         return check_stdlib_version(args.stdlib_check)
+
+    # ── v2.8.0 asset pipeline commands ────────────────────────────────────────
+    if getattr(args, 'asset_manifest', None) is not None:
+        try:
+            from stdlib_assets import get_registry, reset_registry
+            reset_registry()
+            # Run the .ins file to register all asset handles
+            _src_file = args.file or os.path.join(args.asset_manifest, "main.ins")
+            if _src_file and os.path.isfile(_src_file):
+                _src = open(_src_file, encoding="utf-8").read()
+                from interpreter import Interpreter as _I
+                _I().execute(_src)
+            reg = get_registry()
+            out_path = os.path.join(args.asset_manifest, "assets.toml")
+            reg.export_manifest(out_path, base_dir=args.asset_manifest)
+        except Exception as _me:
+            print(f"[asset-manifest] {_me}", file=sys.stderr); return 1
+        return 0
+
+    if getattr(args, 'bundle', None) is not None:
+        try:
+            from stdlib_assets import get_registry, reset_registry
+            reset_registry()
+            _src_file = args.file or os.path.join(args.bundle, "main.ins")
+            if _src_file and os.path.isfile(_src_file):
+                _src = open(_src_file, encoding="utf-8").read()
+                from interpreter import Interpreter as _I
+                _I().execute(_src)
+            reg = get_registry()
+            dest = os.path.join(args.bundle, "dist", "assets")
+            reg.bundle(src_base=args.bundle, dest_base=dest)
+        except Exception as _be:
+            print(f"[bundle] {_be}", file=sys.stderr); return 1
+        return 0
 
     # v1.9.1: --no-typecheck is deprecated — emit a warning and honour it
     if getattr(args, 'no_typecheck', False):

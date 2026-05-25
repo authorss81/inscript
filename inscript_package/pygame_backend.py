@@ -609,8 +609,10 @@ class ColorHelper(_NS):
 # ─────────────────────────────────────────────────────────────────────────────
 def run_scene(ins_file: str, width=800, height=600, fps=60, title=None):
     """
-    Load an InScript .ins file containing a `scene` declaration and run it
-    in a real-time pygame window at the requested FPS.
+    Load an InScript .ins file and run it in a real-time pygame window.
+
+    Supports both the legacy `scene GameScene { on_start... }` pattern and
+    the v2.7.0 `node` + SceneManager pattern.
 
     Called by:  inscript.py --game examples/pong.ins
     """
@@ -655,6 +657,15 @@ def run_scene(ins_file: str, width=800, height=600, fps=60, title=None):
     env.define("math2d", math2d_ns)
     env.define("Color",  color_ns)
     env.define("clock",  game_clk)
+
+    # v2.7.0 — Scene System: bind SceneManager
+    try:
+        from scene_tree import SceneManager, make_scene_stdlib
+        _scene_mgr = SceneManager(interp)
+        for _k, _v in make_scene_stdlib(_scene_mgr).items():
+            env.define(_k, _v)
+    except ImportError:
+        _scene_mgr = None
 
     # Convenience colour constants at top level
     for _n in ["WHITE","BLACK","RED","GREEN","BLUE","YELLOW","CYAN","MAGENTA",
@@ -727,10 +738,16 @@ def run_scene(ins_file: str, width=800, height=600, fps=60, title=None):
 
         run_hook("on_update", dt)
         run_hook("on_draw")
+        # v2.7.0: if a SceneManager is active and has a current scene, drive it
+        if _scene_mgr is not None and _scene_mgr.current is not None:
+            _scene_mgr.update(dt)
+            _scene_mgr.draw()
         pygame.display.flip()
 
     # ── on_exit ───────────────────────────────────────────────────────────
     run_hook("on_exit")
+    if _scene_mgr is not None:
+        _scene_mgr.stop_all()
     pygame.quit()
 
 

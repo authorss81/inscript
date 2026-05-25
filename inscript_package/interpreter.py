@@ -792,6 +792,32 @@ class Interpreter(Visitor):
             pass
         self._pop()
 
+    # ─────────────────────────────────────────────────────────────────────
+    # v2.7.0 — NODE DECLARATION
+    # ─────────────────────────────────────────────────────────────────────
+
+    def visit_NodeDecl(self, node: "NodeDecl") -> Any:
+        """
+        Registering a `node Foo { ... }` declaration creates a NodeBlueprint
+        object in the current scope under the node's name.  The blueprint can
+        be instantiated at runtime by scene_manager or by calling node_class()
+        directly from InScript.
+        """
+        from scene_tree import NodeBlueprint
+        bp = NodeBlueprint(
+            name      = node.name,
+            vars      = node.vars,
+            hooks     = node.hooks,
+            methods   = node.methods,
+            interp    = self,
+        )
+        self._env.define(node.name, bp)
+        return None
+
+    def visit_NodeLifecycleHook(self, node: "NodeLifecycleHook") -> Any:
+        # Never visited directly — NodeBlueprint drives lifecycle calls
+        return None
+
     def visit_ImportDecl(self, node: ImportDecl) -> Any:
         """
         import "math"             → bind all exports into current scope
@@ -1459,6 +1485,22 @@ class Interpreter(Visitor):
                 elif isinstance(fn_value, dict):
                     fn_value['__value_type__'] = True
                 self._env.set(name, fn_value)
+                continue
+            # v2.8.0: @texture / @sound / @tilemap / @font asset decorators
+            if dec_name in ("texture", "sound", "tilemap", "font"):
+                try:
+                    from stdlib_assets import (make_texture, make_sound,
+                                               make_tilemap, make_font)
+                    _factories = {"texture": make_texture, "sound": make_sound,
+                                  "tilemap": make_tilemap, "font": make_font}
+                    _factory = _factories[dec_name]
+                    _evaluated = [self.visit(a) for a in dec_args]
+                    handle = _factory(*_evaluated)
+                    fn_value = handle
+                    self._env.set(name, fn_value)
+                except Exception as _ae:
+                    self._error(
+                        f"@{dec_name} decorator failed: {_ae}", node.line)
                 continue
             try:
                 decorator = self._env.get(dec_name, node.line)
