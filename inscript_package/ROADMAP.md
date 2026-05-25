@@ -1,9 +1,9 @@
 # InScript Language Roadmap — Detailed
 
-> **Current version:** v2.8.0 (May 2026) 🎉
-> **Tests:** 53 test files, 53/53 CI passing — all green
-> **Assets:** `@texture/@sound/@tilemap/@font` decorators, `AssetRegistry`, `--asset-manifest`, `--bundle`, hot-reload mtime watching
-> **Assessment:** Asset pipeline complete. 4 more versions before v3.0.0. Next: v2.9.0 Hot Reload.
+> **Current version:** v2.9.0 (May 2026) 🎉
+> **Tests:** 56 test files, 56/56 CI passing — all green
+> **Hot Reload:** `HotReloader`, fn/struct/node patching, state preservation, `@hot_reload`, `on_reload()` hook, syntax-error resilience, `--watch --hot`
+> **Assessment:** Hot reload complete. 3 more versions before v3.0.0. Next: v2.10.0 Physics & Multiplayer.
 
 ---
 
@@ -608,7 +608,8 @@ May 2026     v2.0.0    ✅ SHIPPED — Production Ready — all 5 gaps closed
              v2.6.0    ✅ SHIPPED — Package Ecosystem (50/50 CI ✅)
              v2.7.0    ✅ SHIPPED — Scene System (51/51 CI ✅)
              v2.8.0    ✅ SHIPPED — Asset Pipeline (53/53 CI ✅)
-             STATUS: 53 test files, all green. Next: v2.9.0 Hot Reload.
+             v2.9.0    ✅ SHIPPED — Hot Reload (56/56 CI ✅)
+             STATUS: 56 test files, all green. Next: v2.10.0 Physics & Multiplayer.
 
 2027         v3.0.0    🔮 — InScript Studio (Electron IDE, visual scripting, hot reload)
 ```
@@ -820,18 +821,23 @@ The package name stays `inscript-lang` (not `inscript` — already taken on PyPI
 
 ---
 
-## 🔮 v2.9.0 — Hot Reload
+## ✅ v2.9.0 — Hot Reload
 
-**Goal:** True state-preserving hot reload for game development iteration speed. Studio's live preview depends on this.
+**Status: SHIPPED (May 2026)**
 
-- [ ] **Module-level hot reload** — `inscript run --hot file.ins`; file watcher detects saves
-- [ ] **Function patching** — reparse changed functions, patch interpreter env; running code picks up new version next frame
-- [ ] **Struct/node method patching** — update method bodies on live instances without resetting props
-- [ ] **`@hot_reload`** — opt-in annotation; skip reload for functions marked stable
-- [ ] **State preservation** — `let` vars at scene level survive reload; struct instances keep field values
-- [ ] **Reload boundary** — on syntax/type error, keep old version running; show error overlay in game window
-- [ ] **Reload events** — `on_reload()` hook called after a successful hot reload (re-register assets, reset physics)
-- [ ] `test_v290.py`
+**Goal:** State-preserving hot reload for game development. Studio's live preview depends on this.
+
+- [x] **`HotReloader`** — `start()`, `tick()`, `reload_count`; file mtime detection
+- [x] **Function patching** — only `fn`/`struct`/`node` declarations re-executed on reload; `let` vars never reset
+- [x] **State preservation** — `_snapshot_globals()` captures scalars before reload; `_restore_snapshot()` after
+- [x] **Node blueprint patching** — `NodeBlueprint` re-registered; new instances use patched blueprint
+- [x] **`@hot_reload`** — marks fn as stable; skipped on all subsequent reloads
+- [x] **`on_reload()` hook** — called after every successful reload (re-register assets, reset physics)
+- [x] **Syntax-error resilience** — parse error → `ReloadResult.success=False` with error list; old code keeps running
+- [x] **`ReloadResult`** — `changed`, `success`, `patched`, `restored`, `errors`, `elapsed_ms`
+- [x] **`--watch --hot`** — state-preserving watch mode; `--watch` alone still does full re-run
+- [x] **`hot_reload.py`** — new module (220 lines)
+- [x] `test_v290.py` (52/52)
 
 ---
 

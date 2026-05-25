@@ -24,7 +24,7 @@ from errors   import (InScriptError, LexerError, ParseError,
                        SemanticError, InScriptRuntimeError,
                        MultiError, InScriptWarning)
 
-VERSION = "2.8.0"
+VERSION = "2.9.0"
 
 MANIFEST_FILENAME = "inscript.toml"
 LOCK_FILENAME     = "inscript.lock"
@@ -2688,6 +2688,8 @@ Examples:
                         help="Stop tests on first failure")
     parser.add_argument("--watch",   action="store_true",
                         help="Watch file for changes and rerun: inscript --watch game.ins")
+    parser.add_argument("--hot",     action="store_true",
+                        help="v2.9.0: State-preserving hot reload (use with --watch): inscript --watch --hot game.ins")
     parser.add_argument("--version", action="store_true", help="Print version and exit")
     parser.add_argument("--install", metavar="PKG", nargs="?", const="",
                         help="v1.9.9: Install a package (PKG or PKG@version); no arg = install all from inscript.toml")
@@ -2782,12 +2784,45 @@ Examples:
         if args.test_fail_fast: test_argv.append("--fail-fast")
         import sys as _sys; _sys.exit(test_main(test_argv) or 0)
 
-    # ── inscript --watch ─────────────────────────────────────────────────────
+    # ── inscript --watch / --hot ──────────────────────────────────────────────
     if args.watch:
         if not args.file:
             print("Usage: inscript --watch <file.ins>", file=sys.stderr); return
         import time as _time
         print(f"\033[36mWatching {args.file} — Ctrl+C to stop\033[0m")
+
+        # v2.9.0: use HotReloader for state-preserving reload when --hot flag set
+        _hot = getattr(args, 'hot', False)
+        if _hot:
+            from interpreter import Interpreter as _I
+            from hot_reload import HotReloader
+            _interp_hot = _I()
+            _reloader   = HotReloader(args.file, _interp_hot)
+            _result     = _reloader.start()
+            if not _result.success:
+                for e in _result.errors:
+                    print(f"\033[31m{e}\033[0m", file=sys.stderr)
+            print(f"\033[36m[hot] Loaded. Watching for changes...\033[0m")
+            while True:
+                try:
+                    _time.sleep(0.4)
+                    _r = _reloader.tick()
+                    if _r.changed and not _r.success:
+                        for e in _r.errors:
+                            print(f"\033[31m[hot] {e}\033[0m", file=sys.stderr)
+                    # hot-reload changed assets too
+                    try:
+                        from stdlib_assets import get_registry
+                        _reloaded = get_registry().check_for_changes()
+                        if _reloaded:
+                            print(f"\033[33m[hot] asset hot-reload: {len(_reloaded)} file(s)\033[0m")
+                    except ImportError:
+                        pass
+                except KeyboardInterrupt:
+                    print(f"\033[2m[hot] stopped\033[0m"); break
+            return 0
+
+        # Legacy watch: full re-run on each change
         last_mtime = None
         while True:
             try:

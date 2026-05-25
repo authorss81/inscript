@@ -1486,6 +1486,11 @@ class Interpreter(Visitor):
                     fn_value['__value_type__'] = True
                 self._env.set(name, fn_value)
                 continue
+            # v2.9.0: @hot_reload — marks fn as stable; no-op at runtime
+            if dec_name == "hot_reload":
+                # Metadata only — the HotReloader reads this at reload time.
+                # At runtime: the fn keeps its current value unchanged.
+                continue
             # v2.8.0: @texture / @sound / @tilemap / @font asset decorators
             if dec_name in ("texture", "sound", "tilemap", "font"):
                 try:
