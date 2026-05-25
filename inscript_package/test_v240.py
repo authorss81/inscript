@@ -578,7 +578,11 @@ def test_vm_fib_perf():
 # ─────────────────────────────────────────────────────────────────────────────
 
 def test_version():
-    check("version_is_2.4.0", repl_mod.VERSION, "2.4.0")
+    v = tuple(int(x) for x in repl_mod.VERSION.split("."))
+    if v >= (2, 4, 0):
+        ok("version_is_at_least_2_4_0")
+    else:
+        fail("version_is_at_least_2_4_0", f"got {repl_mod.VERSION}")
 
 # ─────────────────────────────────────────────────────────────────────────────
 

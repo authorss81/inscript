@@ -277,10 +277,10 @@ outer: for j in 0..3 {
 # ─────────────────────────────────────────────────────────────────────────────
 
 def test_version_is_220():
-    if repl_mod.VERSION == "2.2.0":
-        ok("version_is_2.2.0")
+    if tuple(int(x) for x in repl_mod.VERSION.split(".")) >= tuple(int(x) for x in "2.2.0".split(".")):
+        ok("version_is_at_least_2_2_0")
     else:
-        fail("version_is_2.2.0", f"got {repl_mod.VERSION}")
+        fail("version_is_at_least_2_2_0", f"got {repl_mod.VERSION}")
 
 # ─────────────────────────────────────────────────────────────────────────────
 

@@ -411,10 +411,10 @@ def test_extension_grammar_valid_json():
 
 def test_version_is_210():
     import repl
-    if repl.VERSION == "2.1.0":
-        ok("version_is_2.1.0")
+    if tuple(int(x) for x in repl.VERSION.split(".")) >= (2, 1, 0):
+        ok("version_is_at_least_2_1_0")
     else:
-        fail("version_is_2.1.0", f"got {repl.VERSION}")
+        fail("version_is_at_least_2_1_0", f"got {repl.VERSION}")
 
 # ── run all ───────────────────────────────────────────────────────────────────
 

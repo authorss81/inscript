@@ -1,5 +1,6 @@
-"""InScript Language Server Protocol implementation.
-Uses pygls if available; degrades gracefully if not installed.
+"""InScript Language Server Protocol v2.5.0
+Capabilities: diagnostics, completions, hover (with types), go-to-definition,
+find-references, rename, document symbols, semantic tokens, code actions.
 Install: pip install pygls
-Start:   python -m inscript_package.lsp.server
+Start:   inscript --lsp
 """

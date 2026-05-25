@@ -211,7 +211,9 @@ def test_registry_json_valid():
     try:
         with open(reg) as f:
             data = json.load(f)
-        assert set(data.keys()) == {"math-utils", "color-utils", "easing"}
+        # v2.1.2+ added more packages — check original 3 are still present
+        required = {"math-utils", "color-utils", "easing"}
+        assert required.issubset(set(data.keys())), f"missing packages: {required - set(data.keys())}"
         ok("registry_json_valid")
     except Exception as e:
         fail("registry_json_valid", e)

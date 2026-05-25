@@ -57,10 +57,12 @@ def test_registry_is_valid_json():
 def test_registry_has_three_packages():
     with open(REGISTRY_PATH, encoding="utf-8") as f:
         data = json.load(f)
-    if set(data.keys()) == {"math-utils", "color-utils", "easing"}:
+    # v2.1.2+ added vector2, tween, collision — check original 3 are still present
+    required = {"math-utils", "color-utils", "easing"}
+    if required.issubset(set(data.keys())):
         ok("registry_has_three_packages")
     else:
-        fail("registry_has_three_packages", f"got keys: {list(data.keys())}")
+        fail("registry_has_three_packages", f"missing from: {list(data.keys())}")
 
 def test_registry_entries_have_required_fields():
     with open(REGISTRY_PATH, encoding="utf-8") as f:

@@ -321,10 +321,10 @@ def test_timer_now_is_int():
 # ─────────────────────────────────────────────────────────────────────────────
 
 def test_version_is_230():
-    if repl_mod.VERSION == "2.3.0":
-        ok("version_is_2.3.0")
+    if tuple(int(x) for x in repl_mod.VERSION.split(".")) >= tuple(int(x) for x in "2.3.0".split(".")):
+        ok("version_is_at_least_2_3_0")
     else:
-        fail("version_is_2.3.0", f"got {repl_mod.VERSION}")
+        fail("version_is_at_least_2_3_0", f"got {repl_mod.VERSION}")
 
 # ─────────────────────────────────────────────────────────────────────────────
 

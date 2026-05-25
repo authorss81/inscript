@@ -351,10 +351,10 @@ def test_package_files_exist():
             fail(f"package_file_{name}", f"{path} not found")
 
 def test_version_is_212():
-    if repl_mod.VERSION == "2.1.2":
-        ok("version_is_2.1.2")
+    if tuple(int(x) for x in repl_mod.VERSION.split(".")) >= tuple(int(x) for x in "2.1.2".split(".")):
+        ok("version_is_at_least_2_1_2")
     else:
-        fail("version_is_2.1.2", f"got {repl_mod.VERSION}")
+        fail("version_is_at_least_2_1_2", f"got {repl_mod.VERSION}")
 
 # ─────────────────────────────────────────────────────────────────────────────
 

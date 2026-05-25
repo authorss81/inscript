@@ -221,8 +221,17 @@ def test_hover(name, source, line, col, expect_word):
     try:
         from lsp.hover import get_hover
         info = get_hover(source, line, col)
-        ok = info is not None and info.get('word') == expect_word
-        RESULTS.append(('PASS' if ok else 'FAIL', name, str(info), f'word={expect_word}'))
+        # v2.5.0: hover now returns {'contents': '...markdown...'} not {'word': '...'}
+        # Accept both old format (word key) and new format (contents containing the word)
+        if info is None:
+            ok = False
+        elif info.get('word') == expect_word:
+            ok = True  # old format still works
+        elif expect_word in info.get('contents', ''):
+            ok = True  # new format: word appears in markdown contents
+        else:
+            ok = False
+        RESULTS.append(('PASS' if ok else 'FAIL', name, str(info)[:80], f'word={expect_word}'))
         if ok: PASS += 1
         else:  FAIL += 1
     except Exception as e:

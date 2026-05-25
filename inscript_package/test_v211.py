@@ -293,10 +293,10 @@ def test_fmt_formats_file():
 
 def test_version_is_211():
     import repl
-    if repl.VERSION == "2.1.1":
-        ok("version_is_2.1.1")
+    if tuple(int(x) for x in repl.VERSION.split(".")) >= (2, 1, 1):
+        ok("version_is_at_least_2_1_1")
     else:
-        fail("version_is_2.1.1", f"got {repl.VERSION}")
+        fail("version_is_at_least_2_1_1", f"got {repl.VERSION}")
 
 # ── run all ───────────────────────────────────────────────────────────────────
 

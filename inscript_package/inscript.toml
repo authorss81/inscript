@@ -1,6 +1,6 @@
 [project]
 name = "inscript"
-version = "2.4.0"
+version = "2.5.0"
 description = "InScript game scripting language"
 inscript_version = ">=1.9.15"
 
