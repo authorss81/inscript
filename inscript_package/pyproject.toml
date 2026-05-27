@@ -61,7 +61,7 @@ py-modules = [
     # ── Backends ──────────────────────────────────────────────────────────────
     "pygame_backend",
     # ── v2.7.0+ runtime modules ───────────────────────────────────────────────
-    "scene_tree", "hot_reload"
+    "scene_tree", "hot_reload", "export_pipeline"
 ]
 
 [tool.setuptools.package-data]

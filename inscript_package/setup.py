@@ -55,7 +55,7 @@ setup(
         # ── Backends ──────────────────────────────────────────────────────────
         "pygame_backend",
         # ── v2.7.0+ runtime modules ───────────────────────────────────────────
-        "scene_tree", "hot_reload",
+        "scene_tree", "hot_reload", "export_pipeline",
     ],
     package_data     = {"": ["examples/*.ins", "lsp/*.py", "*.md"]},
     install_requires = [],

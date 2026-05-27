@@ -1,10 +1,9 @@
 # InScript Language Roadmap — Detailed
 
-> **Current version:** v2.10.0 (May 2026) 🎉
-> **Tests:** 58 test files, 58/58 CI passing — all green
-> **Physics:** `physics.world`, AABB simulation, `ray_cast`, collision/overlap callbacks
-> **Net:** `net.serve/connect`, WebSocket+UDP, `DeltaSync` delta-compression, `broadcast/sync`
-> **Assessment:** Physics & multiplayer complete. 2 more versions before v3.0.0. Next: v2.11.0 Export Pipeline.
+> **Current version:** v2.11.0 (May 2026) 🎉
+> **Tests:** 60 test files, 60/60 CI passing — all green
+> **Export:** `--build desktop/web/android`, `--new <name>` scaffold, `build.toml` manifest, `BuildResult`
+> **Assessment:** Export pipeline complete. 1 more version before v3.0.0. Next: v2.12.0 Studio Readiness Gate.
 
 ---
 
@@ -611,7 +610,8 @@ May 2026     v2.0.0    ✅ SHIPPED — Production Ready — all 5 gaps closed
              v2.8.0    ✅ SHIPPED — Asset Pipeline (53/53 CI ✅)
              v2.9.0    ✅ SHIPPED — Hot Reload (56/56 CI ✅)
              v2.10.0   ✅ SHIPPED — Physics & Multiplayer (58/58 CI ✅)
-             STATUS: 58 test files, all green. Next: v2.11.0 Export Pipeline.
+             v2.11.0   ✅ SHIPPED — Export Pipeline (60/60 CI ✅)
+             STATUS: 60 test files, all green. Next: v2.12.0 Studio Readiness Gate.
 
 2027         v3.0.0    🔮 — InScript Studio (Electron IDE, visual scripting, hot reload)
 ```
@@ -864,19 +864,24 @@ The package name stays `inscript-lang` (not `inscript` — already taken on PyPI
 
 ---
 
-## 🔮 v2.11.0 — Export Pipeline
+## ✅ v2.11.0 — Export Pipeline
+
+**Status: SHIPPED (May 2026)**
 
 **Goal:** `inscript build` produces runnable artefacts. Studio's "Export Game" button needs this.
 
-- [ ] **Project structure spec** — `project/src/`, `project/assets/`, `project/scenes/`, `inscript.toml`
-- [ ] **`inscript build --target desktop`** — bundles Python + InScript runtime → `.exe` / `.app` / `.AppImage`
-- [ ] **`inscript build --target web`** — game-oriented WASM (Pyodide + assets) with index.html shell
-- [ ] **`inscript build --target android`** — APK via BeeWare Briefcase
-- [ ] **Asset embedding** — all `@texture` / `@sound` / `@tilemap` assets bundled into output
-- [ ] **Dependency bundling** — stdlib + installed packages embedded; no runtime install needed
-- [ ] **Build manifest** — `build.toml` records target, version, asset hashes, entry point
-- [ ] **`inscript new <name>`** — scaffold a new project with standard layout and starter scene
-- [ ] `test_v2110.py`
+- [x] **Project structure spec** — `src/`, `assets/sprites|sfx|fonts|maps/`, `scenes/`, `build/`, `inscript.toml`
+- [x] **`inscript --new <name>`** — scaffolds full project layout with `main.ins`, `main.inscene`, `.gitignore`, `README.md`
+- [x] **`inscript --build desktop`** — self-contained dir with `run.py/sh/bat` + embedded runtime + copied assets
+- [x] **`inscript --build web`** — `index.html` + Pyodide CDN loader + `inscript_runtime/` + assets
+- [x] **`inscript --build android`** — BeeWare Briefcase scaffold (`pyproject.toml`, `app.py`); runs `briefcase create + build` when installed
+- [x] **`inscript --project-dir <path>`** — project root override for all build commands
+- [x] **`build.toml`** — build manifest: target, version, entry, `inscript.VERSION`, artifact paths, SHA-256 asset hashes
+- [x] **`BuildResult`** — `target`, `success`, `output_dir`, `artifacts`, `errors`, `elapsed_ms`
+- [x] **`run_build(target, dir)`** — dispatcher called from CLI; unknown target → exit 1
+- [x] **Idempotent builds** — second build overwrites cleanly without errors
+- [x] **`export_pipeline.py`** — new module (350 lines)
+- [x] `test_v2110.py` (90/90)
 
 ---
 

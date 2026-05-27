@@ -24,7 +24,7 @@ from errors   import (InScriptError, LexerError, ParseError,
                        SemanticError, InScriptRuntimeError,
                        MultiError, InScriptWarning)
 
-VERSION = "2.10.0"
+VERSION = "2.11.0"
 
 MANIFEST_FILENAME = "inscript.toml"
 LOCK_FILENAME     = "inscript.lock"
@@ -2721,6 +2721,13 @@ Examples:
                         help="v2.8.0: Generate assets.toml manifest for DIR (default: current dir)")
     parser.add_argument("--bundle", metavar="DIR", nargs="?", const=".",
                         help="v2.8.0: Copy all referenced assets into <DIR>/dist/assets")
+    # v2.11.0: export pipeline
+    parser.add_argument("--build", metavar="TARGET", nargs="?", const="desktop",
+                        help="v2.11.0: Build for target: desktop, web, android, ibc (default: desktop)")
+    parser.add_argument("--project-dir", metavar="DIR", default=".",
+                        help="v2.11.0: Project root for --build (default: current dir)")
+    parser.add_argument("--new", metavar="NAME",
+                        help="v2.11.0: Scaffold a new InScript project: inscript --new mygame")
     parser.add_argument("--lsp", action="store_true",
                         help="Start the Language Server (requires: pip install pygls)")
     parser.add_argument("--game", action="store_true",
@@ -2986,6 +2993,24 @@ Examples:
         except Exception as _be:
             print(f"[bundle] {_be}", file=sys.stderr); return 1
         return 0
+
+    # ── v2.11.0 export pipeline ────────────────────────────────────────────
+    if getattr(args, 'new', None) is not None:
+        try:
+            from export_pipeline import scaffold_project
+            scaffold_project(args.new, dest_dir=getattr(args, 'project_dir', '.'))
+        except FileExistsError as _fe:
+            print(f"[inscript new] {_fe}", file=sys.stderr); return 1
+        except Exception as _ne:
+            print(f"[inscript new] {_ne}", file=sys.stderr); return 1
+        return 0
+
+    if getattr(args, 'build', None) is not None:
+        try:
+            from export_pipeline import run_build
+            return run_build(args.build, getattr(args, 'project_dir', '.'))
+        except Exception as _bld:
+            print(f"[build] {_bld}", file=sys.stderr); return 1
 
     # v1.9.1: --no-typecheck is deprecated — emit a warning and honour it
     if getattr(args, 'no_typecheck', False):
