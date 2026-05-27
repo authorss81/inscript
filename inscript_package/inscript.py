@@ -24,7 +24,7 @@ from errors   import (InScriptError, LexerError, ParseError,
                        SemanticError, InScriptRuntimeError,
                        MultiError, InScriptWarning)
 
-VERSION = "2.11.0"
+VERSION = "2.12.0"
 
 MANIFEST_FILENAME = "inscript.toml"
 LOCK_FILENAME     = "inscript.lock"
@@ -2385,21 +2385,34 @@ def run_source(source: str, filename: str = "<stdin>",
                no_warn_unused: bool = False,
                warn_as_error: bool = False,
                strict: bool = False,
-               profile: bool = False) -> int:
+               profile: bool = False,
+               json_errors: bool = False) -> int:
     """Lex, parse, analyze, and interpret InScript source code."""
+
+    def _emit_error(e):
+        """v2.12.0: emit as JSON or plain text depending on flag."""
+        if json_errors:
+            from inscript_studio_api import error_stream
+            from errors import InScriptError as _ISE
+            if isinstance(e, _ISE):
+                error_stream([e])
+            else:
+                error_stream([{"type": "error", "code": "E0000",
+                               "class": type(e).__name__, "message": str(e),
+                               "line": 0, "col": 0}])
+        else:
+            print(e, file=sys.stderr)
     # ── 1. Lex ────────────────────────────────────────────────────────────
     try:
         tokens = tokenize(source, filename)
     except LexerError as e:
-        print(e, file=sys.stderr)
-        return 1
+        _emit_error(e); return 1
 
     # ── 2. Parse ──────────────────────────────────────────────────────────
     try:
         program = parse(source, filename)
     except ParseError as e:
-        print(e, file=sys.stderr)
-        return 1
+        _emit_error(e); return 1
 
     # ── 3. Analyze (optional) — Phase 3: multi-error + warnings ──────────
     if type_check:
@@ -2442,7 +2455,7 @@ def run_source(source: str, filename: str = "<stdin>",
             interp.run(program)
         return 0
     except InScriptError as e:
-        print(e, file=sys.stderr)
+        _emit_error(e)
         return 1
     except KeyboardInterrupt:
         print("\n[InScript] Interrupted.", file=sys.stderr)
@@ -2728,6 +2741,17 @@ Examples:
                         help="v2.11.0: Project root for --build (default: current dir)")
     parser.add_argument("--new", metavar="NAME",
                         help="v2.11.0: Scaffold a new InScript project: inscript --new mygame")
+    # v2.12.0: studio readiness
+    parser.add_argument("--json-errors", action="store_true",
+                        help="v2.12.0: Output errors as newline-delimited JSON for IDE panels")
+    parser.add_argument("--inspect", metavar="DIR", nargs="?", const=".",
+                        help="v2.12.0: Project introspection → JSON (scenes, nodes, assets, fns)")
+    parser.add_argument("--check-v3", action="store_true",
+                        help="v2.12.0: Run v3.0.0 readiness gates; exits 0 if all pass")
+    parser.add_argument("--studio-bridge", action="store_true",
+                        help="v2.12.0: Start Electron bridge JSON-RPC server")
+    parser.add_argument("--bridge-port", type=int, default=8765,
+                        help="v2.12.0: Port for --studio-bridge (default: 8765)")
     parser.add_argument("--lsp", action="store_true",
                         help="Start the Language Server (requires: pip install pygls)")
     parser.add_argument("--game", action="store_true",
@@ -3012,6 +3036,37 @@ Examples:
         except Exception as _bld:
             print(f"[build] {_bld}", file=sys.stderr); return 1
 
+    # ── v2.12.0 studio readiness ───────────────────────────────────────────
+    if getattr(args, 'check_v3', False):
+        from studio_readiness import run_all_gates
+        base = getattr(args, 'project_dir', '.') or '.'
+        _, all_passed = run_all_gates(base_dir=base)
+        return 0 if all_passed else 1
+
+    if getattr(args, 'inspect', None) is not None:
+        try:
+            from inscript_studio_api import project_inspect
+            import json as _j
+            data = project_inspect(args.inspect)
+            print(_j.dumps(data, indent=2))
+        except Exception as _ie:
+            print(f"[inspect] {_ie}", file=sys.stderr); return 1
+        return 0
+
+    if getattr(args, 'studio_bridge', False):
+        from studio_bridge import StudioBridge
+        import time as _time
+        port   = getattr(args, 'bridge_port', 8765)
+        bridge = StudioBridge(port=port)
+        bridge.start()
+        print(f"[studio-bridge] Listening on {bridge.url}")
+        print(f"[studio-bridge] Ctrl+C to stop")
+        try:
+            while True: _time.sleep(1)
+        except KeyboardInterrupt:
+            bridge.stop()
+        return 0
+
     # v1.9.1: --no-typecheck is deprecated — emit a warning and honour it
     if getattr(args, 'no_typecheck', False):
         print(
@@ -3097,7 +3152,8 @@ Examples:
     return run_source(_source, filename=args.file, type_check=type_check,
                       no_warn=no_warn, no_warn_unused=no_warn_unused,
                       warn_as_error=warn_as_error, strict=strict,
-                      profile=profile)
+                      profile=profile,
+                      json_errors=getattr(args, 'json_errors', False))
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -102,6 +102,7 @@ jobs:
           python test_v290.py
           python test_v2100.py
           python test_v2110.py
+          python test_v2120.py
 
   build:
     name: Build distribution

@@ -85,6 +85,24 @@ class InScriptError(Exception):
         self.code = code or ERROR_CODES.get(cls_name, "E0000")
         super().__init__(self._format())
 
+    def to_dict(self) -> dict:
+        """v2.12.0: Structured dict for --json-errors / Studio error panel."""
+        return {
+            "type":        "error",
+            "code":        self.code,
+            "class":       type(self).__name__,
+            "message":     self.message,
+            "line":        self.line,
+            "col":         self.col,
+            "source_line": self.source_line,
+            "hint":        self.hint,
+            "call_trace":  self.call_trace,
+        }
+
+    def to_json(self) -> str:
+        import json as _j
+        return _j.dumps(self.to_dict(), separators=(",", ":"))
+
     def _format(self) -> str:
         code   = self.code
         cls    = type(self).__name__
