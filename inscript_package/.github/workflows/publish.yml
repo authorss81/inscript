@@ -99,6 +99,7 @@ jobs:
           python test_v260.py
           python test_v270.py
           python test_v280.py
+          python test_v290.py
 
   build:
     name: Build distribution
