@@ -1,9 +1,10 @@
 # InScript Language Roadmap — Detailed
 
-> **Current version:** v2.9.0 (May 2026) 🎉
-> **Tests:** 56 test files, 56/56 CI passing — all green
-> **Hot Reload:** `HotReloader`, fn/struct/node patching, state preservation, `@hot_reload`, `on_reload()` hook, syntax-error resilience, `--watch --hot`
-> **Assessment:** Hot reload complete. 3 more versions before v3.0.0. Next: v2.10.0 Physics & Multiplayer.
+> **Current version:** v2.10.0 (May 2026) 🎉
+> **Tests:** 58 test files, 58/58 CI passing — all green
+> **Physics:** `physics.world`, AABB simulation, `ray_cast`, collision/overlap callbacks
+> **Net:** `net.serve/connect`, WebSocket+UDP, `DeltaSync` delta-compression, `broadcast/sync`
+> **Assessment:** Physics & multiplayer complete. 2 more versions before v3.0.0. Next: v2.11.0 Export Pipeline.
 
 ---
 
@@ -609,7 +610,8 @@ May 2026     v2.0.0    ✅ SHIPPED — Production Ready — all 5 gaps closed
              v2.7.0    ✅ SHIPPED — Scene System (51/51 CI ✅)
              v2.8.0    ✅ SHIPPED — Asset Pipeline (53/53 CI ✅)
              v2.9.0    ✅ SHIPPED — Hot Reload (56/56 CI ✅)
-             STATUS: 56 test files, all green. Next: v2.10.0 Physics & Multiplayer.
+             v2.10.0   ✅ SHIPPED — Physics & Multiplayer (58/58 CI ✅)
+             STATUS: 58 test files, all green. Next: v2.11.0 Export Pipeline.
 
 2027         v3.0.0    🔮 — InScript Studio (Electron IDE, visual scripting, hot reload)
 ```
@@ -841,21 +843,24 @@ The package name stays `inscript-lang` (not `inscript` — already taken on PyPI
 
 ---
 
-## 🔮 v2.10.0 — Physics & Multiplayer
+## ✅ v2.10.0 — Physics & Multiplayer
+
+**Status: SHIPPED (May 2026)**
 
 **Goal:** The two feature categories Studio-tier games universally need.
 
-- [ ] **`physics.world(gravity)`** — 2D physics world via `pymunk`
-- [ ] **`physics.body(mass, shape)`** — dynamic / static / kinematic body
-- [ ] **`physics.collider(body, shape)`** — attach shapes; circle, box, polygon, segment
-- [ ] **Collision callbacks** — `on_collide(body_a, body_b, impulse)` registered per body
-- [ ] **`physics.ray_cast(origin, dir, distance)`** — returns first hit body + normal
-- [ ] **`net.connect(url)`** — WebSocket client (wraps asyncio + websockets)
-- [ ] **`net.serve(port)`** — simple game server; handles N clients
-- [ ] **`net.broadcast(data)`** — send to all connected peers
-- [ ] **`net.sync(state_dict)`** — delta-compress and broadcast struct state
-- [ ] **`net.on_message(fn)`** — callback on incoming message
-- [ ] `test_v2100.py`
+- [x] **`physics` module** — `physics.world(gx, gy)`, `physics.body(mass, shape, tag)`, `physics.static_body(shape, tag)`, `physics.area(shape, tag)`, `physics.Rect(w, h)`, `physics.Circle(r)`, `physics.Vec2(x, y)`
+- [x] **`world.step(dt)`** — gravity, position integration, AABB collision resolution, impulse response
+- [x] **`world.on_collision(fn)`** — callback fires on every dynamic↔static and dynamic↔dynamic collision
+- [x] **`area.on_overlap(fn)`** — callback fires when a dynamic body enters an Area (no physics response)
+- [x] **`physics.ray_cast(world, ox, oy, dx, dy, distance)`** — AABB/Circle slab intersection; returns closest hit body, hit point, normal, distance — or None
+- [x] **`net` module** — `net.serve(port)`, `net.connect(url)`, `_NetServer`, `_NetClient`
+- [x] **WebSocket-first** — uses `asyncio + websockets` when available; falls back to UDP (`net_game`) transparently
+- [x] **`net.DeltaSync`** — delta-compressor: sends only changed keys since last sync; `reset()` to re-baseline
+- [x] **`net.broadcast(data)` / `_NetServer.sync(state_dict)`** — delta-compress broadcast to all peers
+- [x] **`net.pack` / `net.unpack`** — compact JSON serialisation; round-trips bytes or str
+- [x] **`physics2d` + `net_game`** — existing modules unchanged (backward compat)
+- [x] `test_v2100.py` (61/61)
 
 ---
 

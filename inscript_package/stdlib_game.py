@@ -2006,3 +2006,464 @@ register_module("mat4", _wrapmod({
     "to_array":    _mat4_to_array,
     "get":         _mat4_get,
 }, "mat4"))
+
+# ═══════════════════════════════════════════════════════════════════════════
+# v2.10.0 — `physics` module
+# Unified physics API; wraps physics2d internals and adds ray_cast.
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _physics_world(gravity_x=0.0, gravity_y=500.0):
+    """Create a 2D physics world.  gravity is a Vec2 or (x,y) pair."""
+    return _P2DWorld(float(gravity_x), float(gravity_y))
+
+def _physics_body(mass=1.0, shape=None, tag=""):
+    """Create a dynamic RigidBody.  shape defaults to a 32×32 rect."""
+    s = shape if shape is not None else _P2DRect(32, 32)
+    return _P2DBody(s, float(mass), str(tag))
+
+def _physics_static(shape=None, tag=""):
+    """Create a StaticBody (infinite mass)."""
+    s = shape if shape is not None else _P2DRect(32, 32)
+    b = _P2DBody(s, 0.0, str(tag))
+    b.is_static = True
+    return b
+
+def _physics_area(shape=None, tag=""):
+    """Create an Area (overlap detector, no physics response)."""
+    s = shape if shape is not None else _P2DRect(32, 32)
+    return _P2DArea(s, str(tag))
+
+def _physics_ray_cast(world, ox, oy, dx, dy, distance=10000.0):
+    """
+    Cast a ray from (ox, oy) in direction (dx, dy) for up to `distance` units.
+    Returns the first body hit and the hit point, or None.
+
+    world    — a _P2DWorld
+    ox, oy   — ray origin
+    dx, dy   — ray direction (does NOT need to be normalised)
+    distance — maximum travel distance
+
+    Returns: {"body": <_P2DBody>, "hit_x": float, "hit_y": float,
+              "distance": float, "normal_x": float, "normal_y": float}
+    or None if no hit.
+    """
+    import math
+    length = math.hypot(float(dx), float(dy))
+    if length == 0:
+        return None
+    ndx, ndy = float(dx) / length, float(dy) / length
+    ox, oy, dist = float(ox), float(oy), float(distance)
+
+    best = None
+    best_t = dist
+
+    for body in world._bodies:
+        if not body._alive:
+            continue
+        # AABB slab intersection
+        if isinstance(body.shape, (_P2DRect, _P2DCircle)):
+            if isinstance(body.shape, _P2DRect):
+                hw, hh = body.shape.w / 2, body.shape.h / 2
+                x1, y1, x2, y2 = (body.x - hw, body.y - hh,
+                                   body.x + hw, body.y + hh)
+            else:
+                r = body.shape.r
+                x1, y1, x2, y2 = (body.x - r, body.y - r,
+                                   body.x + r, body.y + r)
+
+            def _slab(origin, direction, lo, hi):
+                if abs(direction) < 1e-9:
+                    if origin < lo or origin > hi:
+                        return float("inf"), float("-inf")
+                    return float("-inf"), float("inf")
+                t0 = (lo - origin) / direction
+                t1 = (hi - origin) / direction
+                return (t0, t1) if t0 <= t1 else (t1, t0)
+
+            tx0, tx1 = _slab(ox, ndx, x1, x2)
+            ty0, ty1 = _slab(oy, ndy, y1, y2)
+            t_enter = max(tx0, ty0)
+            t_exit  = min(tx1, ty1)
+            if t_enter <= t_exit and t_exit >= 0:
+                t_hit = max(t_enter, 0.0)
+                if t_hit < best_t:
+                    best_t = t_hit
+                    # Approximate hit normal from which slab entered
+                    nx, ny = 0.0, 0.0
+                    if tx0 > ty0:
+                        nx = -1.0 if ndx > 0 else 1.0
+                    else:
+                        ny = -1.0 if ndy > 0 else 1.0
+                    best = {
+                        "body":     body,
+                        "hit_x":    ox + ndx * t_hit,
+                        "hit_y":    oy + ndy * t_hit,
+                        "distance": t_hit,
+                        "normal_x": nx,
+                        "normal_y": ny,
+                    }
+
+    return best
+
+
+register_module("physics", _wrapmod({
+    "world":        _physics_world,
+    "body":         _physics_body,
+    "static_body":  _physics_static,
+    "area":         _physics_area,
+    "ray_cast":     _physics_ray_cast,
+    "Rect":         lambda w, h: _P2DRect(float(w), float(h)),
+    "Circle":       lambda r:    _P2DCircle(float(r)),
+    "Vec2":         lambda x=0.0, y=0.0: _Vec2(float(x), float(y)),
+}, "physics"))
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# v2.10.0 — `net` module
+# WebSocket-first game networking with delta-sync.
+# Falls back to UDP (wrapping net_game) if websockets not installed.
+# ═══════════════════════════════════════════════════════════════════════════
+
+import json as _json
+import threading as _threading
+import copy as _copy
+
+def _net_pack(data):
+    return _json.dumps(data, separators=(",", ":"))
+
+def _net_unpack(raw):
+    if isinstance(raw, (bytes, bytearray)):
+        raw = raw.decode("utf-8", errors="replace")
+    return _json.loads(raw)
+
+
+class _NetDeltaSync:
+    """
+    Delta-compressor for net.sync(state_dict).
+    Only transmits keys whose values changed since the last sync.
+    """
+    def __init__(self):
+        self._last: dict = {}
+
+    def delta(self, current: dict) -> dict:
+        """Return only the changed entries."""
+        changed = {}
+        for k, v in current.items():
+            if self._last.get(k) != v:
+                changed[k] = v
+        self._last = _copy.deepcopy(current)
+        return changed
+
+    def reset(self):
+        self._last.clear()
+
+
+class _NetPeer:
+    """Represents a connected peer (server-side)."""
+    def __init__(self, peer_id: str, send_fn):
+        self.id      = peer_id
+        self._send   = send_fn
+        self.latency = 0.0
+        self._sync   = _NetDeltaSync()
+
+    def send(self, data):
+        try:
+            self._send(_net_pack(data))
+        except Exception:
+            pass
+
+    def sync(self, state: dict):
+        delta = self._sync.delta(state)
+        if delta:
+            self.send({"_sync": delta})
+
+    def __repr__(self):
+        return f"<NetPeer {self.id}>"
+
+
+class _NetServer:
+    """
+    Simple game server.  Tries WebSocket (asyncio + websockets) first;
+    falls back to UDP (_GameServer) if websockets not installed.
+    """
+    def __init__(self, port=7777, max_clients=16):
+        self._port         = int(port)
+        self._max          = int(max_clients)
+        self._peers: dict  = {}   # id → _NetPeer
+        self._on_connect_cb    = None
+        self._on_disconnect_cb = None
+        self._on_message_cb    = None
+        self._running          = False
+        self._thread           = None
+        self._lock             = _threading.Lock()
+        self._mode             = "unknown"
+        self._udp_server       = None  # fallback
+
+    # ── lifecycle ─────────────────────────────────────────────────────────────
+
+    def serve(self):
+        """Start listening.  Non-blocking — spawns a daemon thread."""
+        self._running = True
+        self._thread  = _threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+        return self
+
+    def stop(self):
+        self._running = False
+        if self._udp_server:
+            try: self._udp_server.stop()
+            except Exception: pass
+
+    # ── callbacks ─────────────────────────────────────────────────────────────
+
+    def on_connect(self, fn):    self._on_connect_cb    = fn; return self
+    def on_disconnect(self, fn): self._on_disconnect_cb = fn; return self
+    def on_message(self, fn):    self._on_message_cb    = fn; return self
+
+    # ── broadcast / sync ──────────────────────────────────────────────────────
+
+    def broadcast(self, data):
+        msg = _net_pack(data)
+        with self._lock:
+            for peer in list(self._peers.values()):
+                peer._send(msg)
+
+    def sync(self, state: dict):
+        """Broadcast delta-compressed state to all peers."""
+        with self._lock:
+            for peer in list(self._peers.values()):
+                peer.sync(state)
+
+    def player_count(self) -> int:
+        return len(self._peers)
+
+    # ── internals ─────────────────────────────────────────────────────────────
+
+    def _run(self):
+        try:
+            import asyncio, websockets  # noqa: F401
+            self._mode = "ws"
+            self._run_ws()
+        except ImportError:
+            self._mode = "udp"
+            self._run_udp_fallback()
+
+    def _run_ws(self):
+        """WebSocket server loop (requires websockets package)."""
+        import asyncio, websockets
+
+        async def _handler(ws):
+            pid = f"ws:{id(ws)}"
+            def _send_fn(msg):
+                asyncio.run_coroutine_threadsafe(ws.send(msg), loop)
+            peer = _NetPeer(pid, _send_fn)
+            with self._lock:
+                if len(self._peers) >= self._max:
+                    await ws.close(); return
+                self._peers[pid] = peer
+            if self._on_connect_cb:
+                try: self._on_connect_cb(peer)
+                except Exception: pass
+            try:
+                async for raw in ws:
+                    data = _net_unpack(raw)
+                    if self._on_message_cb:
+                        try: self._on_message_cb(peer, data)
+                        except Exception: pass
+            except Exception:
+                pass
+            finally:
+                with self._lock:
+                    self._peers.pop(pid, None)
+                if self._on_disconnect_cb:
+                    try: self._on_disconnect_cb(peer)
+                    except Exception: pass
+
+        async def _serve():
+            async with websockets.serve(_handler, "", self._port):
+                while self._running:
+                    await asyncio.sleep(0.1)
+
+        loop = asyncio.new_event_loop()
+        try:
+            loop.run_until_complete(_serve())
+        finally:
+            loop.close()
+
+    def _run_udp_fallback(self):
+        """UDP fallback when websockets not installed."""
+        self._udp_server = _GameServer(self._port, self._max)
+
+        def _on_c(peer):
+            np = _NetPeer(peer.id, lambda msg: peer.send(_net_unpack(msg)))
+            with self._lock:
+                self._peers[peer.id] = np
+            if self._on_connect_cb:
+                try: self._on_connect_cb(np)
+                except Exception: pass
+
+        def _on_d(peer):
+            with self._lock:
+                self._peers.pop(peer.id, None)
+            if self._on_disconnect_cb:
+                try: self._on_disconnect_cb(peer)
+                except Exception: pass
+
+        def _on_m(peer, data):
+            np = self._peers.get(peer.id)
+            if np and self._on_message_cb:
+                try: self._on_message_cb(np, data)
+                except Exception: pass
+
+        self._udp_server.on_connect(_on_c)
+        self._udp_server.on_disconnect(_on_d)
+        self._udp_server.on_message(_on_m)
+        self._udp_server.start()
+
+        import time
+        while self._running:
+            time.sleep(0.1)
+
+    def __repr__(self):
+        return (f"<NetServer port={self._port} "
+                f"mode={self._mode} peers={len(self._peers)}>")
+
+
+class _NetClient:
+    """
+    Game network client.  Tries WebSocket first; falls back to UDP.
+    """
+    def __init__(self):
+        self._on_message_cb = None
+        self._running       = False
+        self._thread        = None
+        self.connected      = False
+        self._url           = None
+        self._ws            = None       # ws connection (async)
+        self._udp           = None       # UDP fallback
+        self._sync          = _NetDeltaSync()
+        self._send_fn       = None
+        self._loop          = None
+
+    # ── lifecycle ─────────────────────────────────────────────────────────────
+
+    def connect(self, url: str):
+        """
+        Connect to a server.
+        url examples:
+          "ws://localhost:7777"
+          "udp://localhost:7777"   (forced UDP)
+          "localhost:7777"         (auto — tries WS first)
+        """
+        self._url     = url
+        self._running = True
+        self._thread  = _threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+        return self
+
+    def disconnect(self):
+        self._running  = False
+        self.connected = False
+        if self._udp:
+            try: self._udp.disconnect()
+            except Exception: pass
+
+    # ── callbacks ─────────────────────────────────────────────────────────────
+
+    def on_message(self, fn):
+        self._on_message_cb = fn; return self
+
+    # ── send / sync ───────────────────────────────────────────────────────────
+
+    def send(self, data):
+        if self._send_fn:
+            try: self._send_fn(_net_pack(data))
+            except Exception: pass
+
+    def sync(self, state: dict):
+        """Send only changed entries since last sync."""
+        delta = self._sync.delta(state)
+        if delta:
+            self.send({"_sync": delta})
+
+    # ── internals ─────────────────────────────────────────────────────────────
+
+    def _run(self):
+        url = self._url or ""
+        if url.startswith("udp://"):
+            self._run_udp(url[6:])
+            return
+        try:
+            import websockets  # noqa: F401
+            self._run_ws(url if "://" in url else f"ws://{url}")
+        except ImportError:
+            host_port = url.replace("ws://", "").replace("wss://", "")
+            self._run_udp(host_port)
+
+    def _run_ws(self, url: str):
+        import asyncio, websockets
+
+        async def _connect():
+            try:
+                async with websockets.connect(url) as ws:
+                    self._ws = ws
+                    self.connected = True
+
+                    async def _sender(msg):
+                        await ws.send(msg)
+
+                    self._loop    = asyncio.get_event_loop()
+                    self._send_fn = lambda msg: asyncio.run_coroutine_threadsafe(
+                        _sender(msg), self._loop
+                    )
+                    async for raw in ws:
+                        if not self._running:
+                            break
+                        data = _net_unpack(raw)
+                        if self._on_message_cb:
+                            try: self._on_message_cb(data)
+                            except Exception: pass
+            except Exception:
+                self.connected = False
+
+        loop = asyncio.new_event_loop()
+        try:
+            loop.run_until_complete(_connect())
+        finally:
+            self.connected = False
+            loop.close()
+
+    def _run_udp(self, host_port: str):
+        parts = host_port.rsplit(":", 1)
+        host  = parts[0] if parts else "localhost"
+        port  = int(parts[1]) if len(parts) > 1 else 7777
+        self._udp = _GameClient()
+        self._udp.on_message(lambda d: self._on_message_cb(d) if self._on_message_cb else None)
+        self._send_fn = lambda msg: self._udp.send(_net_unpack(msg))
+        self._udp.connect(host, port)
+        self.connected = True
+        import time
+        while self._running:
+            time.sleep(0.1)
+        self.connected = False
+
+    def __repr__(self):
+        return f"<NetClient connected={self.connected} url={self._url}>"
+
+
+def _net_serve(port=7777, max_clients=16):
+    return _NetServer(int(port), int(max_clients))
+
+def _net_connect(url="localhost:7777"):
+    return _NetClient().connect(str(url))
+
+
+register_module("net", _wrapmod({
+    "serve":       _net_serve,
+    "connect":     _net_connect,
+    "Server":      _NetServer,
+    "Client":      _NetClient,
+    "DeltaSync":   _NetDeltaSync,
+    "pack":        _net_pack,
+    "unpack":      _net_unpack,
+}, "net"))

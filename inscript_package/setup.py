@@ -43,11 +43,19 @@ setup(
         "Topic :: Software Development :: Interpreters",
     ],
     py_modules = [
+        # ── Core ──────────────────────────────────────────────────────────────
         "inscript", "repl", "lexer", "parser", "interpreter",
         "compiler", "vm", "analyzer", "errors", "environment",
+        "ast_nodes",
+        # ── Stdlib ────────────────────────────────────────────────────────────
         "stdlib", "stdlib_extended", "stdlib_extended_2", "stdlib_game",
-        "stdlib_values", "ast_nodes", "inscript_fmt", "inscript_test",
+        "stdlib_values", "stdlib_assets",
+        # ── Tooling ───────────────────────────────────────────────────────────
+        "inscript_fmt", "inscript_test", "inscript_dap",
+        # ── Backends ──────────────────────────────────────────────────────────
         "pygame_backend",
+        # ── v2.7.0+ runtime modules ───────────────────────────────────────────
+        "scene_tree", "hot_reload",
     ],
     package_data     = {"": ["examples/*.ins", "lsp/*.py", "*.md"]},
     install_requires = [],

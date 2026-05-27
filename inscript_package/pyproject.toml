@@ -1,10 +1,14 @@
 [build-system]
-requires = ["setuptools>=65", "wheel"]
+requires = [
+    "setuptools>=65",
+    "wheel",
+    # setuptools-scm not needed — we read VERSION from inscript.py directly
+]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "inscript-lang"
-version = "2.5.0"
+dynamic = ["version"]
 description = "InScript — a game-focused scripting language with 59 game modules and a bytecode VM"
 readme = "README.md"
 license = { text = "MIT" }
@@ -38,13 +42,26 @@ Documentation = "https://authorss81.github.io/inscript/docs/"
 [project.scripts]
 inscript = "inscript:main"
 
+# ── Dynamic version: reads VERSION = "x.y.z" from inscript.py at build time ──
+# setup.py already does this; pyproject.toml defers to setup.py via attr:
+[tool.setuptools.dynamic]
+version = {attr = "inscript.VERSION"}
+
 [tool.setuptools]
 py-modules = [
+    # ── Core ──────────────────────────────────────────────────────────────────
     "inscript", "repl", "lexer", "parser", "interpreter",
     "compiler", "vm", "analyzer", "errors", "environment",
+    "ast_nodes",
+    # ── Stdlib ────────────────────────────────────────────────────────────────
     "stdlib", "stdlib_extended", "stdlib_extended_2", "stdlib_game",
-    "stdlib_values", "ast_nodes", "inscript_fmt", "inscript_test",
-    "pygame_backend"
+    "stdlib_values", "stdlib_assets",
+    # ── Tooling ───────────────────────────────────────────────────────────────
+    "inscript_fmt", "inscript_test", "inscript_dap",
+    # ── Backends ──────────────────────────────────────────────────────────────
+    "pygame_backend",
+    # ── v2.7.0+ runtime modules ───────────────────────────────────────────────
+    "scene_tree", "hot_reload"
 ]
 
 [tool.setuptools.package-data]

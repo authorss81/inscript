@@ -9,9 +9,13 @@
 #      → New repository secret → Name: PYPI_API_TOKEN → paste token → Save
 #
 # To publish:
-#   git tag -a v1.4.0 -m "InScript v1.4.0"
-#   git push origin v1.4.0
+#   git tag -a v2.9.0 -m "InScript v2.9.0"
+#   git push origin v2.9.0
 #   → GitHub Actions: runs all tests → builds → uploads to PyPI
+#
+# NOTE: attestations is set to false because it conflicts with explicit
+#       PYPI_API_TOKEN auth. To switch to Trusted Publishing (no token needed),
+#       follow: https://pypi.org/manage/project/inscript-lang/settings/publishing/
 
 name: Publish to PyPI
 
@@ -92,6 +96,9 @@ jobs:
           python test_v230.py
           python test_v240.py
           python test_v250.py
+          python test_v260.py
+          python test_v270.py
+          python test_v280.py
 
   build:
     name: Build distribution
@@ -112,6 +119,17 @@ jobs:
       - name: Build wheel and sdist
         working-directory: inscript_package
         run: python -m build
+
+      - name: Verify built version matches tag
+        working-directory: inscript_package
+        run: |
+          TAG="${GITHUB_REF_NAME}"          # e.g. v2.9.0
+          PKG_VER="$(python -c "import inscript; print(inscript.VERSION)")"
+          echo "Tag: $TAG  |  inscript.VERSION: $PKG_VER"
+          if [ "v${PKG_VER}" != "${TAG}" ]; then
+            echo "ERROR: tag ${TAG} does not match inscript.VERSION ${PKG_VER}"
+            exit 1
+          fi
 
       - name: Upload dist artifacts
         uses: actions/upload-artifact@v4
@@ -136,4 +154,4 @@ jobs:
         with:
           user: __token__
           password: ${{ secrets.PYPI_API_TOKEN }}
-
+          attestations: false   # must be false when using explicit token auth
