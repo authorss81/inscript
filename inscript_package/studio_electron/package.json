@@ -1,0 +1,29 @@
+{
+  "name": "inscript-studio",
+  "version": "3.0.0",
+  "description": "InScript Studio — Electron-based IDE for InScript game development",
+  "main": "src/main.js",
+  "homepage": "https://github.com/authorss81/inscript",
+  "author": "Shreyasi Sarkar",
+  "license": "MIT",
+  "scripts": {
+    "start":   "electron .",
+    "build":   "electron-builder --dir",
+    "dist":    "electron-builder",
+    "install-python": "pip install inscript-lang"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "electron":          "^29.0.0",
+    "electron-builder":  "^24.0.0"
+  },
+  "build": {
+    "appId":       "dev.inscript.studio",
+    "productName": "InScript Studio",
+    "files":       ["src/**/*", "assets/**/*"],
+    "extraResources": [{"from": "../inscript_package", "to": "inscript_runtime"}],
+    "win":  {"target": "nsis",   "icon": "assets/icon.ico"},
+    "mac":  {"target": "dmg",    "icon": "assets/icon.icns"},
+    "linux":{"target": "AppImage","icon": "assets/icon.png"}
+  }
+}

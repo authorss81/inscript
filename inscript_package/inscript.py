@@ -24,7 +24,7 @@ from errors   import (InScriptError, LexerError, ParseError,
                        SemanticError, InScriptRuntimeError,
                        MultiError, InScriptWarning)
 
-VERSION = "2.13.0"
+VERSION = "3.0.0"
 
 MANIFEST_FILENAME = "inscript.toml"
 LOCK_FILENAME     = "inscript.lock"
@@ -2752,6 +2752,17 @@ Examples:
                         help="v2.12.0: Start Electron bridge JSON-RPC server")
     parser.add_argument("--bridge-port", type=int, default=8765,
                         help="v2.12.0: Port for --studio-bridge (default: 8765)")
+    # v3.0.0: Studio + Visual Scripting
+    parser.add_argument("--studio", action="store_true",
+                        help="v3.0.0: Launch InScript Studio web IDE in browser")
+    parser.add_argument("--studio-port", type=int, default=8080,
+                        help="v3.0.0: Port for Studio web app (default: 8080)")
+    parser.add_argument("--visual-compile", metavar="FILE",
+                        help="v3.0.0: Compile a .vins visual script to .ins source")
+    parser.add_argument("--vins-output", metavar="FILE",
+                        help="v3.0.0: Output path for --visual-compile (default: <input>.ins)")
+    parser.add_argument("--vins-template", metavar="NAME",
+                        help="v3.0.0: Generate a .vins template for visual scripting")
     parser.add_argument("--lsp", action="store_true",
                         help="Start the Language Server (requires: pip install pygls)")
     parser.add_argument("--game", action="store_true",
@@ -3065,6 +3076,57 @@ Examples:
             while True: _time.sleep(1)
         except KeyboardInterrupt:
             bridge.stop()
+        return 0
+
+    # ── v3.0.0 Studio + Visual Scripting ──────────────────────────────────
+    if getattr(args, 'studio', False):
+        import time as _time
+        studio_port = getattr(args, 'studio_port', 8080)
+        bridge_port = getattr(args, 'bridge_port', 8765)
+        proj_dir    = getattr(args, 'project_dir', '.') or '.'
+        from studio_app import StudioApp
+        app_s = StudioApp(proj_dir, studio_port=studio_port, bridge_port=bridge_port)
+        app_s.start()
+        url = app_s.url
+        print(f"[InScript Studio] ✅  Running at {url}")
+        print(f"[InScript Studio] Project: {os.path.abspath(proj_dir)}")
+        print(f"[InScript Studio] Ctrl+C to stop")
+        # Open browser
+        try:
+            import webbrowser as _wb
+            _wb.open(url)
+        except Exception:
+            pass
+        try:
+            while True: _time.sleep(1)
+        except KeyboardInterrupt:
+            app_s.stop()
+            print(f"[InScript Studio] Stopped.")
+        return 0
+
+    if getattr(args, 'visual_compile', None) is not None:
+        from visual_script import compile_file
+        vins_path = args.visual_compile
+        out_path  = getattr(args, 'vins_output', None)
+        if not os.path.isfile(vins_path):
+            print(f"[visual] File not found: {vins_path}", file=sys.stderr); return 1
+        try:
+            result_path = compile_file(vins_path, out_path)
+            print(f"[visual] Written to: {result_path}")
+        except Exception as _ve:
+            print(f"[visual] Compile error: {_ve}", file=sys.stderr); return 1
+        return 0
+
+    if getattr(args, 'vins_template', None) is not None:
+        import json as _j
+        from visual_script import make_template
+        name     = args.vins_template
+        out_path = f"{name}.vins"
+        tmpl     = make_template(name)
+        with open(out_path, "w") as f:
+            _j.dump(tmpl, f, indent=2)
+        print(f"[visual] Template written to {out_path}")
+        print(f"[visual] Compile with: inscript --visual-compile {out_path}")
         return 0
 
     # v1.9.1: --no-typecheck is deprecated — emit a warning and honour it

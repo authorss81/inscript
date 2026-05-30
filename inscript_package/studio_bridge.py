@@ -583,3 +583,159 @@ def _INPUT_MANAGER_INSTANCE():
         return _imi
     except ImportError:
         return None
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# v3.0.0: IPC scene state file (fixes subprocess/inspection disconnect)
+# ─────────────────────────────────────────────────────────────────────────────
+# When a game runs via start_game, it cannot be introspected directly from
+# the bridge because they are separate processes. The fix: the game process
+# writes its live scene state to a temp JSON file every N frames.
+# The bridge reads that file for get_live_scene / set_node_prop.
+
+import tempfile as _tempfile
+
+_IPC_STATE_FILE = os.path.join(_tempfile.gettempdir(), "inscript_studio_ipc.json")
+
+
+def _ipc_write_scene(scene_data: dict) -> None:
+    """Called from within the game process to publish scene state."""
+    try:
+        import json as _j
+        tmp = _IPC_STATE_FILE + ".tmp"
+        with open(tmp, "w") as f:
+            _j.dump(scene_data, f)
+        os.replace(tmp, _IPC_STATE_FILE)
+    except Exception:
+        pass
+
+
+def _ipc_read_scene() -> dict:
+    """Called from the bridge to read scene state written by game process."""
+    try:
+        import json as _j
+        with open(_IPC_STATE_FILE) as f:
+            return _j.load(f)
+    except Exception:
+        return {"nodes": [], "count": 0, "source": "ipc"}
+
+
+def _extend_bridge_v300(bridge_cls):
+    """v3.0.0 patches: real build RPC, IPC-aware get_live_scene."""
+
+    # ── Real build RPC ────────────────────────────────────────────────────────
+    def _rpc_build(self, params: dict) -> dict:
+        """
+        Actually runs `inscript --build <target> --project-dir <dir>`.
+        Non-blocking — spawns subprocess, streams output to _build_output.
+        """
+        target      = params.get("target", "desktop")
+        project_dir = params.get("project_dir", ".")
+
+        if not hasattr(self, "_build_outputs"):
+            self._build_outputs = {}
+        if not hasattr(self, "_build_procs"):
+            self._build_procs   = {}
+
+        inscript_py = os.path.join(os.path.dirname(__file__), "inscript.py")
+        cmd = [sys.executable, inscript_py,
+               "--build", target,
+               "--project-dir", os.path.abspath(project_dir)]
+
+        output_lines = []
+        self._build_outputs[target] = output_lines
+
+        def _run():
+            try:
+                proc = _subprocess.Popen(
+                    cmd, stdout=_subprocess.PIPE, stderr=_subprocess.STDOUT,
+                    text=True, bufsize=1
+                )
+                self._build_procs[target] = proc
+                for line in proc.stdout:
+                    output_lines.append(line.rstrip("\n"))
+                proc.wait()
+                status = "ok" if proc.returncode == 0 else "error"
+                output_lines.append(f"[build:{target}] exit {proc.returncode} — {status}")
+            except Exception as e:
+                output_lines.append(f"[build:{target}] ERROR: {e}")
+
+        t = threading.Thread(target=_run, daemon=True)
+        t.start()
+        return {"started": True, "target": target,
+                "project_dir": os.path.abspath(project_dir)}
+
+    def _rpc_build_status(self, params: dict) -> dict:
+        """Poll build output since a given line index."""
+        target = params.get("target", "desktop")
+        since  = int(params.get("since", 0))
+        outputs = getattr(self, "_build_outputs", {})
+        lines   = outputs.get(target, [])
+        proc    = getattr(self, "_build_procs", {}).get(target)
+        running = proc is not None and proc.poll() is None
+        return {
+            "target":  target,
+            "running": running,
+            "output":  lines[since:],
+            "total":   len(lines),
+        }
+
+    # ── IPC-aware get_live_scene ──────────────────────────────────────────────
+    def _rpc_get_live_scene_v300(self, params: dict) -> dict:
+        """
+        v3.0.0: Check both sources:
+          1. Bridge's own interpreter (if run() was called)
+          2. IPC file (if start_game subprocess is running and wrote state)
+        """
+        # Check if we have a live interpreter
+        with self._lock:
+            if self._interp is not None:
+                from scene_tree import NodeInstance
+                nodes = []
+                for name, val in self._interp._globals._store.items():
+                    if isinstance(val, NodeInstance):
+                        nodes.append({
+                            "name":      name,
+                            "blueprint": val.blueprint.name,
+                            "parent":    val._parent.name if val._parent else None,
+                            "children":  [c.name for c in val.get_children()],
+                            "props":     {k: str(v) for k, v in val._props.items()
+                                          if not callable(v)},
+                        })
+                if nodes:
+                    return {"nodes": nodes, "count": len(nodes), "source": "interpreter"}
+
+        # Fall back to IPC file (subprocess game)
+        ipc = _ipc_read_scene()
+        if ipc.get("nodes"):
+            return ipc
+
+        # Check if game process is running — give a hint
+        gp = getattr(self, "_game_process", None)
+        if gp and gp.is_running():
+            return {"nodes": [], "count": 0,
+                    "source": "ipc",
+                    "hint": ("Game is running as subprocess. To enable live scene "
+                             "inspection, add this to your .ins file: "
+                             "'import \"studio_ipc\" as ipc' and call 'ipc.publish_scene()'.")}
+        return {"nodes": [], "count": 0, "source": "none"}
+
+    # ── Patch dispatch ────────────────────────────────────────────────────────
+    _NEW_V300 = {
+        "build":          _rpc_build,
+        "build_status":   _rpc_build_status,
+    }
+
+    _orig_dispatch_v300 = bridge_cls._dispatch
+
+    def _new_dispatch_v300(self, method, params):
+        if method == "get_live_scene":
+            return _rpc_get_live_scene_v300(self, params)
+        if method in _NEW_V300:
+            return _NEW_V300[method](self, params)
+        return _orig_dispatch_v300(self, method, params)
+
+    bridge_cls._dispatch = _new_dispatch_v300
+
+
+_extend_bridge_v300(StudioBridge)

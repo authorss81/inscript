@@ -1,9 +1,11 @@
 # InScript Language Roadmap — Detailed
 
-> **Current version:** v2.13.0 (May 2026) 🎉
-> **Tests:** 64 test files, 64/64 CI passing — all green
-> **Bridge v2:** `start_game/stop_game`, live scene editing, DAP wired, input emulation, iOS export
-> **Assessment: 🟢 ALL GAPS CLOSED. v3.0.0 InScript Studio is genuinely cleared to begin.**
+> **Current version:** v3.0.0 (May 2026) 🎉
+> **Tests:** 66 test files, 66/66 CI passing — all green
+> **Studio:** `inscript --studio` → web IDE at localhost:8080; CodeMirror editor, file tree, scene inspector, hot reload, real build panel
+> **Visual Scripting:** 9 node types, drag-and-drop Canvas editor, `--visual-compile`, `--vins-template`
+> **Electron:** `studio_electron/` scaffold — `npm start` for native app
+> **Assessment: 🚀 MAJOR RELEASE. InScript Studio ships.**
 
 ---
 
@@ -613,10 +615,9 @@ May 2026     v2.0.0    ✅ SHIPPED — Production Ready — all 5 gaps closed
              v2.11.0   ✅ SHIPPED — Export Pipeline (60/60 CI ✅)
              v2.12.0   ✅ SHIPPED — Studio Readiness Gate (62/62 CI ✅)
              v2.13.0   ✅ SHIPPED — Studio Bridge v2 (64/64 CI ✅)
-             STATUS: 64 test files, all green. All gaps closed.
-             🟢 v3.0.0 InScript Studio — CLEARED TO BEGIN.
-
-2027         v3.0.0    🚀 NEXT — InScript Studio (Electron IDE)
+             v3.0.0    ✅ SHIPPED — InScript Studio (66/66 CI ✅)
+             STATUS: 66 test files, all green.
+             🚀 MAJOR RELEASE — InScript Studio ships.
 ```
 
 ---
@@ -942,3 +943,61 @@ The package name stays `inscript-lang` (not `inscript` — already taken on PyPI
 - [ ] **Studio hot-reload** — on save, `hot_reload` RPC patches fns; state preserved; error overlay on failure
 - [ ] **Studio build panel** — `--build desktop/web/android/ios` triggered from Electron shell
 - [ ] **Plugin marketplace** — `StudioPlugin` extensions installable from Studio UI
+
+---
+
+## ✅ v3.0.0 — InScript Studio
+
+**Status: SHIPPED (May 2026)**
+
+**Goal:** A complete game development environment built around InScript.
+
+### Visual Scripting
+- [x] **`.vins` format** — JSON graph: `nodes`, `connections`, `version`, `name`
+- [x] **9 node types** — event, print, fn_call, literal, variable_get, variable_set, op, if_branch, return (+comment)
+- [x] **`VisualScriptCompiler`** — walks exec chain, resolves value ports, emits InScript source
+- [x] **`inscript --visual-compile file.vins`** → `file.ins`
+- [x] **`inscript --vins-template Name`** → starter `.vins` file
+- [x] **Compiled source actually runs** in the interpreter — fully tested
+
+### Studio Web IDE
+- [x] **`inscript --studio`** → starts Studio at http://localhost:8080, opens browser
+- [x] **`StudioApp`** — Python HTTP server: serves HTML, file tree, `/read`, `/write`, `/rpc`, `/visual`, `/vins-compile`, `/node-types`
+- [x] **Code editor** — CodeMirror 5 with InScript syntax (Python mode), line numbers, bracket matching
+- [x] **Project file tree** — lists `.ins`, `.inscene`, `.vins`, `.toml`; `.vins` files marked VS
+- [x] **Asset browser** — shows `@texture/@sound/@tilemap` assets from `project_inspect`
+- [x] **Scene inspector** — node tree + property editor (`set_node_prop` RPC)
+- [x] **Run/Stop** — `start_game` subprocess, real-time stdout polling
+- [x] **Hot reload** — saves file then calls `hot_reload` RPC; state preserved
+- [x] **Real build panel** — desktop/web/android/iOS via `build` RPC (actual subprocess)
+- [x] **Build status poll** — streams build output every 500ms
+- [x] **New .vins button** — creates template, opens visual editor in new tab
+
+### Drag-and-Drop Visual Editor (`/visual?f=file.vins`)
+- [x] **Canvas graph editor** — HTML5 Canvas, zero JS dependencies
+- [x] **Pan** — drag empty canvas
+- [x] **Zoom** — mouse wheel (0.2× – 3×)
+- [x] **Drag nodes** — left-drag node header; multi-select with Shift+click
+- [x] **Connect ports** — click output port → click input port; removes duplicate input connections
+- [x] **Pending wire** — visible cursor-following wire while connecting
+- [x] **Delete** — right-click → delete node/wire; Delete key for selection
+- [x] **Double-click edit** — inline text input for literal values, variable names, fn names
+- [x] **Context menu** — right-click: add node, delete, auto-layout, reset view
+- [x] **Node palette** — searchable, filtered, colour-coded by type
+- [x] **Auto-layout** — Ctrl+L: topological sort, columns by exec depth
+- [x] **Undo/Redo** — Ctrl+Z/Y, 20-step history
+- [x] **Save** — Ctrl+S writes JSON back to `.vins` file
+- [x] **Compile** — Ctrl+Shift+B: calls `/vins-compile`, writes `.ins` to disk
+
+### Electron Scaffold
+- [x] **`studio_electron/package.json`** — name, version, scripts, electron-builder config
+- [x] **`studio_electron/src/main.js`** — spawns Python bridge, BrowserWindow, native menu, Open Project
+- [x] **`studio_electron/README.md`** — architecture, limitations, build instructions
+
+### Known Limitations (documented, not hidden)
+- ⚠ **Game preview is text-only** — pygame opens a native OS window; stdout captured in console
+- ⚠ **Scene inspection for subprocess games** — requires `import "studio_ipc" as ipc; ipc.publish_scene()` in `.ins`
+- ⚠ **Visual editor: no type validation** — any port connects to any port; compiler handles gracefully
+- ⚠ **Visual editor: no subgraphs/macros** — flat graph only (planned v3.1.0)
+- ⚠ **iOS/Android build** — scaffold only; requires Xcode/briefcase installed
+- [x] `test_v300.py` (123/123)

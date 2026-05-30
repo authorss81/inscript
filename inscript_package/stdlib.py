@@ -1163,3 +1163,46 @@ try:
     import stdlib_assets  # noqa: F401
 except Exception as _e4:
     import sys; print(f'[stdlib_assets load error] {_e4}', file=sys.stderr)
+
+# ── Studio IPC (v3.0.0): allows subprocess games to publish scene state ──────
+try:
+    from studio_bridge import _IPC_STATE_FILE, _ipc_write_scene
+
+    def _studio_publish_scene(scene_manager_or_dict=None):
+        """
+        Called from .ins: import "studio_ipc" as ipc; ipc.publish_scene()
+        Writes current scene state to the IPC file so Studio can inspect it.
+        """
+        import json as _j
+        data = {"nodes": [], "count": 0, "source": "ipc"}
+        if scene_manager_or_dict is not None:
+            try:
+                from scene_tree import SceneManager, SceneTree
+                if hasattr(scene_manager_or_dict, 'current'):
+                    sm = scene_manager_or_dict
+                    if sm.current:
+                        nodes = []
+                        def _walk(inst, parent=None):
+                            nodes.append({
+                                "name": inst.name,
+                                "blueprint": inst.blueprint.name,
+                                "parent": parent,
+                                "children": [c.name for c in inst.get_children()],
+                                "props": {k: str(v) for k, v in inst._props.items()
+                                          if not callable(v)},
+                            })
+                            for child in inst.get_children():
+                                _walk(child, inst.name)
+                        _walk(sm.current.root)
+                        data = {"nodes": nodes, "count": len(nodes), "source": "ipc"}
+            except Exception:
+                pass
+        _ipc_write_scene(data)
+
+    from stdlib import register_module as _rm
+    _rm("studio_ipc", {
+        "publish_scene": _studio_publish_scene,
+        "ipc_file":      _IPC_STATE_FILE,
+    })
+except Exception as _se:
+    pass
