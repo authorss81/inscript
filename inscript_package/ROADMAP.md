@@ -1,10 +1,9 @@
 # InScript Language Roadmap — Detailed
 
-> **Current version:** v2.12.0 (May 2026) 🎉
-> **Tests:** 62 test files, 62/62 CI passing — all green
-> **Studio Readiness:** 7/7 gates pass — `inscript check-v3` exits 0
-> **Bridge:** `StudioBridge` JSON-RPC, `StudioAPI` plugin hooks, `project_inspect`, `--json-errors`
-> **Assessment: 🟢 ALL READINESS GATES PASS. v3.0.0 InScript Studio development is cleared to begin.**
+> **Current version:** v2.13.0 (May 2026) 🎉
+> **Tests:** 64 test files, 64/64 CI passing — all green
+> **Bridge v2:** `start_game/stop_game`, live scene editing, DAP wired, input emulation, iOS export
+> **Assessment: 🟢 ALL GAPS CLOSED. v3.0.0 InScript Studio is genuinely cleared to begin.**
 
 ---
 
@@ -613,10 +612,11 @@ May 2026     v2.0.0    ✅ SHIPPED — Production Ready — all 5 gaps closed
              v2.10.0   ✅ SHIPPED — Physics & Multiplayer (58/58 CI ✅)
              v2.11.0   ✅ SHIPPED — Export Pipeline (60/60 CI ✅)
              v2.12.0   ✅ SHIPPED — Studio Readiness Gate (62/62 CI ✅)
-             STATUS: 62 test files, all green. 7/7 readiness gates pass.
-             🟢 inscript check-v3 → EXIT 0. v3.0.0 is cleared to begin.
+             v2.13.0   ✅ SHIPPED — Studio Bridge v2 (64/64 CI ✅)
+             STATUS: 64 test files, all green. All gaps closed.
+             🟢 v3.0.0 InScript Studio — CLEARED TO BEGIN.
 
-2027         v3.0.0    🔮 — InScript Studio (Electron IDE, visual scripting, hot reload)
+2027         v3.0.0    🚀 NEXT — InScript Studio (Electron IDE)
 ```
 
 ---
@@ -912,4 +912,33 @@ The package name stays `inscript-lang` (not `inscript` — already taken on PyPI
 
 ---
 
-## 🔮 v3.0.0 — InScript Studio (Long-term)
+## ✅ v2.13.0 — Studio Bridge v2
+
+**Status: SHIPPED (May 2026)**
+
+**Goal:** Close the 4 real gaps that would have broken Studio on day one.
+
+- [x] **`start_game` / `stop_game` / `game_status`** — game runs as a subprocess (`_GameProcess`); bridge stays responsive; real-time output buffering via daemon thread
+- [x] **Live scene editing** — `set_node_prop`, `add_node`, `remove_node`, `get_live_scene` RPC methods
+- [x] **DAP debugger wired into bridge** — `set_breakpoints`, `debug_run`, `debug_continue`, `debug_step`, `debug_vars`, `debug_stop` all callable from Electron
+- [x] **Input emulation** — `_InputManager.emulate_key()`, `emulate_mouse()`, `clear_emulation()`; `_is_key_down` / `mouse_pos` / `mouse_pressed` check emulated state first — no pygame required in Studio preview
+- [x] **`emulate_input` RPC** — Electron Studio can inject key/mouse events into the headless runtime
+- [x] **iOS export** — `build_ios()` → BeeWare Briefcase scaffold (`pyproject.toml`, `app.py`); `--target ios` added to `run_build`; `VALID_TARGETS` updated
+- [x] **18 total RPC methods** — all verified functionally via HTTP round-trip
+- [x] `test_v2130.py` (76/76)
+
+---
+
+## 🚀 v3.0.0 — InScript Studio *(all gates pass — cleared to begin)*
+
+**Goal:** A complete game development environment built around InScript.
+
+- [ ] **InScript Studio** — Electron-based IDE; scene editor, asset browser, live preview pane
+- [ ] **Visual scripting** — node graph editor that compiles to InScript source
+- [ ] **Studio scene editor** — drag/drop node tree, property inspector (`set_node_prop` / `get_live_scene`)
+- [ ] **Studio asset browser** — asset list from `project_inspect`; drag to scene tree
+- [ ] **Studio live preview** — `start_game` subprocess → streams output; `emulate_input` for in-preview interaction
+- [ ] **Studio debugger** — breakpoints + step via `set_breakpoints` / `debug_run` / `debug_step` / `debug_vars`
+- [ ] **Studio hot-reload** — on save, `hot_reload` RPC patches fns; state preserved; error overlay on failure
+- [ ] **Studio build panel** — `--build desktop/web/android/ios` triggered from Electron shell
+- [ ] **Plugin marketplace** — `StudioPlugin` extensions installable from Studio UI

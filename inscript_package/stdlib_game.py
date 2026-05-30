@@ -1121,6 +1121,36 @@ class _InputManager:
         self._key_state = {}  # key -> (pressed_this_frame, held, released_this_frame)
         self._mouse_x = 0.0; self._mouse_y = 0.0
         self._mouse_buttons = {}
+        # v2.13.0: headless emulation — inject key/mouse state without pygame
+        self._emulated_keys:    dict  = {}   # key_name -> bool (held)
+        self._emulated_mouse:   tuple = (0.0, 0.0)
+        self._emulated_buttons: dict  = {}
+        self._headless          = False  # set True when pygame unavailable
+
+    def _try_pygame(self) -> bool:
+        try:
+            import pygame
+            return pygame.get_init()
+        except Exception:
+            return False
+
+    # v2.13.0: headless injection API
+    def emulate_key(self, key: str, held: bool = True):
+        """Inject a key state for headless/Studio preview mode."""
+        self._emulated_keys[key.lower()] = bool(held)
+        self._headless = True
+
+    def emulate_mouse(self, x: float, y: float, buttons: dict | None = None):
+        """Inject mouse position and button state."""
+        self._emulated_mouse   = (float(x), float(y))
+        self._emulated_buttons = buttons or {}
+        self._headless = True
+
+    def clear_emulation(self):
+        """Clear all emulated input state."""
+        self._emulated_keys.clear()
+        self._emulated_buttons.clear()
+        self._headless = False
 
     def map(self, action, keys=None, axes=None, gamepad=None, gamepad_axis=None):
         self._actions[action] = {
@@ -1129,6 +1159,9 @@ class _InputManager:
         }
 
     def _is_key_down(self, key):
+        # v2.13.0: headless emulation takes priority over pygame
+        if self._headless or self._emulated_keys:
+            return self._emulated_keys.get(key.lower(), False)
         try:
             import pygame
             kmap = {
@@ -1169,12 +1202,19 @@ class _InputManager:
         return max(-1.0, min(1.0, value))
 
     def mouse_pos(self):
+        # v2.13.0: headless emulation
+        if self._headless or self._emulated_mouse != (0.0, 0.0):
+            x, y = self._emulated_mouse
+            return {"x": float(x), "y": float(y)}
         try:
             import pygame; x, y = pygame.mouse.get_pos(); return {"x": float(x), "y": float(y)}
         except Exception:
             return {"x": self._mouse_x, "y": self._mouse_y}
 
     def mouse_pressed(self, button=0):
+        # v2.13.0: headless emulation
+        if self._headless or self._emulated_buttons:
+            return self._emulated_buttons.get(int(button), False)
         try:
             import pygame; return bool(pygame.mouse.get_pressed()[int(button)])
         except Exception:
