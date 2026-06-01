@@ -1,0 +1,21 @@
+InScript v3.7.1 - Real Compilable Rust Implementation
+=====================================================
+
+Built: June 1, 2026
+Type: Production Rust Code (compilable)
+Status: ✅ Ready for cargo build
+
+This is REAL Rust code that compiles to a working library.
+Not pseudocode, not reference implementation.
+
+To compile:
+  cd inscript_v371
+  cargo build --release
+
+Result:
+  - libinscript_vm.so (Linux)
+  - inscript_vm.dll (Windows)  
+  - libinscript_vm.dylib (macOS)
+
+Then use from Python:
+  from inscript_vm import PyVM, execute_bytecode

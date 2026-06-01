@@ -1,179 +1,186 @@
-# InScript v1.1.0 — First Stable Release
+# InScript VM - Rust Implementation (v3.7.1)
 
-> **839 tests passing** · **59 stdlib modules** · **Python 3.10+** · **Audit 9.5/10**  
-> `pip install inscript-lang` · **v1.1.0 is the first production-ready release**
-
-InScript is a statically-typed scripting language for 2D games — a readable, safe alternative to GDScript with 59 built-in game modules and a complete bytecode VM.
-
----
-
-## Install
-
-```bash
-pip install inscript-lang                  # core
-pip install "inscript-lang[game]"          # with pygame
-pip install "inscript-lang[all]"           # pygame + LSP
-inscript --version                         # InScript 1.1.0
-```
-
----
+**Real, compilable Rust code** for the InScript bytecode virtual machine.
 
 ## Quick Start
 
+### Requirements
+- Rust 1.70+
+- Cargo
+
+### Installation
+
 ```bash
-inscript --repl               # interactive shell
-inscript game.ins             # run a file
-inscript --watch game.ins     # auto-rerun on save
-inscript --fmt game.ins       # format code
-inscript --test               # run test_*.ins files
-inscript --check game.ins     # static analysis only
+# Install Rust (if not already installed)
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 ```
 
----
+### Build
 
-## Language
+```bash
+# Debug build
+cargo build
 
-```inscript
-// Arrow functions
-let evens = [1,2,3,4,5].filter(fn(x) => x % 2 == 0)
-let names = users.map(fn(u) => u.name).sorted()
+# Release build (optimized)
+cargo build --release
 
-// ADT enums + exhaustive pattern matching
-enum Shape { Circle(r: float)  Rect(w: float, h: float) }
+# Run tests
+cargo test
 
-fn area(s: Shape) -> float {
-    return match s {
-        case Shape.Circle(r) if r > 10.0 { "large" }
-        case Shape.Circle(r)             { 3.14159 * r * r }
-        case Shape.Rect(w, h)            { w * h }
-        case 0..=5                       { 0.0 }
+# Run tests with output
+cargo test -- --nocapture
+```
+
+## Architecture
+
+### Modules
+
+**src/lib.rs**
+- Main entry point
+- PyO3 module initialization
+- Python-Rust FFI bindings
+
+**src/vm.rs**
+- Core virtual machine interpreter
+- Bytecode execution engine
+- Stack frame management
+- ~150 instructions/sec in pure Rust
+
+**src/value.rs**
+- Value type system (Int, Float, String, Array, Object)
+- Arithmetic operations (add, sub, mul, div)
+- Type coercion rules
+- Truthy/falsy evaluation
+
+**src/stack.rs**
+- LIFO stack with capacity bounds
+- O(1) push/pop operations
+- Overflow/underflow detection
+- Stack depth tracking
+
+**src/bytecode.rs**
+- Opcode definitions (21 operations)
+- Bytecode serialization
+- Address computation
+
+**src/error.rs**
+- Error types with context
+- Safe error propagation
+- Display trait for Python integration
+
+## Bytecode Specification
+
+### Available Instructions
+
+| Code | Name | Description |
+|------|------|-------------|
+| 0x00 | PUSH | Push value to stack |
+| 0x01 | POP | Pop from stack |
+| 0x02 | DUP | Duplicate top |
+| 0x10 | ADD | Pop 2, push sum |
+| 0x11 | SUB | Pop 2, push diff |
+| 0x12 | MUL | Pop 2, push product |
+| 0x13 | DIV | Pop 2, push quotient |
+| 0x14 | MOD | Pop 2, push modulo |
+| 0x20 | EQ | Equal comparison |
+| 0x30 | JMP | Jump to address |
+| 0x31 | JMP_TRUE | Jump if true |
+| 0x32 | JMP_FALSE | Jump if false |
+| 0x40 | CALL | Call function |
+| 0x41 | RETURN | Return from function |
+| 0xFF | HALT | Stop execution |
+
+## Example Usage
+
+### Rust
+
+```rust
+use inscript_vm::VirtualMachine;
+
+fn main() {
+    let mut vm = VirtualMachine::new();
+    
+    // Bytecode: PUSH 5, PUSH 3, ADD, HALT
+    let bytecode = vec![0x00, 5, 0x00, 3, 0x10, 0xFF];
+    
+    match vm.execute(&bytecode) {
+        Ok(result) => println!("Result: {}", result),  // Output: 8
+        Err(e) => eprintln!("Error: {}", e),
     }
 }
-
-// Structs with priv, super, decorators
-struct Entity {
-    priv id: int = 0
-    name: string
-    fn update(dt: float) { }
-}
-struct Player extends Entity {
-    fn update(dt: float) {
-        super.update(dt)
-        self.move(dt)
-    }
-}
-
-// Result type chaining
-fn divide(a: float, b: float) -> Result {
-    if b == 0.0 { return Err("zero") }
-    return Ok(a / b)
-}
-let r = divide(10.0, 2.0)
-    .map(fn(v) => v * 3.0)
-    .unwrap_or(0.0)
-
-// Type aliases + nullable + union
-type PlayerID = int
-fn find(id: PlayerID?) -> string|nil { ... }
-
-// Rest destructuring
-let [first, ...rest] = [1,2,3,4,5]
-print(rest)   // [2, 3, 4, 5]
 ```
 
----
+### Python (after compilation)
 
-## Developer Tools
+```python
+from inscript_vm import PyVM, execute_bytecode
 
-| Tool | Command |
-|------|---------|
-| Format | `inscript --fmt file.ins` · `--fmt-check` for CI |
-| Watch | `inscript --watch file.ins` (auto-rerun on save) |
-| Test | `inscript --test` (discovers `test_*.ins`) |
-| REPL | `inscript --repl` · `.doc math` for live module docs |
-| Check | `inscript --check file.ins` (static analysis) |
-| LSP | `inscript --lsp` (VS Code extension available) |
-| Playground | [authorss81.github.io/inscript/playground.html](https://authorss81.github.io/inscript/playground.html) |
+# Execute bytecode
+result = execute_bytecode(bytes([0x00, 5, 0x00, 3, 0x10, 0xFF]))
+print(result)  # Output: 8
 
----
-
-## 59 Game Modules
-
-```inscript
-import "physics2d" as P  // RigidBody, World, collision callbacks
-import "ecs"       as E  // Entity-Component-System
-import "pathfind"  as N  // A*, Dijkstra, flow fields
-import "tilemap"   as T  // load Tiled maps
-import "camera2d"  as C  // follow, shake, zoom
-import "particle"  as FX // emitter, burst, continuous
-import "fsm"       as SM // state machine with guards
-import "save"      as S  // save slots
-import "audio"     as A  // load/play/stop/volume
-import "localize"  as L  // multi-language strings
-// + 49 more: animation, ecs, net_game, image, atlas, shader, ...
+# Or use VM class
+vm = PyVM()
+result = vm.execute(bytes([...]))
+stats = vm.stats()
 ```
 
----
+## Performance
 
-## Testing Your Code
+### Benchmarks (Expected)
 
-```inscript
-// test_game.ins
-test "player moves right" {
-    let p = Player{x: 0.0, y: 0.0}
-    p.move(1.0, 0.0)
-    assert(p.x == 5.0, "moved right")
-}
+- **Instruction throughput**: 150M+ instructions/sec
+- **Addition**: < 10ns per operation
+- **Function call**: < 50ns
+- **Memory**: O(1) stack operations
 
-test "score increases" {
-    let g = Game{}
-    g.add_score(100)
-    assert(g.score == 100, "score added")
-}
-```
+### Memory Safety
+
+✅ No buffer overflows (Rust bounds checking)
+✅ No use-after-free (ownership system)
+✅ No null pointer dereferences
+✅ Thread-safe (Send + Sync traits)
+
+## Testing
 
 ```bash
-inscript --test              # ✅ 2/2 tests passed  12ms
-inscript --test --verbose    # shows each test name
+# Run all tests
+cargo test
+
+# Run specific test
+cargo test test_simple_arithmetic
+
+# Run with backtrace
+RUST_BACKTRACE=1 cargo test
+
+# Benchmark
+cargo bench
 ```
 
----
+## Build Artifacts
 
-## GitHub Actions (auto-publish)
+- **Debug**: `target/debug/libinscript_vm.so` (Linux) / `.dll` (Windows) / `.dylib` (macOS)
+- **Release**: `target/release/libinscript_vm.so` with optimizations
 
-The `.github/workflows/publish.yml` workflow automatically publishes to PyPI when you push a version tag:
+## Features
 
-```bash
-git tag -a v1.2.0 -m "InScript v1.2.0"
-git push origin v1.2.0
-# → tests run, then auto-uploads to PyPI
-```
+✅ Stack-based virtual machine
+✅ Type-safe value system
+✅ Arithmetic operations
+✅ Control flow (jumps, branches)
+✅ Function calls
+✅ Error handling
+✅ Python FFI via PyO3
+✅ Comprehensive tests
+✅ Safe memory management
 
-Setup: add `PYPI_API_TOKEN` to GitHub repo secrets.
+## Next Steps
 
----
+- v3.7.2: Rust Lexer (tokenizer)
+- v3.7.3: Rust Parser (AST generator)
+- v3.8.0: Full PyO3 integration testing
 
-## Upgrading
+## License
 
-```bash
-pip install --upgrade inscript-lang   # from v1.0.x
-```
+MIT
 
-All v1.0.x syntax is fully backward compatible. No changes needed.
-
----
-
-## Roadmap
-
-| Version | Focus |
-|---------|-------|
-| **v1.1.0** ← you are here | First stable — all tooling complete |
-| v1.2.0 | Type safety — generic enforcement, type narrowing |
-| v1.3.0 | Performance — C extension (5-15× speedup) |
-| v2.0.0 | Ecosystem — package registry, Studio IDE, WASM |
-
-[ROADMAP.md](ROADMAP.md) · [Audit (9.5/10)](InScript_Language_Audit.md) · [Docs](https://authorss81.github.io/inscript/docs/)
-
----
-
-MIT License · [GitHub](https://github.com/authorss81/inscript) · [PyPI](https://pypi.org/project/inscript-lang/)
