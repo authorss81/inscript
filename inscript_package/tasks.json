@@ -1,0 +1,41 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Run InScript file",
+      "type": "shell",
+      "command": "python",
+      "args": ["${workspaceFolder}/inscript.py", "${file}"],
+      "group": { "kind": "build", "isDefault": true },
+      "presentation": { "reveal": "always", "panel": "shared" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Run example: Asteroid Blaster",
+      "type": "shell",
+      "command": "python",
+      "args": ["${workspaceFolder}/inscript.py", "examples/asteroid_blaster.ins"],
+      "group": "build",
+      "presentation": { "reveal": "always", "panel": "shared" },
+      "problemMatcher": []
+    },
+    {
+      "label": "InScript REPL",
+      "type": "shell",
+      "command": "python",
+      "args": ["${workspaceFolder}/inscript.py", "--repl"],
+      "group": "build",
+      "presentation": { "reveal": "always", "panel": "dedicated" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Run all tests",
+      "type": "shell",
+      "command": "python",
+      "args": ["${workspaceFolder}/test_interpreter.py"],
+      "group": "test",
+      "presentation": { "reveal": "always", "panel": "shared" },
+      "problemMatcher": []
+    }
+  ]
+}
