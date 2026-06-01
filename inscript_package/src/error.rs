@@ -1,32 +1,30 @@
-//! Error types for InScript VM
+//! Lexer error types
 
 use std::fmt;
 
 #[derive(Debug, Clone)]
-pub enum VMError {
-    StackUnderflow,
-    StackOverflow,
-    TypeMismatch(String),
-    DivisionByZero,
-    InvalidBytecode(String),
-    UnknownOpcode(u8),
-    InvalidMemoryAccess,
+pub struct LexError {
+    pub message: String,
+    pub line: usize,
+    pub column: usize,
 }
 
-impl fmt::Display for VMError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            VMError::StackUnderflow => write!(f, "Stack underflow"),
-            VMError::StackOverflow => write!(f, "Stack overflow"),
-            VMError::TypeMismatch(msg) => write!(f, "Type mismatch: {}", msg),
-            VMError::DivisionByZero => write!(f, "Division by zero"),
-            VMError::InvalidBytecode(msg) => write!(f, "Invalid bytecode: {}", msg),
-            VMError::UnknownOpcode(op) => write!(f, "Unknown opcode: {}", op),
-            VMError::InvalidMemoryAccess => write!(f, "Invalid memory access"),
+impl LexError {
+    pub fn new(message: impl Into<String>, line: usize, column: usize) -> Self {
+        LexError {
+            message: message.into(),
+            line,
+            column,
         }
     }
 }
 
-impl std::error::Error for VMError {}
+impl fmt::Display for LexError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}:{}: {}", self.line, self.column, self.message)
+    }
+}
 
-pub type VMResult<T> = Result<T, VMError>;
+impl std::error::Error for LexError {}
+
+pub type LexResult<T> = Result<T, LexError>;

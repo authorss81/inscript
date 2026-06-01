@@ -1,21 +1,15 @@
-InScript v3.7.1 - Real Compilable Rust Implementation
-=====================================================
+InScript v3.7.2 - Real Compilable Rust Lexer
+=============================================
 
 Built: June 1, 2026
 Type: Production Rust Code (compilable)
 Status: ✅ Ready for cargo build
 
-This is REAL Rust code that compiles to a working library.
-Not pseudocode, not reference implementation.
+This is REAL Rust code that compiles to a working lexer.
 
 To compile:
-  cd inscript_v371
+  cd inscript_v372
   cargo build --release
 
-Result:
-  - libinscript_vm.so (Linux)
-  - inscript_vm.dll (Windows)  
-  - libinscript_vm.dylib (macOS)
-
 Then use from Python:
-  from inscript_vm import PyVM, execute_bytecode
+  from inscript_lexer import PyLexer, tokenize_string

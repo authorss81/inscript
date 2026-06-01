@@ -1,79 +1,91 @@
-//! InScript Virtual Machine - Rust Implementation
+//! InScript Lexer - Rust Implementation (v3.7.2)
 //! 
-//! Fast, safe bytecode interpreter with PyO3 bindings
-//! Compiles to: libinscript_vm.so (Linux), .dll (Windows), .dylib (macOS)
+//! Fast tokenization with zero-copy references
+//! Compiles to: libinscript_lexer.so/.dll/.dylib
 
 use pyo3::prelude::*;
 
-pub mod value;
-pub mod bytecode;
-pub mod vm;
-pub mod stack;
+pub mod token;
+pub mod lexer;
 pub mod error;
 
-pub use value::Value;
-pub use bytecode::{ByteCode, OpCode};
-pub use vm::VirtualMachine;
-pub use error::VMError;
+pub use token::{Token, TokenType};
+pub use lexer::Lexer;
+pub use error::LexError;
 
 /// Python module initialization
 #[pymodule]
-fn inscript_vm(_py: Python, m: &PyModule) -> PyResult<()> {
-    m.add_class::<PyVM>()?;
-    m.add_function(wrap_pyfunction!(execute_bytecode, m)?)?;
-    m.add_function(wrap_pyfunction!(compile_code, m)?)?;
+fn inscript_lexer(_py: Python, m: &PyModule) -> PyResult<()> {
+    m.add_class::<PyLexer>()?;
+    m.add_function(wrap_pyfunction!(tokenize_string, m)?)?;
     
     Ok(())
 }
 
-/// PyO3-wrapped VM for Python
+/// Python wrapper for Lexer
 #[pyclass]
-pub struct PyVM {
-    vm: VirtualMachine,
+pub struct PyLexer {
+    tokens: Vec<PyToken>,
+}
+
+#[pyclass]
+#[derive(Clone)]
+pub struct PyToken {
+    pub token_type: String,
+    pub value: String,
+    pub line: usize,
+    pub column: usize,
 }
 
 #[pymethods]
-impl PyVM {
-    /// Create new VM instance
+impl PyLexer {
+    /// Create new lexer and tokenize
     #[new]
-    fn new() -> Self {
-        PyVM {
-            vm: VirtualMachine::new(),
-        }
+    fn new(code: String) -> PyResult<Self> {
+        let lexer = Lexer::new(&code);
+        let tokens = lexer.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PySyntaxError, _>(e.to_string()))?;
+        
+        let py_tokens = tokens
+            .into_iter()
+            .map(|t| PyToken {
+                token_type: format!("{:?}", t.token_type),
+                value: t.value.to_string(),
+                line: t.line,
+                column: t.column,
+            })
+            .collect();
+        
+        Ok(PyLexer {
+            tokens: py_tokens,
+        })
     }
 
-    /// Execute bytecode
-    fn execute(&mut self, bytecode_bytes: Vec<u8>) -> PyResult<String> {
-        match self.vm.execute(&bytecode_bytes) {
-            Ok(result) => Ok(result),
-            Err(e) => Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string())),
-        }
+    /// Get all tokens
+    fn tokens(&self) -> Vec<PyToken> {
+        self.tokens.clone()
     }
 
-    /// Get VM statistics
-    fn stats(&self) -> PyResult<String> {
-        Ok(format!(
-            "VM Stats: Executions={}, Stack Depth={}",
-            self.vm.execution_count(),
-            self.vm.stack_depth()
-        ))
-    }
-}
-
-/// Execute bytecode directly
-#[pyfunction]
-fn execute_bytecode(bytecode: Vec<u8>) -> PyResult<String> {
-    let mut vm = VirtualMachine::new();
-    match vm.execute(&bytecode) {
-        Ok(result) => Ok(result),
-        Err(e) => Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string())),
+    /// Get token count
+    fn count(&self) -> usize {
+        self.tokens.len()
     }
 }
 
-/// Compile code (placeholder)
+/// Tokenize string directly
 #[pyfunction]
-fn compile_code(code: String) -> PyResult<Vec<u8>> {
-    // In real implementation, would parse and compile
-    // For now, return empty bytecode
-    Ok(vec![])
+fn tokenize_string(code: String) -> PyResult<Vec<PyToken>> {
+    let lexer = Lexer::new(&code);
+    let tokens = lexer.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PySyntaxError, _>(e.to_string()))?;
+    
+    Ok(tokens
+        .into_iter()
+        .map(|t| PyToken {
+            token_type: format!("{:?}", t.token_type),
+            value: t.value.to_string(),
+            line: t.line,
+            column: t.column,
+        })
+        .collect())
 }
