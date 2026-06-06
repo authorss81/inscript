@@ -1,45 +1,28 @@
-InScript v3.9.1 — LLVM IR Emitter Release
-Build Date: June 5, 2026
+InScript v3.9.2 — Bug Fix Release
+Build Date: June 6, 2026
 
 Components:
-  • Python Core (v3.8.2 — 96 modules, 64K LOC)
-      inscript.py, compiler.py, analyzer.py, stdlib.py, stdlib_game.py,
-      stdlib_assets.py, stdlib_values.py, stdlib_extended.py,
-      errors.py, ast_nodes.py, interpreter.py, lexer.py, parser.py,
-      environment.py, repl.py, hot_reload.py, export_pipeline.py,
-      inscript_fmt.py, inscript_studio_api.py, scene_tree.py,
-      vm_code.py, and more.  Full test suite: 150 bug regression tests.
+  • Python Core (v3.9.2 — 96 modules, 64K LOC)
+  • Rust Lexer (inscript_lexer v3.7.2 — 10x faster)
+  • Rust Parser (inscript_rust_parser v3.7.3 — 10x faster)
+  • Rust VM Engine (inscript-vm-engine v3.9.1 — LLVM IR + JIT stubs)
 
-  • Rust Lexer (inscript_lexer v3.7.2 — 10x faster tokenising)
-      [ still compiled from inscript_rust_parser crate ]
+Bug Fixes (v3.9.2):
+  ✅ Fix 1: import "string" module — all 30 functions restored
+     stdlib_bugfixes.py was calling register_module("string", ...) which
+     replaced the full string module with only {replace, Regex}.
+     Changed to _MODULES["string"].update(...) so it merges correctly.
+     Affected: replace_all, trim_start, trim_end, split_lines, find_last,
+               remove, truncate, index_of, slice, split, join, upper,
+               starts_with, ends_with, and 15 other string functions.
 
-  • Rust Parser (inscript_rust_parser v3.7.3 — 10x faster, 500+ LOC)
+  ✅ Fix 2: generator for-in / gen.next() returning empty/nil
+     visit_GeneratorFnDecl builds gen_interp via object.__new__() but
+     did not initialise _ic_fn_lookup, _ic_struct_fields, or _deferred.
+     First name lookup in the generator body hit _ic_fn_lookup.get()
+     → AttributeError, silently swallowed by except Exception: pass,
+     killing the generator thread instantly before any yield.
+     Added the three missing attribute initialisations.
 
-  • Rust VM Engine (inscript-vm-engine v3.9.1 — 100x+ cumulative speedup)
-      ✨ v3.8.2  Typed Arithmetic + Pre-Decoded Bytecode Cache (8.75x)
-      ✨ v3.8.3  Arc<Value> Stack — O(1) collection clones (17.5x)
-      ✨ v3.8.4  Object Pooling + Value Interning (35-50x)
-      ✨ v3.9.0  Compiler Optimisation Passes (70-100x)
-         - Pass 1: Constant Folding
-         - Pass 2: Instruction Fusion
-         - Pass 3: Strength Reduction
-         - Pass 4: Dead Code Elimination
-         - Pass 5: Nop Compaction
-      ✨ v3.9.1  LLVM IR Emitter (ir.rs) ← NEW
-         - Converts compiled OpCode traces to LLVM 17 IR (.ll text)
-         - Tagged i64 value representation (NaN-box scheme)
-         - Emits arithmetic, comparisons, jumps, calls, global ops
-         - Collection ops delegated to VM runtime helpers
-         - Output: pipe .ll to `llc` or `opt` for native code
-         - Foundation for full JIT compilation in v4.0
-
-Cumulative Speedup vs v3.8.0 baseline:
-  v3.8.0 baseline:              1x
-  + v3.8.2 optimisations:       8.75x
-  + v3.8.3 Arc<Value> stack:    17.5x
-  + v3.8.4 pooling+interning:   35-50x
-  + v3.9.0 compiler passes:     70-100x
-  + v3.9.1 LLVM IR (JIT stub):  path to native-code execution in v4.0
-
-Backward Compatible: 100% (drop-in replacement for all prior versions)
-Next: v4.0 — Full JIT via LLVM + type-inference pass
+Cumulative Speedup vs v3.8.0: 70-100x (unchanged from v3.9.1)
+Backward Compatible: 100%

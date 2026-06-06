@@ -149,7 +149,10 @@ _stdlib_base.register_module("types", {
     "UnionType": UnionType,
     "GenericType": GenericType,
 })
-_stdlib_base.register_module("string", {
+# v3.9.1 fix: merge into the existing string module instead of replacing it.
+# register_module() overwrites the whole dict, destroying the 30 functions
+# already registered in stdlib.py (upper, trim_start, split_lines, etc.).
+_stdlib_base._MODULES["string"].update({
     "replace": string_replace,
     "Regex": RegexPattern,
 })

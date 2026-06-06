@@ -656,6 +656,11 @@ class Interpreter(Visitor):
                 # v1.3.0: required by visit() dispatch cache and TCO
                 gen_interp._dispatch      = {}
                 gen_interp._current_fn    = None
+                # v2.4.0: inline caches — must exist or visit_NameExpr crashes silently
+                gen_interp._ic_fn_lookup     = {}
+                gen_interp._ic_struct_fields = {}
+                # v1.4.0: defer stack
+                gen_interp._deferred         = []
 
                 # Fresh scope for this generator's local variables,
                 # chained to the caller's scope so closures work.
@@ -3275,6 +3280,10 @@ def _get_attr(obj: Any, name: str, line: int, interp: Interpreter) -> Any:
                 "value":      lambda: val,
             }
             if name in res_methods: return res_methods[name]
+        # Module/namespace dict: if the key is a callable, return it directly
+        # (e.g. `import "string" as s; s.replace_all(...)`)
+        if name in obj and callable(obj[name]):
+            return obj[name]
         return _dict_method(obj, name, interp, line)
 
     # Strings
