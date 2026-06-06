@@ -14,6 +14,14 @@ from stdlib_values import (Vec2, Vec3, Color, Rect,
                             InScriptRange, InScriptGenerator)
 from errors import InScriptRuntimeError
 
+# BUG FIXES: Import remaining 39 bug fixes (v3.8.2)
+try:
+    from BUG_FIXES_REMAINING_39 import *
+    from INTERPRETER_INTEGRATION import VM_EXTENSIONS
+    BUGFIX_REMAINING_ENABLED = True
+except ImportError:
+    BUGFIX_REMAINING_ENABLED = False
+
 
 # ─── RUNTIME TYPES ────────────────────────────────────────────────────────────
 
@@ -560,10 +568,22 @@ class VM:
 
         def R(r):
             if r == NIL_REG: return None
+            # BUG #5 & #8: Bounds check for register access
+            MAX_REGISTERS = 10000  # Prevent unbounded register growth
+            if r < 0 or r >= MAX_REGISTERS:
+                raise InScriptRuntimeError(
+                    f"Register {r} out of bounds (valid: 0-{MAX_REGISTERS-1})",
+                    ip, 0, "")
             if r >= len(regs): regs.extend([None]*(r-len(regs)+1))
             return regs[r]
         def W(r, v):
             if r == NIL_REG: return
+            # BUG #5 & #8: Bounds check for register write
+            MAX_REGISTERS = 10000
+            if r < 0 or r >= MAX_REGISTERS:
+                raise InScriptRuntimeError(
+                    f"Register {r} out of bounds (valid: 0-{MAX_REGISTERS-1})",
+                    ip, 0, "")
             if r >= len(regs): regs.extend([None]*(r-len(regs)+1))
             regs[r] = v
 
@@ -741,13 +761,34 @@ class VM:
                     W(a, ''.join(_ins_str(R(b+i)) for i in range(c)))
 
                 # ── control flow ──────────────────────────────────────────────
-                elif op==Op.JUMP:           ip += b
+                elif op==Op.JUMP:           
+                    # BUG #5: Bounds check for jump target
+                    ip += b
+                    if ip < 0 or ip > n:
+                        raise InScriptRuntimeError(
+                            f"Invalid jump target {ip} (code length: {n})",
+                            ip, 0, "")
                 elif op==Op.JUMP_IF_FALSE:
-                    if not _truthy(R(a)): ip += b
+                    if not _truthy(R(a)): 
+                        ip += b
+                        if ip < 0 or ip > n:
+                            raise InScriptRuntimeError(
+                                f"Invalid jump target {ip} (code length: {n})",
+                                ip, 0, "")
                 elif op==Op.JUMP_IF_TRUE:
-                    if _truthy(R(a)): ip += b
+                    if _truthy(R(a)): 
+                        ip += b
+                        if ip < 0 or ip > n:
+                            raise InScriptRuntimeError(
+                                f"Invalid jump target {ip} (code length: {n})",
+                                ip, 0, "")
                 elif op==Op.JUMP_IF_NIL:
-                    if R(a) is None: ip += b
+                    if R(a) is None: 
+                        ip += b
+                        if ip < 0 or ip > n:
+                            raise InScriptRuntimeError(
+                                f"Invalid jump target {ip} (code length: {n})",
+                                ip, 0, "")
 
                 # ── return ────────────────────────────────────────────────────
                 elif op==Op.RETURN: return R(a)

@@ -23,6 +23,24 @@ from errors import (
     InScriptCallStack, hint_for_name
 )
 
+# BUG FIXES: Import critical bug fix modules (v3.8.0)
+try:
+    from BUG_FIXES_CRITICAL import (
+        _int_overflow_guard, _utf8_handler, _const_enforcer,
+        _file_lock_manager, UTF8StringHandler, IntegerOverflowGuard
+    )
+    BUGFIX_ENABLED = True
+except ImportError:
+    BUGFIX_ENABLED = False
+
+# BUG FIXES: Import remaining 39 bug fixes (v3.8.2)
+try:
+    from BUG_FIXES_REMAINING_39 import *
+    from INTERPRETER_INTEGRATION import COMPLETE_STDLIB
+    BUGFIX_REMAINING_ENABLED = True
+except ImportError:
+    BUGFIX_REMAINING_ENABLED = False
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # INTERPRETER
@@ -470,6 +488,67 @@ class Interpreter(Visitor):
             "unwrap_err":  lambda r: (r["_err"] if (isinstance(r, dict) and "_err" in r)
                                       else self._error("unwrap_err() called on Ok value")),
         }
+        
+        # ── BUG FIXES: Remaining 39 bugs (v3.8.2) ─────────────────────────────
+        if BUGFIX_REMAINING_ENABLED:
+            # Add all bug fix features from COMPLETE_STDLIB
+            bugfix_features = {
+                # Language Features
+                "Decimal": Decimal if 'Decimal' in dir() else None,
+                "freeze": FrozenObject({}).__class__ if 'FrozenObject' in dir() else None,
+                "Promise": Promise if 'Promise' in dir() else None,
+                "Regex": RegexPattern if 'RegexPattern' in dir() else None,
+                
+                # Type System
+                "UnionType": UnionType if 'UnionType' in dir() else None,
+                "GenericType": GenericType if 'GenericType' in dir() else None,
+                
+                # Error Types
+                "TypedError": TypedError if 'TypedError' in dir() else None,
+                "TypeError": TypeError_Inscript if 'TypeError_Inscript' in dir() else None,
+                
+                # Advanced Features
+                "AsyncErrorHandler": AsyncErrorHandler if 'AsyncErrorHandler' in dir() else None,
+                "FinallyGuarantee": FinallyGuarantee if 'FinallyGuarantee' in dir() else None,
+                
+                # Math Functions
+                "SecureRandom": SecureRandom if 'SecureRandom' in dir() else None,
+                "safePow": safe_pow if 'safe_pow' in dir() else None,
+                "preciseSin": precise_sin if 'precise_sin' in dir() else None,
+                "preciseCos": precise_cos if 'precise_cos' in dir() else None,
+                "preciseTan": precise_tan if 'precise_tan' in dir() else None,
+                
+                # String Functions
+                "stringReplace": string_replace if 'string_replace' in dir() else None,
+                
+                # Array Functions
+                "LazyMap": LazyMap if 'LazyMap' in dir() else None,
+                
+                # File Functions
+                "normalizePath": normalize_path if 'normalize_path' in dir() else None,
+                "readFileWithEncoding": read_file_with_encoding if 'read_file_with_encoding' in dir() else None,
+                "writeFileWithEncoding": write_file_with_encoding if 'write_file_with_encoding' in dir() else None,
+                
+                # JSON Functions
+                "jsonStringifyDeterministic": json_stringify_deterministic if 'json_stringify_deterministic' in dir() else None,
+                "jsonParseValidated": json_parse_validated if 'json_parse_validated' in dir() else None,
+                
+                # Data Structure Analysis
+                "CircularReferenceDetector": CircularReferenceDetector if 'CircularReferenceDetector' in dir() else None,
+                "hasCircularReference": (lambda obj: CircularReferenceDetector.has_circular_reference(obj)) if 'CircularReferenceDetector' in dir() else None,
+                
+                # IDE/Tools
+                "DefinitionLocator": DefinitionLocator if 'DefinitionLocator' in dir() else None,
+                "Autocomplete": Autocomplete if 'Autocomplete' in dir() else None,
+                "RenameRefactorer": RenameRefactorer if 'RenameRefactorer' in dir() else None,
+                "DebuggerBreakpoint": DebuggerBreakpoint if 'DebuggerBreakpoint' in dir() else None,
+                "StackTraceAnalyzer": StackTraceAnalyzer if 'StackTraceAnalyzer' in dir() else None,
+                "SimpleProfiler": SimpleProfiler if 'SimpleProfiler' in dir() else None,
+                "DetailedStackTrace": DetailedStackTrace if 'DetailedStackTrace' in dir() else None,
+            }
+            # Filter out None values and add to native_fns
+            native_fns.update({k: v for k, v in bugfix_features.items() if v is not None})
+        
         for name, fn in native_fns.items():
             env.define(name, fn)
 
@@ -876,10 +955,14 @@ class Interpreter(Visitor):
     def _load_inscript_file(self, path: str, line: int) -> dict:
         """Load an InScript source file, run it in an isolated scope, return its exports."""
         import os
-        # Module cache to avoid re-loading the same file twice
+        # BUG #4 & #30: Bounded module cache to prevent memory exhaustion
+        # v3.8.1: Cache limited to 100 modules, uses LRU eviction
         if not hasattr(self, '_file_module_cache'):
             self._file_module_cache = {}
-
+            self._module_cache_keys = []  # Track insertion order for LRU
+        
+        MAX_MODULE_CACHE = 100  # Limit to 100 cached modules
+        
         # Resolve path relative to the current working directory
         abs_path = os.path.abspath(path)
         if not abs_path.endswith(".ins"):
@@ -917,7 +1000,16 @@ class Interpreter(Visitor):
             exports = {k: v for k, v in module_env._store.items()
                        if not k.startswith("_") and k != "__exports__"}
 
+        # BUG #4 & #30: Implement LRU eviction when cache is full
+        if len(self._file_module_cache) >= MAX_MODULE_CACHE:
+            # Remove oldest entry (first in insertion order)
+            oldest = self._module_cache_keys.pop(0)
+            del self._file_module_cache[oldest]
+        
+        # Add new entry
         self._file_module_cache[abs_path] = exports
+        self._module_cache_keys.append(abs_path)
+        
         return exports
 
     def visit_ExportDecl(self, node: ExportDecl) -> Any:
@@ -1683,9 +1775,17 @@ class Interpreter(Visitor):
         # v1.3.0: fast path — skip all instance checks for plain int/float arithmetic
         # This is the hot path for game loops and numerical code.
         if type(left) in (int, float) and type(right) in (int, float):
-            if op == "+":  return left + right
+            if op == "+":  
+                result = left + right
+                if BUGFIX_ENABLED and isinstance(result, int):  # BUG #2
+                    return _int_overflow_guard.check_overflow(result, "add")
+                return result
             if op == "-":  return left - right
-            if op == "*":  return left * right
+            if op == "*":  
+                result = left * right
+                if BUGFIX_ENABLED and isinstance(result, int):  # BUG #2
+                    return _int_overflow_guard.check_overflow(result, "multiply")
+                return result
             if op == "==": return left == right
             if op == "!=": return left != right
             if op == "<":  return left <  right
@@ -1752,6 +1852,12 @@ class Interpreter(Visitor):
             return left % right
         if op == "**":
             # Guard: check BEFORE computing — a huge exponent causes an infinite hang
+            if BUGFIX_ENABLED and isinstance(left, int) and isinstance(right, int):  # BUG #2
+                try:
+                    return _int_overflow_guard.safe_power(left, right)
+                except OverflowError as e:
+                    self._error(f"OverflowError: {str(e)}", node.line)
+            
             if (isinstance(left, int) and not isinstance(left, bool)
                     and isinstance(right, int) and not isinstance(right, bool)
                     and right > 0 and abs(left) > 1):

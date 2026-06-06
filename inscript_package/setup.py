@@ -1,75 +1,64 @@
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-InScript — setup.py
-pyproject.toml is the canonical config for v1.0.23+
-This file is kept for compatibility with older pip versions.
+setup.py — InScript v3.7.3 Build Configuration
 
-VERSION is read dynamically from inscript.py so setup.py, pyproject.toml,
-and inscript.py always agree — no more manual sync needed.
+Builds:
+  1. Python package (inscript)
+  2. Rust parser module (inscript_parser)
+  3. All extensions and tools
 """
-import re
-from pathlib import Path
-from setuptools import setup
 
-def _read_version():
-    src = Path(__file__).parent / "inscript.py"
-    m   = re.search(r'^VERSION\s*=\s*["\']([^"\']+)["\']',
-                    src.read_text(encoding="utf-8"), re.M)
-    if not m:
-        raise RuntimeError("VERSION not found in inscript.py")
-    return m.group(1)
+import sys
+import os
+from setuptools import setup, find_packages
 
-VERSION = _read_version()
+try:
+    from setuptools_rust import RustExtension, build_rust
+    RUST_AVAILABLE = True
+except ImportError:
+    RUST_AVAILABLE = False
+    build_rust = None
+
+# Rust extension for parser (v3.7.3)
+rust_extensions = []
+cmdclass = {}
+
+if RUST_AVAILABLE:
+    rust_extensions = [
+        RustExtension(
+            'inscript.inscript_parser',
+            path='inscript_rust_parser/Cargo.toml',
+            binding='PyO3',
+        ),
+    ]
+    cmdclass['build_ext'] = build_rust
 
 setup(
-    name             = "inscript-lang",
-    version          = VERSION,
-    author           = "Shreyasi Sarkar",
-    description      = "InScript — a game-focused scripting language for 2D games",
-    long_description = open("README.md", encoding="utf-8").read(),
-    long_description_content_type = "text/markdown",
-    license          = "MIT",
-    python_requires  = ">=3.10",
-    keywords         = ["game", "scripting", "language", "gamedev", "gdscript"],
-    classifiers      = [
-        "Development Status :: 4 - Beta",
-        "Intended Audience :: Developers",
-        "License :: OSI Approved :: MIT License",
-        "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.10",
-        "Programming Language :: Python :: 3.11",
-        "Programming Language :: Python :: 3.12",
-        "Topic :: Games/Entertainment",
-        "Topic :: Software Development :: Interpreters",
-    ],
-    py_modules = [
-        # ── Core ──────────────────────────────────────────────────────────────
-        "inscript", "repl", "lexer", "parser", "interpreter",
-        "compiler", "vm", "analyzer", "errors", "environment",
-        "ast_nodes",
-        # ── Stdlib ────────────────────────────────────────────────────────────
-        "stdlib", "stdlib_extended", "stdlib_extended_2", "stdlib_game",
-        "stdlib_values", "stdlib_assets",
-        # ── Tooling ───────────────────────────────────────────────────────────
-        "inscript_fmt", "inscript_test", "inscript_dap",
-        # ── Backends ──────────────────────────────────────────────────────────
-        "pygame_backend",
-        # ── v2.7.0+ runtime modules ───────────────────────────────────────────
-        "scene_tree", "hot_reload", "export_pipeline",
-        "studio_bridge", "inscript_studio_api", "studio_readiness",
-        "visual_script", "studio_app", "vins_editor",
-    ],
-    package_data     = {"": ["examples/*.ins", "lsp/*.py", "*.md"]},
-    install_requires = [],
-    extras_require   = {
-        "game": ["pygame>=2.0"],
-        "lsp":  ["pygls>=1.0"],
-        "all":  ["pygame>=2.0", "pygls>=1.0"],
+    name='inscript-lang',
+    version='3.7.3',
+    description='InScript: Real compilable scripting language for game development',
+    author='Shreyasi Sarkar',
+    url='https://github.com/authorss81/inscript',
+    license='MIT',
+    
+    packages=find_packages(exclude=['tests', 'docs', 'examples']),
+    
+    rust_extensions=rust_extensions,
+    cmdclass=cmdclass,
+    
+    install_requires=['pyo3>=0.21'] if RUST_AVAILABLE else [],
+    
+    extras_require={
+        'dev': ['pytest>=7.0', 'setuptools-rust>=1.1', 'maturin>=0.14'],
     },
-    entry_points     = {"console_scripts": ["inscript=inscript:main"]},
-    project_urls     = {
-        "Homepage":      "https://github.com/authorss81/inscript",
-        "Documentation": "https://authorss81.github.io/inscript/docs/",
-        "Bug Tracker":   "https://github.com/authorss81/inscript/issues",
+    
+    entry_points={
+        'console_scripts': [
+            'inscript=inscript:main',
+        ],
     },
+    
+    python_requires='>=3.8',
+    zip_safe=False,
 )

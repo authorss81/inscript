@@ -1206,3 +1206,10 @@ try:
     })
 except Exception as _se:
     pass
+
+# ── BUG FIXES: Extended stdlib with all 39 remaining bugs (v3.8.2) ──────────
+try:
+    import stdlib_bugfixes  # noqa: F401
+except Exception as _bugfix_error:
+    import sys
+    print(f'[stdlib_bugfixes load error] {_bugfix_error}', file=sys.stderr)

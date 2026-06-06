@@ -1001,3 +1001,256 @@ The package name stays `inscript-lang` (not `inscript` — already taken on PyPI
 - ⚠ **Visual editor: no subgraphs/macros** — flat graph only (planned v3.1.0)
 - ⚠ **iOS/Android build** — scaffold only; requires Xcode/briefcase installed
 - [x] `test_v300.py` (123/123)
+
+---
+
+## 🔴 v3.8.1 — Comprehensive Bug Fix Release (CRITICAL)
+
+**Status: PLANNED**
+
+**Audit Date:** June 2, 2026  
+**Bugs Found:** 150 total (26 critical 🔴, 56 high 🟠, 40 medium 🟡, 21 low ⚪)  
+**Current Status:** NOT PRODUCTION READY  
+**Goal:** Fix all critical bugs and achieve production stability within 2-4 weeks
+
+---
+
+### Phase 1: Safety & Core Stability (Week 1 — CRITICAL)
+
+**Objective:** Eliminate crashes, deadlocks, and memory exhaustion bugs.
+
+#### VM Core (8 bugs)
+- [ ] **BUG #1:** Stack overflow unbounded → add `MAX_STACK_SIZE = 10000` with overflow check in `_push()`
+- [ ] **BUG #2:** Integer overflow silent → implement `_safe_add()`, `_safe_mul()`, `_safe_sub()` with overflow detection
+- [ ] **BUG #3:** Division by zero incomplete → audit all `/` ops, throw `InScriptError("division by zero")` for int division
+- [ ] **BUG #4:** Object cache unbounded memory → add `MAX_CACHE_SIZE = 100000` with LRU eviction
+- [ ] **BUG #5:** Invalid instruction pointer → add bounds check `assert 0 <= ip < len(bytecode)` before opcode dispatch
+- [ ] **BUG #6:** Call stack unbounded → implement `MAX_CALL_DEPTH = 1000` with overflow check in `_call()`
+- [ ] **BUG #7:** No bytecode validation → add `validate_bytecode()` pass before VM execution (check all opcode args exist)
+- [ ] **BUG #8:** Register access out of bounds → bounds check all `registers[i]` accesses with `assert i < num_registers`
+
+#### FFI Bridge (5 bugs)
+- [ ] **BUG #16:** Circular references → detect cycles in object graph before marshalling; reject or break cycles
+- [ ] **BUG #17:** Deadlock in type conversion → add timeout to all Python FFI calls (`timeout=5s`); if exceeded, kill thread
+- [ ] **BUG #18:** Panic on invalid Python type → wrap all FFI type conversions in try-catch, return `nil` on error instead of panic
+- [ ] **BUG #36:** Cache key collision possible → switch cache key from `str(obj)` to `id(obj) + type(obj).__name__`
+- [ ] **BUG #37:** Disk cache not validated → on load, verify cache file checksum; on mismatch, regenerate
+
+#### Language Semantics (2 bugs)
+- [ ] **BUG #53:** Integer overflow silent → same as VM #2; ensure all int ops use safe arithmetic
+- [ ] **BUG #76:** const not enforced → track `const` flag in variable table; throw on reassignment attempt
+
+**Success Criteria:** All 15 tests pass; no crashes in fuzz tester with 10,000 random bytecode sequences
+
+---
+
+### Phase 2: Correctness & Semantics (Week 2 — HIGH PRIORITY)
+
+**Objective:** Fix memory leaks, string handling, and semantic correctness.
+
+#### Memory Management (8 bugs)
+- [ ] **BUG #9:** Memory leak in arrays → audit array creation; ensure all temp arrays are freed
+- [ ] **BUG #11:** Race in cache stats → wrap cache stat counters in `Lock` / use atomic operations
+- [ ] **BUG #13:** Uninitialized registers → initialize all registers to `nil` before function call (not just return)
+- [ ] **BUG #14:** No interrupt mechanism → add `_should_interrupt` flag checked in loops; `inscript --interrupt`
+- [ ] **BUG #19:** No validation of marshalled data → add schema validation for FFI return types
+- [ ] **BUG #25:** Race in type cache → wrap type cache dictionary in `RwLock`
+- [ ] **BUG #31:** Error history memory leak → cap error history at 1000 entries; rotate on overflow
+- [ ] **BUG #40/41:** Cache save/eviction races → refactor cache as single-threaded `LRUCache` wrapped in `Lock`
+
+#### String & Type Handling (6 bugs)
+- [ ] **BUG #20:** String encoding not validated → validate UTF-8 on all string literals; reject invalid UTF-8 with error
+- [ ] **BUG #61:** UTF-8 string length wrong → use `len(str.encode('utf-8'))` for byte length; document `len(str)` = char count
+- [ ] **BUG #62:** String mutation possible → make all `string` values immutable in VM (wrap in frozen class if mutable)
+- [ ] **BUG #63:** String encoding unclear → document: internal = UTF-8; `.bytes()` returns UTF-8 byte array
+- [ ] **BUG #22:** Type checking inefficient → cache type check results for 1000 most recent checks (avoid repeated lookups)
+- [ ] **BUG #55:** Modulo undefined → define `int % int` as remainder (same sign as dividend); add test cases
+
+#### Array & Object Safety (8 bugs)
+- [ ] **BUG #23:** Array size not limited → cap arrays at 1,000,000 elements; throw "array too large" on exceed
+- [ ] **BUG #64:** Array bounds incomplete → audit all array access; add bounds check wrapper `_get_array_elem(arr, i, default=nil)`
+- [ ] **BUG #65:** Array mutation crashes → ensure mutation ops (`push`, `pop`, `splice`) are atomic
+- [ ] **BUG #26:** No max string size → cap strings at 100MB; throw on exceed
+- [ ] **BUG #68:** Array slicing clones → document behavior: `arr[1:3]` returns new array (clone) OR reference (clarify choice)
+- [ ] **BUG #69:** No array preallocation → add `Array.with_capacity(n)` for pre-allocated arrays
+- [ ] **BUG #70:** Object keys only string → support `int` and `symbol` keys in dicts (or document as limitation)
+- [ ] **BUG #71:** Object deletion not atomic → wrap `del obj[key]` in single transaction; no partial state visible
+
+#### Parser & Semantic Correctness (5 bugs)
+- [ ] **BUG #39:** Incremental parsing fake → document as "not implemented"; remove false claim from docs
+- [ ] **BUG #38:** AST not serializable → implement `ASTNode.__getstate__()` / `__setstate__()` for pickling
+- [ ] **BUG #85:** For-in order undefined → document: dict iteration order = insertion order (Python 3.7+)
+- [ ] **BUG #89:** Default params evaluated wrong → fix: defaults evaluated at function definition time, not call time
+- [ ] **BUG #56:** NaN/Infinity undocumented → add to docs: `1.0/0.0 = Infinity`, `0.0/0.0 = NaN`
+
+**Success Criteria:** All memory leaks fixed (verify with `tracemalloc` over 5000 iterations); string tests 100%; object tests 100%
+
+---
+
+### Phase 3: Type System & Advanced Features (Week 3 — MEDIUM)
+
+**Objective:** Fix type enforcement and semantic features.
+
+#### Type System (8 bugs)
+- [ ] **BUG #105:** Type hints not enforced → implement runtime type check on assignment: `x: int = "hello"` → warn/error
+- [ ] **BUG #99:** Async not truly parallel → audit: confirm single-threaded with coroutines (not actual threading) OR implement thread pool
+- [ ] **BUG #82:** No int division operator → add `//` operator to lexer/parser; `5 // 2 = 2` (floor division)
+- [ ] **BUG #57:** Float comparison broken → use epsilon comparison `abs(a - b) < 1e-9` for float equality
+- [ ] **BUG #90:** Named params not validated → check all named args match function signature; error on unknown param
+- [ ] **BUG #91:** Variadic crash → test `fn(*args)` with 0, 1, 100, 10000 args; ensure no crash
+- [ ] **BUG #93:** Closures capture wrong → audit closure variable capture; ensure outer scope is captured at definition time
+- [ ] **BUG #82:** Ternary doesn't short-circuit → fix: `a ? b : c` should not evaluate unused branch
+
+#### Control Flow & Scope (6 bugs)
+- [ ] **BUG #84:** Switch fallthrough implicit → document behavior: `case X:` falls through to next `case` OR add break (clarify)
+- [ ] **BUG #86:** Nested loop control → test `break` / `continue` in nested loops; verify correct scope
+- [ ] **BUG #87:** Do-while missing → implement `do { ... } while (cond)` in parser/VM if not present
+- [ ] **BUG #88:** Labeled break missing → implement `label: while { ... break label }` if not present
+- [ ] **BUG #97:** Static methods unclear → document: static methods called on class, not instance
+- [ ] **BUG #98:** Getters/setters incomplete → implement `struct S { get x() { ... } set x(v) { ... } }` if partial
+
+**Success Criteria:** All type enforcement tests pass; closure tests 100%; control flow tests 100%
+
+---
+
+### Phase 4: Performance, Tooling & Features (Week 4 — LOW PRIORITY)
+
+**Objective:** Fix performance false claims, incomplete tools, and missing features.
+
+#### Performance & Correctness (10 bugs)
+- [ ] **BUG #43/45/46/50:** Performance claims misleading → run comprehensive benchmarks; update docs with actual numbers (not 100x)
+- [ ] **BUG #47/48:** Concurrency false claims → remove "true parallelism" claim; document as single-threaded coroutines
+- [ ] **BUG #49:** Compilation iteration slow → profile compile cycle; target < 1s for small files
+- [ ] **BUG #52:** Bytecode not optimized → implement basic constant folding, dead code elimination
+- [ ] **BUG #148:** Physics non-deterministic → audit physics engine; use deterministic float operations or fix RNG seeding
+
+#### IDE & Debugging Tools (7 bugs)
+- [ ] **BUG #123:** Go-to-definition broken → reimplement using AST walk; track all definitions
+- [ ] **BUG #124:** Autocomplete wrong → rebuild completion list from current scope + imported modules
+- [ ] **BUG #125:** Rename incomplete → implement full rename with scope tracking across file
+- [ ] **BUG #126/127:** Breakpoints off-by-lines, variable watch stale → audit DAP implementation; fix line mapping
+- [ ] **BUG #128:** Step-over broken → implement proper step-over (not step-into)
+- [ ] **BUG #129/130:** Formatter breaks comments → fix formatter to preserve comment blocks; test idempotence
+
+#### Missing Features & Modules (11 bugs)
+- [ ] **BUG #58:** No Decimal type → add `Decimal` to stdlib for arbitrary-precision arithmetic
+- [ ] **BUG #72:** No object freezing → implement `Object.freeze()` to prevent mutations
+- [ ] **BUG #74:** Spread doesn't deep copy → clarify: spread is shallow copy OR implement deep copy
+- [ ] **BUG #75:** let vs var scope unclear → document: `let` = block scope, `var` = function scope
+- [ ] **BUG #77/78:** Hoisting undefined, temporal dead zone missing → clarify scoping rules; implement or document as unsupported
+- [ ] **BUG #81:** Power operator issue → test `**` operator thoroughly
+- [ ] **BUG #92:** Overloading missing → implement or document as unsupported
+- [ ] **BUG #94:** super broken → test `super.method()` on inheritance chains
+- [ ] **BUG #95:** Method visibility fake → implement `priv` / `pub` enforcement (or document as documentation-only)
+- [ ] **BUG #100/101/102/103/104:** Async error handling → complete async error path, finally blocks, stack traces
+
+#### File I/O & JSON (4 bugs)
+- [ ] **BUG #109:** String.replace behavior → test all string replacement modes; document edge cases
+- [ ] **BUG #110:** Regex incomplete → test regex compilation; add missing features or document limitations
+- [ ] **BUG #117/119:** File path normalization, encoding → normalize paths (`/./foo` → `/foo`); handle non-UTF-8 files
+- [ ] **BUG #118:** File locking missing → implement file locking on writes OR document as limitation
+
+#### Stdlib & Math (6 bugs)
+- [ ] **BUG #111:** Math.random not secure → use `secrets.randbelow()` if security critical; document as non-cryptographic
+- [ ] **BUG #112:** Math.pow overflow → test large exponents; handle gracefully (return Infinity on overflow)
+- [ ] **BUG #113:** Trig precision → test trig functions against reference values; document precision
+- [ ] **BUG #114/115/116:** Array.forEach mutation, map not lazy, reduce type inference → test array functional methods; fix or document
+- [ ] **BUG #120/121/122:** JSON.stringify determinism, parse accepts invalid, circular references → fix JSON serialization
+
+**Success Criteria:** All documented features working; performance claims accurate; debugger functional for 80%+ of use cases
+
+---
+
+## Testing & Verification
+
+### New Test Suite (test_v381.py)
+- [ ] **Safety tests** (50+ cases): stack overflow, integer overflow, division by zero, cache limits, bytecode validation
+- [ ] **Memory tests** (30+ cases): leak detection, race condition stress tests, GC correctness
+- [ ] **Correctness tests** (100+ cases): string UTF-8, array bounds, object deletion, type enforcement, closures
+- [ ] **Performance tests** (20+ cases): benchmark actual vs claimed speedup, compile time, startup time
+- [ ] **Integration tests** (50+ cases): full game scripts, physics, networking, hot reload
+
+**Target:** 300+ new tests; all passing before release
+
+### Regression Testing
+- [ ] All 66 existing CI tests pass
+- [ ] All studio readiness gates (v3.0.0) still pass
+- [ ] No new bugs introduced
+
+---
+
+## Release Criteria
+
+✅ **All 26 critical bugs fixed and verified**  
+✅ **All 56 high-severity bugs fixed or documented as design limitations**  
+✅ **All 40 medium-severity bugs triaged (fix/document/defer)**  
+✅ **Production readiness audit passes**  
+✅ **Benchmarks and documentation updated with actual numbers**  
+✅ **Zero crashing/deadlocking in fuzz test (100,000 iterations)**  
+✅ **Memory profile: < 2MB growth over 10,000 iterations**  
+✅ **New comprehensive test suite: 300+ tests, 100% passing**  
+
+---
+
+## Estimated Timeline & Effort
+
+| Phase | Duration | FTE | Risk | Notes |
+|-------|----------|-----|------|-------|
+| **Phase 1 (Safety)** | 1 week | 2 | 🔴 High | Critical path; blocks all else |
+| **Phase 2 (Correctness)** | 1 week | 2 | 🟠 Medium | Memory/string complexity |
+| **Phase 3 (Type System)** | 1 week | 1 | 🟡 Low | Feature completeness |
+| **Phase 4 (Polish)** | 1 week | 1 | 🟡 Low | IDE tools, docs, minor features |
+| **Testing & QA** | 1 week | 2 | 🟠 Medium | Cross-platform; regression |
+| **Total** | **2-4 weeks** | **1-2 devs** | 🔴 Critical | Must complete before production use |
+
+---
+
+## Why This Matters
+
+**Current State (v3.0.0):**
+- 150 bugs found in systematic audit
+- 26 critical bugs causing crashes/deadlocks
+- False performance marketing (claims 100x, actual 10-20x)
+- Pre-alpha quality; NOT PRODUCTION READY
+- Comparable languages: Rust (A+), Python (A), C# (A), Lua (B-); InScript scores F(-)
+
+**After v3.8.1:**
+- Zero critical bugs
+- Honest performance claims
+- Production-ready for indie games and prototypes
+- Can compete with Lua for game scripting niche
+- Estimated score: D+ to C range (up from F-)
+
+---
+
+## v3.8.1 Release Notes (Draft)
+
+> **v3.8.1 — The Stability Release**
+> 
+> This release fixes 150+ bugs found in the June 2026 comprehensive audit, with focus on memory safety, correctness, and honest performance reporting. All 26 critical bugs causing crashes/deadlocks have been resolved.
+> 
+> **NOT a feature release.** v3.8.1 consolidates the language and prepares it for production use.
+> 
+> **What changed:**
+> - ✅ Stack overflow protection (bounded at 10,000 frames)
+> - ✅ Integer overflow detection
+> - ✅ Bytecode validation on load
+> - ✅ Memory leak fixes (circular refs, error history, cache eviction)
+> - ✅ String UTF-8 validation
+> - ✅ Type enforcement on assignment
+> - ✅ Performance benchmarks (updated docs: 10-20x vs Python, not 100x)
+> - ✅ Debugger fixes (breakpoints, variable watch, step-over)
+> - ✅ 300+ new tests
+> 
+> **What didn't change:**
+> - API stable; no breaking changes
+> - All v3.0.0 features work unchanged
+> - Studio IDE still functional
+> 
+> **Upgrade notes:** Simple version bump; no migration needed.
+> 
+> **Known limitations:** See [KNOWN_ISSUES.md](./KNOWN_ISSUES.md) for complete list of deferred items.
+> 
+> **Contributors:** [Auditor feedback integrated; special thanks to June 2026 comprehensive audit team]
+> 
+> Tested on Python 3.9–3.12, Rust 1.75+. macOS, Linux, Windows.
