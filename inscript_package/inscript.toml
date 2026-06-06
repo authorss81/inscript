@@ -1,7 +1,17 @@
-[project]
+[package]
 name = "inscript"
-version = "2.5.0"
-description = "InScript game scripting language"
-inscript_version = ">=1.9.15"
+version = "3.9.1"
+edition = "2024"
+authors = ["Shreyasi Sarkar"]
+license = "MIT"
+description = "InScript language — Python core v3.8.2 + Rust VM Engine v3.9.1 (LLVM IR emitter)"
 
-[dependencies]
+[rust]
+vm_engine   = "rust_vm_engine"
+parser      = "inscript_rust_parser"
+
+[features]
+llvm_ir     = []   # enables IrEmitter path (ir.rs) — requires llc/opt in PATH
+
+[profile.release]
+opt-level   = 3

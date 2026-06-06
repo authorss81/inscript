@@ -196,3 +196,9 @@ impl OpCode {
 
 pub mod vm;
 pub use vm::{VMEngine, VMState, VMStats, CallFrame, ObjectCache};
+
+pub mod ir;
+pub use ir::IrEmitter;
+
+pub mod jit;
+pub use jit::{JitEngine, JitStats, StubEntry, TraceId, HOT_THRESHOLD, MAX_STUBS};

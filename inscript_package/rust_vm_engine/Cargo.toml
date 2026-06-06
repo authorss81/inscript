@@ -1,10 +1,10 @@
 [package]
 name = "inscript-vm-engine"
-version = "3.9.0"
+version = "3.9.1"
 edition = "2021"
 authors = ["Shreyasi Sarkar"]
 license = "MIT"
-description = "InScript VM Engine - High-performance bytecode executor with JIT compilation ready"
+description = "InScript VM Engine - High-performance bytecode executor with LLVM IR emitter"
 
 [lib]
 name = "inscript_vm_engine"
