@@ -1,16 +1,18 @@
 [package]
-name = "inscript-lexer"
-version = "3.7.2"
+name = "inscript-parser"
+version = "3.7.3"
 edition = "2021"
 authors = ["Shreyasi Sarkar"]
 license = "MIT"
+description = "InScript real compilable Rust parser with recursive descent and AST generation"
 
 [lib]
-name = "inscript_lexer"
+name = "inscript_parser"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 pyo3 = { version = "0.21", features = ["extension-module"] }
+thiserror = "1.0"
 
 [profile.release]
 opt-level = 3
