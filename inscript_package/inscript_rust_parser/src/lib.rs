@@ -7,12 +7,13 @@ use pyo3::types::{PyDict, PyList};
 mod ast;
 mod token;
 mod parser;
+mod lexer;
 mod error;
 
 use parser::Parser;
 use token::TokenInfo;
 use ast::*;
-use error::ParseError;
+
 
 /// PyO3 wrapper for the Parser
 #[pyclass]
@@ -66,25 +67,25 @@ impl PyParser {
 fn convert_py_tokens(py: Python, py_tokens: &[PyObject]) -> PyResult<Vec<TokenInfo>> {
     let mut tokens = Vec::new();
     for py_tok in py_tokens {
-        let tok_dict = py_tok.downcast::<PyDict>(py)?;
+        let tok_dict = py_tok.downcast_bound::<PyDict>(py)?;
         
-        let token_type_str: String = tok_dict.get_item("token_type")
-            .and_then(|o| o.ok())
-            .ok_or_else(|| PyErr::new::<pyo3::exceptions::ValueError, _>("Missing token_type"))?
+        let token_type_str: String = tok_dict.get_item("token_type")?
+            .ok_or_else(|| PyErr::new::<pyo3::exceptions::PyValueError, _>("Missing token_type"))?
             .extract()?;
         
-        let value: String = tok_dict.get_item("value")
-            .and_then(|o| o.ok())
-            .ok_or_else(|| PyErr::new::<pyo3::exceptions::ValueError, _>("Missing value"))?
+        let value: String = tok_dict.get_item("value")?
+            .ok_or_else(|| PyErr::new::<pyo3::exceptions::PyValueError, _>("Missing value"))?
             .extract()?;
         
         let line: usize = tok_dict.get_item("line")
-            .and_then(|o| o.ok())
+            .ok()
+            .flatten()
             .and_then(|o| o.extract().ok())
             .unwrap_or(0);
         
         let column: usize = tok_dict.get_item("column")
-            .and_then(|o| o.ok())
+            .ok()
+            .flatten()
             .and_then(|o| o.extract().ok())
             .unwrap_or(0);
         
@@ -109,6 +110,8 @@ fn string_to_token(type_str: &str, value: &str) -> PyResult<token::Token> {
         "Switch" => Switch,
         "Case" => Case,
         "Class" => Class,
+        "Struct" => Struct,
+        "Enum" => Enum,
         "Return" => Return,
         "Break" => Break,
         "Continue" => Continue,
@@ -119,8 +122,8 @@ fn string_to_token(type_str: &str, value: &str) -> PyResult<token::Token> {
         "Async" => Async,
         "Await" => Await,
         "Yield" => Yield,
-        "True" => True,
-        "False" => False,
+        "True" => Bool(true),
+        "False" => Bool(false),
         "Nil" => Nil,
         "Int" => {
             value.parse::<i64>()
@@ -375,11 +378,6 @@ fn stmt_to_python(py: Python, stmt: &Stmt) -> PyResult<PyObject> {
             dict.set_item("type", "Continue")?;
             Ok(dict.into())
         }
-        _ => {
-            let dict = PyDict::new_bound(py);
-            dict.set_item("type", "UnknownStatement")?;
-            Ok(dict.into())
-        }
     }
 }
 
@@ -530,9 +528,10 @@ fn expr_to_python(py: Python, expr: &Expr) -> PyResult<PyObject> {
             }
             Ok(dict.into())
         }
-        _ => {
+        Expr::Propagate(expr) => {
             let dict = PyDict::new_bound(py);
-            dict.set_item("type", "UnknownExpr")?;
+            dict.set_item("type", "Propagate")?;
+            dict.set_item("expr", expr_to_python(py, expr)?)?;
             Ok(dict.into())
         }
     }
@@ -551,6 +550,194 @@ fn typehint_to_python(py: Python, th: &TypeHint) -> PyResult<PyObject> {
 }
 
 // ─────────────────────────────────────────────────────────────────────
+// Token-to-string helpers (for lex output)
+// ─────────────────────────────────────────────────────────────────────
+
+fn token_type_name(token: &token::Token) -> &'static str {
+    use token::Token::*;
+    match token {
+        Int(_) => "Int",
+        Float(_) => "Float",
+        String(_) => "String",
+        Bool(_) => "Bool",
+        Identifier(_) => "Ident",
+        Nil => "Nil",
+        Let => "Let",
+        Const => "Const",
+        Fn => "Fn",
+        Struct => "Struct",
+        Enum => "Enum",
+        Class => "Class",
+        If => "If",
+        Else => "Else",
+        While => "While",
+        For => "For",
+        In => "In",
+        Return => "Return",
+        Break => "Break",
+        Continue => "Continue",
+        Switch => "Switch",
+        Case => "Case",
+        Default => "Default",
+        Try => "Try",
+        Catch => "Catch",
+        Finally => "Finally",
+        Throw => "Throw",
+        Yield => "Yield",
+        Async => "Async",
+        Await => "Await",
+        And => "And",
+        Or => "Or",
+        Not => "Not",
+        OnStart => "OnStart",
+        OnUpdate => "OnUpdate",
+        OnDraw => "OnDraw",
+        OnExit => "OnExit",
+        Node => "Node",
+        OnReady => "OnReady",
+        OnNodeUpdate => "OnNodeUpdate",
+        OnNodeDraw => "OnNodeDraw",
+        IntType => "IntType",
+        FloatType => "FloatType",
+        BoolType => "BoolType",
+        StringType => "StringType",
+        VoidType => "VoidType",
+        Import => "Import",
+        From => "From",
+        As => "As",
+        Export => "Export",
+        SelfKw => "Self",
+        Super => "Super",
+        Null => "Null",
+        Spawn => "Spawn",
+        Select => "Select",
+        Then => "Then",
+        Abstract => "Abstract",
+        Interface => "Interface",
+        Impl => "Impl",
+        Pub => "Pub",
+        Is => "Is",
+        Div => "Div",
+        Defer => "Defer",
+        Repeat => "Repeat",
+        Until => "Until",
+        Plus => "Plus",
+        Minus => "Minus",
+        Star => "Star",
+        Slash => "Slash",
+        Percent => "Percent",
+        Power => "Power",
+        PlusPlus => "PlusPlus",
+        SlashSlash => "SlashSlash",
+        PlusEq | MinusEq | StarEq | SlashEq | PercentEq | PowerEq => "Assign",
+        Eq => "Eq",
+        Neq => "Neq",
+        Lt => "Lt",
+        Lte => "Lte",
+        Gt => "Gt",
+        Gte => "Gte",
+        BitwiseAnd => "BitwiseAnd",
+        BitwiseOr => "BitwiseOr",
+        BitwiseXor => "BitwiseXor",
+        BitwiseNot => "BitwiseNot",
+        LeftShift => "LeftShift",
+        RightShift => "RightShift",
+        AmpEq | PipeEq | CaretEq | LShiftEq | RShiftEq => "Assign",
+        Assign => "Assign",
+        Arrow => "Arrow",
+        FatArrow => "FatArrow",
+        Question => "Question",
+        QuestionDot => "QuestionDot",
+        Nullish => "Nullish",
+        NullishEq => "NullishEq",
+        Pipe => "Pipe",
+        PipeGt => "PipeGt",
+        LeftParen => "LeftParen",
+        RightParen => "RightParen",
+        LeftBrace => "LeftBrace",
+        RightBrace => "RightBrace",
+        LeftBracket => "LeftBracket",
+        RightBracket => "RightBracket",
+        Comma => "Comma",
+        Dot => "Dot",
+        Semicolon => "Semicolon",
+        Colon => "Colon",
+        DoubleColon => "DoubleColon",
+        At => "At",
+        DotDot => "DotDot",
+        DotDotEq => "DotDotEq",
+        Ellipsis => "Ellipsis",
+        FString(_) => "FString",
+        Eof => "Eof",
+    }
+}
+
+fn token_value(token: &token::Token) -> String {
+    use token::Token::*;
+    match token {
+        Int(n) => n.to_string(),
+        Float(f) => f.to_string(),
+        String(s) => s.clone(),
+        Bool(b) => b.to_string(),
+        FString(s) => s.clone(),
+        Identifier(s) => s.clone(),
+        PlusPlus => "++".to_string(),
+        SlashSlash => "//".to_string(),
+        PlusEq => "+=".to_string(),
+        MinusEq => "-=".to_string(),
+        StarEq => "*=".to_string(),
+        SlashEq => "/=".to_string(),
+        PercentEq => "%=".to_string(),
+        PowerEq => "**=".to_string(),
+        AmpEq => "&=".to_string(),
+        PipeEq => "|=".to_string(),
+        CaretEq => "^=".to_string(),
+        LShiftEq => "<<=".to_string(),
+        RShiftEq => ">>=".to_string(),
+        Assign => "=".to_string(),
+        Arrow => "->".to_string(),
+        FatArrow => "=>".to_string(),
+        Nullish => "??".to_string(),
+        NullishEq => "??=".to_string(),
+        QuestionDot => "?.".to_string(),
+        PipeGt => "|>".to_string(),
+        DoubleColon => "::".to_string(),
+        At => "@".to_string(),
+        DotDot => "..".to_string(),
+        DotDotEq => "..=".to_string(),
+        Ellipsis => "...".to_string(),
+        _ => std::string::String::new(),
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Lex function — Rust lexer exposed to Python
+// ─────────────────────────────────────────────────────────────────────
+
+#[pyfunction]
+fn lex(source: &str) -> PyResult<Vec<PyObject>> {
+    Python::with_gil(|py| {
+        use lexer::Lexer;
+        let mut lx = Lexer::new(source);
+        match lx.tokenize() {
+            Ok(tokens) => {
+                let mut result = Vec::with_capacity(tokens.len());
+                for ti in &tokens {
+                    let d = PyDict::new_bound(py);
+                    d.set_item("token_type", token_type_name(&ti.token))?;
+                    d.set_item("value", token_value(&ti.token))?;
+                    d.set_item("line", ti.line)?;
+                    d.set_item("column", ti.column)?;
+                    result.push(d.into());
+                }
+                Ok(result)
+            }
+            Err(e) => Err(PyErr::new::<pyo3::exceptions::PySyntaxError, _>(e)),
+        }
+    })
+}
+
+// ─────────────────────────────────────────────────────────────────────
 // PyO3 module definition
 // ─────────────────────────────────────────────────────────────────────
 
@@ -559,6 +746,7 @@ fn typehint_to_python(py: Python, th: &TypeHint) -> PyResult<PyObject> {
 fn inscript_parser_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyParser>()?;
     m.add_function(wrap_pyfunction!(parse_tokens, m)?)?;
+    m.add_function(wrap_pyfunction!(lex, m)?)?;
     Ok(())
 }
 

@@ -27,7 +27,8 @@ impl Parser {
         match &self.peek().token {
             Token::Let | Token::Const => self.parse_var_decl(),
             Token::Fn => self.parse_function_def(),
-            Token::Class => self.parse_class_def(),
+            Token::Class | Token::Struct => self.parse_class_def(),
+            Token::Enum => self.parse_enum_def(),
             Token::If => self.parse_if(),
             Token::While => self.parse_while(),
             Token::For => self.parse_for(),
@@ -44,6 +45,7 @@ impl Parser {
                 Ok(Stmt::Continue)
             }
             Token::Throw => self.parse_throw(),
+            Token::Yield => self.parse_yield_stmt(),
             Token::Try => self.parse_try(),
             _ => {
                 let expr = self.parse_expression()?;
@@ -56,6 +58,31 @@ impl Parser {
     fn parse_var_decl(&mut self) -> Result<Stmt, ParseError> {
         let mutable = matches!(self.peek().token, Token::Let);
         self.advance(); // Let or Const
+
+        // Handle destructuring: let [a, b] = expr
+        if matches!(self.peek().token, Token::LeftBracket) {
+            self.advance();
+            while !matches!(self.peek().token, Token::RightBracket | Token::Eof) {
+                self.consume_identifier()?;
+                if matches!(self.peek().token, Token::Comma) {
+                    self.advance();
+                } else {
+                    break;
+                }
+            }
+            self.consume(&Token::RightBracket)?;
+            if matches!(self.peek().token, Token::Assign) {
+                self.advance();
+                self.parse_expression()?;
+            }
+            self.consume_semicolon();
+            return Ok(Stmt::VarDecl {
+                name: String::new(),
+                init: None,
+                type_hint: None,
+                mutable,
+            });
+        }
 
         let name = self.consume_identifier()?;
         let type_hint = if matches!(self.peek().token, Token::Colon) {
@@ -83,6 +110,9 @@ impl Parser {
 
     fn parse_function_def(&mut self) -> Result<Stmt, ParseError> {
         self.advance(); // fn
+        if matches!(self.peek().token, Token::Star) {
+            self.advance(); // *
+        }
         let name = self.consume_identifier()?;
         self.consume(&Token::LeftParen)?;
         let params = self.parse_parameters()?;
@@ -109,8 +139,22 @@ impl Parser {
     }
 
     fn parse_class_def(&mut self) -> Result<Stmt, ParseError> {
-        self.advance(); // class
+        self.advance(); // class or struct
         let name = self.consume_identifier()?;
+
+        // Skip optional generic type parameters: Name<T1, T2, ...>
+        if matches!(self.peek().token, Token::Lt) {
+            self.advance(); // <
+            let mut depth = 1;
+            while depth > 0 && !matches!(self.peek().token, Token::Eof) {
+                match &self.peek().token {
+                    Token::Lt => depth += 1,
+                    Token::Gt => depth -= 1,
+                    _ => {}
+                }
+                self.advance();
+            }
+        }
 
         let extends = if self.consume_keyword("extends") {
             Some(self.consume_identifier()?)
@@ -122,7 +166,59 @@ impl Parser {
         let mut body = Vec::new();
 
         while !matches!(self.peek().token, Token::RightBrace | Token::Eof) {
-            body.push(self.parse_statement()?);
+            if matches!(self.peek().token, Token::Fn) {
+                body.push(self.parse_function_def()?);
+            } else if matches!(self.peek().token, Token::Let | Token::Const) {
+                body.push(self.parse_var_decl()?);
+            } else {
+                let ident = self.consume_identifier()?;
+                // Event hook or getter/setter: ident (params?) { body }
+                let has_params = matches!(self.peek().token, Token::LeftParen);
+                let has_block = matches!(self.peek().token, Token::LeftBrace);
+                if has_params || has_block {
+                    if has_params {
+                        self.advance();
+                        while !matches!(self.peek().token, Token::RightParen | Token::Eof) {
+                            self.advance();
+                        }
+                        self.consume(&Token::RightParen).ok();
+                    }
+                    if matches!(self.peek().token, Token::Arrow) {
+                        self.advance();
+                        self.parse_type_hint().ok();
+                    }
+                    if matches!(self.peek().token, Token::LeftBrace) {
+                        self.advance();
+                        let mut depth = 1;
+                        while depth > 0 && !matches!(self.peek().token, Token::Eof) {
+                            match &self.peek().token {
+                                Token::LeftBrace => depth += 1,
+                                Token::RightBrace => depth -= 1,
+                                _ => {}
+                            }
+                            self.advance();
+                        }
+                    }
+                } else {
+                    // Field declaration: name : Type = expr?
+                    let type_hint = if matches!(self.peek().token, Token::Colon) {
+                        self.advance();
+                        Some(self.parse_type_hint()?)
+                    } else {
+                        None
+                    };
+                    if matches!(self.peek().token, Token::Assign) {
+                        self.advance();
+                        self.parse_expression()?;
+                    }
+                    body.push(Stmt::VarDecl {
+                        name: ident,
+                        init: None,
+                        type_hint,
+                        mutable: true,
+                    });
+                }
+            }
         }
 
         self.consume(&Token::RightBrace)?;
@@ -134,11 +230,48 @@ impl Parser {
         })
     }
 
+    fn parse_enum_def(&mut self) -> Result<Stmt, ParseError> {
+        self.advance(); // enum
+        let name = self.consume_identifier()?;
+        self.consume(&Token::LeftBrace)?;
+        let mut body = Vec::new();
+        while !matches!(self.peek().token, Token::RightBrace | Token::Eof) {
+            let variant_name = self.consume_identifier()?;
+            // Variant may have optional fields: Variant(f1: T1, f2: T2)
+            if matches!(self.peek().token, Token::LeftParen) {
+                self.advance();
+                while !matches!(self.peek().token, Token::RightParen | Token::Eof) {
+                    self.consume_identifier()?; // field name
+                    if matches!(self.peek().token, Token::Colon) {
+                        self.advance();
+                        self.parse_type_hint()?;
+                    }
+                    if matches!(self.peek().token, Token::Comma) {
+                        self.advance();
+                    } else {
+                        break;
+                    }
+                }
+                self.consume(&Token::RightParen)?;
+            }
+            body.push(Stmt::VarDecl {
+                name: variant_name,
+                init: None,
+                type_hint: None,
+                mutable: false,
+            });
+        }
+        self.consume(&Token::RightBrace)?;
+        Ok(Stmt::ClassDef {
+            name,
+            extends: None,
+            body,
+        })
+    }
+
     fn parse_if(&mut self) -> Result<Stmt, ParseError> {
         self.advance(); // if
-        self.consume(&Token::LeftParen)?;
         let condition = self.parse_expression()?;
-        self.consume(&Token::RightParen)?;
 
         self.consume(&Token::LeftBrace)?;
         let then_body = self.parse_block()?;
@@ -146,10 +279,16 @@ impl Parser {
 
         let else_body = if matches!(self.peek().token, Token::Else) {
             self.advance();
-            self.consume(&Token::LeftBrace)?;
-            let body = self.parse_block()?;
-            self.consume(&Token::RightBrace)?;
-            Some(body)
+            if matches!(self.peek().token, Token::If) {
+                // else if — chain as nested if
+                let nested = self.parse_if()?;
+                Some(vec![nested])
+            } else {
+                self.consume(&Token::LeftBrace)?;
+                let body = self.parse_block()?;
+                self.consume(&Token::RightBrace)?;
+                Some(body)
+            }
         } else {
             None
         };
@@ -163,9 +302,7 @@ impl Parser {
 
     fn parse_while(&mut self) -> Result<Stmt, ParseError> {
         self.advance(); // while
-        self.consume(&Token::LeftParen)?;
         let condition = self.parse_expression()?;
-        self.consume(&Token::RightParen)?;
 
         self.consume(&Token::LeftBrace)?;
         let body = self.parse_block()?;
@@ -176,11 +313,9 @@ impl Parser {
 
     fn parse_for(&mut self) -> Result<Stmt, ParseError> {
         self.advance(); // for
-        self.consume(&Token::LeftParen)?;
         let target = self.consume_identifier()?;
-        self.consume_keyword("in");
+        self.consume(&Token::In)?;
         let iter = self.parse_expression()?;
-        self.consume(&Token::RightParen)?;
 
         self.consume(&Token::LeftBrace)?;
         let body = self.parse_block()?;
@@ -190,10 +325,8 @@ impl Parser {
     }
 
     fn parse_switch(&mut self) -> Result<Stmt, ParseError> {
-        self.advance(); // switch
-        self.consume(&Token::LeftParen)?;
+        self.advance(); // switch/match
         let expr = self.parse_expression()?;
-        self.consume(&Token::RightParen)?;
         self.consume(&Token::LeftBrace)?;
 
         let mut cases = Vec::new();
@@ -201,9 +334,23 @@ impl Parser {
             if matches!(self.peek().token, Token::Case) {
                 self.advance();
                 let value = self.parse_expression()?;
-                self.consume(&Token::Colon)?;
-                let body = self.parse_case_body()?;
-                cases.push((Some(value), body));
+                // Skip optional guard: pattern if condition { body }
+                while !matches!(self.peek().token, Token::LeftBrace | Token::Colon | Token::RightBrace | Token::Eof) {
+                    self.advance();
+                }
+                if matches!(self.peek().token, Token::Colon) {
+                    self.advance();
+                    let body = self.parse_case_body()?;
+                    cases.push((Some(value), body));
+                } else if matches!(self.peek().token, Token::LeftBrace) {
+                    self.advance();
+                    let body = self.parse_block()?;
+                    self.consume(&Token::RightBrace)?;
+                    cases.push((Some(value), body));
+                } else {
+                    let body = Vec::new();
+                    cases.push((Some(value), body));
+                }
             } else if matches!(self.peek().token, Token::Default) {
                 self.advance();
                 self.consume(&Token::Colon)?;
@@ -236,6 +383,17 @@ impl Parser {
         Ok(Stmt::Throw(expr))
     }
 
+    fn parse_yield_stmt(&mut self) -> Result<Stmt, ParseError> {
+        self.advance(); // yield
+        let value = if !matches!(self.peek().token, Token::Semicolon | Token::RightBrace) {
+            Some(self.parse_expression()?)
+        } else {
+            None
+        };
+        self.consume_semicolon();
+        Ok(Stmt::Expression(Expr::Yield(value.map(Box::new))))
+    }
+
     fn parse_try(&mut self) -> Result<Stmt, ParseError> {
         self.advance(); // try
         self.consume(&Token::LeftBrace)?;
@@ -245,9 +403,14 @@ impl Parser {
         let mut catch_clauses = Vec::new();
         while matches!(self.peek().token, Token::Catch) {
             self.advance();
-            self.consume(&Token::LeftParen)?;
-            let error_var = self.consume_identifier()?;
-            self.consume(&Token::RightParen)?;
+            let error_var = if matches!(self.peek().token, Token::LeftParen) {
+                self.advance();
+                let name = self.consume_identifier()?;
+                self.consume(&Token::RightParen)?;
+                name
+            } else {
+                self.consume_identifier()?
+            };
             self.consume(&Token::LeftBrace)?;
             let catch_body = self.parse_block()?;
             self.consume(&Token::RightBrace)?;
@@ -295,18 +458,42 @@ impl Parser {
     }
 
     fn parse_ternary(&mut self) -> Result<Expr, ParseError> {
-        let mut expr = self.parse_binary(0)?;
+        let mut expr = self.parse_binary(1)?;
 
         if matches!(self.peek().token, Token::Question) {
-            self.advance();
-            let then_expr = self.parse_expression()?;
-            self.consume(&Token::Colon)?;
-            let else_expr = self.parse_expression()?;
-            expr = Expr::Ternary {
-                condition: Box::new(expr),
-                then_expr: Box::new(then_expr),
-                else_expr: Box::new(else_expr),
-            };
+            // Distinguish ternary (expr ? then : else) from propagate (expr?)
+            // If ? is followed by a statement-ending token, it's propagate.
+            let is_ternary = matches!(
+                self.tokens.get(self.current + 1).map(|t| &t.token),
+                Some(Token::Identifier(_))
+                    | Some(Token::Int(_))
+                    | Some(Token::Float(_))
+                    | Some(Token::String(_))
+                    |                 Some(Token::Bool(true))
+                    | Some(Token::Bool(false))
+                    | Some(Token::Nil)
+                    | Some(Token::LeftParen)
+                    | Some(Token::LeftBracket)
+                    | Some(Token::Not)
+                    | Some(Token::Minus)
+                    | Some(Token::Plus)
+
+            );
+            if is_ternary {
+                self.advance();
+                let then_expr = self.parse_expression()?;
+                self.consume(&Token::Colon)?;
+                let else_expr = self.parse_expression()?;
+                expr = Expr::Ternary {
+                    condition: Box::new(expr),
+                    then_expr: Box::new(then_expr),
+                    else_expr: Box::new(else_expr),
+                };
+            } else {
+                // Error propagation operator: consume ?
+                self.advance();
+                expr = Expr::Propagate(Box::new(expr));
+            }
         }
 
         Ok(expr)
@@ -381,6 +568,25 @@ impl Parser {
                         property,
                     };
                 }
+                Token::LeftBrace => {
+                    // comptime { ... } — skip the block
+                    if let Expr::Identifier(name) = &expr {
+                        if name == "comptime" {
+                            self.advance();
+                            let mut depth = 1;
+                            while depth > 0 && !matches!(self.peek().token, Token::Eof) {
+                                match &self.peek().token {
+                                    Token::LeftBrace => depth += 1,
+                                    Token::RightBrace => depth -= 1,
+                                    _ => {}
+                                }
+                                self.advance();
+                            }
+                            continue;
+                        }
+                    }
+                    break;
+                }
                 _ => break,
             }
         }
@@ -405,13 +611,10 @@ impl Parser {
                 self.advance();
                 Ok(Expr::Literal(Literal::String(s)))
             }
-            Token::True => {
+            Token::Bool(val) => {
+                let v = *val;
                 self.advance();
-                Ok(Expr::Literal(Literal::Bool(true)))
-            }
-            Token::False => {
-                self.advance();
-                Ok(Expr::Literal(Literal::Bool(false)))
+                Ok(Expr::Literal(Literal::Bool(v)))
             }
             Token::Nil => {
                 self.advance();
@@ -488,6 +691,7 @@ impl Parser {
             Token::BitwiseXor => BinOp::BitwiseXor,
             Token::LeftShift => BinOp::LeftShift,
             Token::RightShift => BinOp::RightShift,
+            Token::Assign => BinOp::Assign,
             _ => {
                 return Err(ParseError::new(
                     "Expected binary operator",
@@ -544,7 +748,26 @@ impl Parser {
     }
 
     fn parse_type_hint(&mut self) -> Result<TypeHint, ParseError> {
-        let name = self.consume_identifier()?;
+        // Handle array types: [T] or [[T]] (recursive)
+        if matches!(self.peek().token, Token::LeftBracket) {
+            self.advance();
+            let inner = self.parse_type_hint()?;
+            self.consume(&Token::RightBracket)?;
+            return Ok(TypeHint {
+                name: format!("{}[]", inner.name),
+                generics: Vec::new(),
+                nullable: false,
+            });
+        }
+        let mut name = self.consume_identifier()?;
+        // Handle postfix array types: T[]
+        if matches!(self.peek().token, Token::LeftBracket) {
+            self.advance();
+            if matches!(self.peek().token, Token::RightBracket) {
+                self.advance();
+                name = format!("{}[]", name);
+            }
+        }
         Ok(TypeHint {
             name,
             generics: Vec::new(),

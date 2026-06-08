@@ -18,7 +18,11 @@ out/
 Thumbs.db
 
 inscript - Copy/
+AGENTS.md
 
-inscript - Copy/
+# Rust build artifacts
+target/
 
-inscript - Copy/
+# Legacy v0.2.0 — use inscript_package/ instead
+inscript/
+inscript.py

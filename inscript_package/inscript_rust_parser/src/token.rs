@@ -3,36 +3,91 @@
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token {
-    // Literals
+    // ── Literals ──────────────────────────────────
     Int(i64),
     Float(f64),
     String(String),
+    Bool(bool),
     Identifier(String),
-    
-    // Keywords
-    Let, Const, Fn, Class, If, Else, While, For, In,
-    Return, Break, Continue, Switch, Case, Default,
-    True, False, Nil,
+    Nil,
+
+    // ── Keywords: Declarations ────────────────────
+    Let, Const, Fn, Struct, Enum, Class,
+
+    // ── Keywords: Control Flow ────────────────────
+    If, Else, While, For, In,
+    Return, Break, Continue,
+    Switch, Case, Default,
     Try, Catch, Finally, Throw,
-    Async, Await, Yield,
+    Yield,
+
+    // ── Keywords: Async ───────────────────────────
+    Async, Await,
+
+    // ── Keywords: Logical ─────────────────────────
     And, Or, Not,
-    
-    // Operators
+
+    // ── Keywords: Lifecycle (scene system) ────────
+    OnStart, OnUpdate, OnDraw, OnExit,
+    Node, OnReady, OnNodeUpdate, OnNodeDraw,
+
+    // ── Keywords: Type names ──────────────────────
+    IntType, FloatType, BoolType, StringType, VoidType,
+
+    // ── Keywords: Module system ───────────────────
+    Import, From, As, Export,
+
+    // ── Keywords: Other ───────────────────────────
+    SelfKw, Super, Null,
+    Spawn, Select, Then, Abstract,
+    Interface, Impl, Pub,
+    Is, Div, Defer, Repeat, Until,
+
+    // ── Operators: Arithmetic ─────────────────────
     Plus, Minus, Star, Slash, Percent, Power,
-    Assign,
+    PlusPlus, SlashSlash,
+
+    // ── Operators: Compound Assign ────────────────
+    PlusEq, MinusEq, StarEq, SlashEq, PercentEq, PowerEq,
+
+    // ── Operators: Comparison ─────────────────────
     Eq, Neq, Lt, Lte, Gt, Gte,
+
+    // ── Operators: Bitwise ────────────────────────
     BitwiseAnd, BitwiseOr, BitwiseXor, BitwiseNot,
     LeftShift, RightShift,
+    AmpEq, PipeEq, CaretEq, LShiftEq, RShiftEq,
+
+    // ── Operators: Assignment ─────────────────────
+    Assign,
+
+    // ── Operators: Other ──────────────────────────
+    Arrow,        // ->
+    FatArrow,     // =>
     Question,
-    
-    // Delimiters
+    QuestionDot,  // ?.
+    Nullish,      // ??
+    NullishEq,    // ??=
+    Pipe,         // |
+    PipeGt,       // |>
+
+    // ── Delimiters ────────────────────────────────
     LeftParen, RightParen,
     LeftBrace, RightBrace,
     LeftBracket, RightBracket,
     Comma, Dot, Semicolon, Colon,
-    Arrow,
-    
-    // Special
+    DoubleColon,  // ::
+    At,           // @
+
+    // ── Range / Spread ────────────────────────────
+    DotDot,    // ..
+    DotDotEq,  // ..=
+    Ellipsis,  // ...
+
+    // ── String interpolation ──────────────────────
+    FString(String),
+
+    // ── Special ───────────────────────────────────
     Eof,
 }
 
@@ -62,6 +117,7 @@ pub fn precedence(token: &Token) -> u8 {
         Token::Plus | Token::Minus => 9,
         Token::Star | Token::Slash | Token::Percent => 10,
         Token::Power => 11,
+        Token::Assign => 1,
         _ => 0,
     }
 }

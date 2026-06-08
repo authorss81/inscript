@@ -1,252 +1,387 @@
-# Inscript Development Roadmap
+# Maximum Speed Plan — InScript Rust Engine
 
-This roadmap outlines the planned development of Inscript from current alpha stage to a production-ready language with VS Code integration and community support.
+**Goal:** 10–20× end-to-end speedup over pure Python by moving the entire pipeline into Rust.
 
-## Version 0.1.0 (Current - Alpha)
+| Phase | Component | Effort | Speedup (cumulative) |
+|-------|-----------|--------|----------------------|
+| 1 | Rust lexer | 1–2 days | ~3–4× |
+| 2 | Rust compiler (AST → bytecode) | 1 week | ~5–8× |
+| 3 | Fill VM opcode gaps | 2–3 weeks | ~8–12× |
+| 4 | Direct pipeline integration | 1 week | ~10–20× |
+| 5 | JIT backend (stretch) | months | marginal for game scripts |
 
-**Current Status**: ✅ Complete
+JIT is excluded (see reasoning below). The phases focus on what gives real, measurable wins for InScript's use case.
 
-### Core Features
-- [x] Lexer (tokenization)
-- [x] Parser (AST generation)
-- [x] Interpreter (execution engine)
-- [x] Variables and assignments
-- [x] All primitive data types (numbers, strings, booleans, null)
-- [x] Collections (lists, dictionaries)
-- [x] Operators (arithmetic, comparison, logical)
-- [x] Control flow (if/elseif/else, while, for)
-- [x] Functions (user-defined)
-- [x] 25+ built-in functions
-- [x] REPL (interactive mode)
-- [x] Basic examples
+---
 
-## Version 0.2.0 (Beta - Core Language Enhancement)
+## Phase 1 — Rust Lexer (1–2 days)
 
-**Timeline**: Q2 2026
+**Bottleneck attacked:** Python lexer (2.44ms) is 69% of current frontend time (3.56ms).
 
-### Language Features
-- [ ] Classes and object-oriented programming
-  - [ ] Class definitions
-  - [ ] Constructors (__init__)
-  - [ ] Instance methods and variables
-  - [ ] Inheritance
-  - [ ] Static methods
-- [ ] Exception handling
-  - [ ] try/catch/finally blocks
-  - [ ] raise statement
-  - [ ] Custom exception types
-- [ ] Advanced functions
-  - [ ] Default parameters
-  - [ ] Variable arguments (*args, **kwargs)
-  - [ ] Lambda functions
-  - [ ] First-class functions
-- [ ] List and dictionary comprehensions
-- [ ] Context managers (with statement)
-- [ ] Decorators
+**File:** Create `inscript_package/inscript_rust_parser/src/lexer.rs`
 
-### Standard Library
-- [ ] File I/O (open, read, write)
-- [ ] String methods (split, join, strip, etc.)
-- [ ] Collection methods
-- [ ] Math module
-- [ ] Random module
-- [ ] JSON support
+### What to build
 
-### Testing & Quality
-- [ ] Comprehensive test suite (pytest)
-- [ ] Code coverage reports
-- [ ] Performance benchmarks
-- [ ] Static type checking (optional)
+A character-by-character state machine that produces `Vec<TokenInfo>` — exactly what the existing Rust parser already consumes. No AST, no complex data structures.
 
-### Documentation
-- [ ] Tutorial for beginners
-- [ ] API documentation
-- [ ] Performance guide
-- [ ] Best practices guide
+### Token types to support
 
-## Version 0.3.0 (Release Candidate - Modules & Tooling)
+All tokens from the Python lexer's `TT` enum — ~80 token types:
 
-**Timeline**: Q3 2026
-
-### Module System
-- [ ] Module/import system
-  - [ ] `import` statement
-  - [ ] `from ... import` statement
-  - [ ] Package structure
-  - [ ] Standard library modules
-- [ ] Package manager (inscript-pkg or similar)
-- [ ] Virtual environment support
-
-### Development Tools
-- [ ] Debugger
-  - [ ] Breakpoints
-  - [ ] Step through code
-  - [ ] Variable inspection
-- [ ] Profiler
-- [ ] Linter
-- [ ] Code formatter
-- [ ] REPL enhancements
-  - [ ] History
-  - [ ] Auto-completion
-  - [ ] Syntax highlighting
-
-### VS Code Integration (Preview)
-- [ ] Install as VS Code extension
-- [ ] Basic syntax highlighting
-- [ ] Code snippets
-- [ ] Run button in editor
-
-## Version 1.0.0 (Stable - Production Ready)
-
-**Timeline**: Q4 2026
-
-### Complete VS Code Extension
-- [ ] Full syntax highlighting
-- [ ] IntelliSense / auto-completion
-- [ ] Integrated debugger
-- [ ] Code formatting on save
-- [ ] Linting with inline errors
-- [ ] Test runner integration
-- [ ] Snippet support
-- [ ] Project templates
-- [ ] Theme support
-
-### Language Completeness
-- [ ] Type annotations (optional)
-- [ ] Async/await support
-- [ ] Generator functions
-- [ ] Pattern matching
-- [ ] Standard library completion
-- [ ] Performance optimizations
-
-### Publishing & Distribution
-- [ ] VS Code Marketplace listing
-- [ ] PyPI package
-- [ ] Standalone executables (Windows, Mac, Linux)
-- [ ] Official website
-- [ ] Community package repository
-
-### Documentation & Community
-- [ ] Official documentation website
-- [ ] Video tutorials
-- [ ] Community forum
-- [ ] Example projects
-- [ ] Contributing guidelines refinement
-
-## Beyond 1.0
-
-### Future Enhancements
-- [ ] Compiler to bytecode
-- [ ] Just-In-Time (JIT) compilation for performance
-- [ ] Static compilation to native code
-- [ ] Web runtime (run in browsers)
-- [ ] Mobile support
-- [ ] GPU computation support
-- [ ] Concurrency improvements
-- [ ] Database integration
-- [ ] Web framework
-
-### Ecosystem
-- [ ] Web framework (Inscript-Web)
-- [ ] Data science library (Inscript-Data)
-- [ ] Machine learning library (Inscript-ML)
-- [ ] Game development library
-- [ ] Cross-platform desktop framework
-
-## Breaking Down the Work
-
-### For Current Contributors
-
-1. **Start with Version 0.1.x**:
-   - Bug fixes
-   - More built-in functions
-   - More examples
-   - Better error messages
-   - Documentation improvements
-
-2. **Move to Version 0.2.0**:
-   - Classes and OOP
-   - Exception handling
-   - Standard library expansion
-   - File I/O
-   - Testing infrastructure
-
-3. **VS Code Extension**:
-   - This can happen in parallel
-   - Start with basic syntax highlighting
-   - Progressively add features
-
-## Milestones
-
-```
-v0.1.0 (Now)
-  ├─ Core language ✅
-  ├─ Basic examples ✅
-  └─ Simple documentation ✅
-
-v0.2.0 (6-8 weeks)
-  ├─ OOP support
-  ├─ Exception handling
-  ├─ Standard library
-  └─ Pytest integration
-
-v0.3.0 (12-16 weeks)
-  ├─ Module system
-  ├─ Debugging tools
-  ├─ VS Code preview
-  └─ Package manager
-
-v1.0.0 (24-28 weeks)
-  ├─ Complete VS Code extension
-  ├─ Stable language spec
-  ├─ Comprehensive documentation
-  └─ Official release
-
-Beyond
-  └─ Ecosystem & specialized libraries
+```rust
+pub enum Token {
+    // Literals
+    Int(i64), Float(f64), String(String), Ident(String),
+    // Keywords (45+)
+    Let, Const, Fn, If, Else, While, For, In,
+    Return, Break, Continue, Switch, Case, Default,
+    True, False, Nil,
+    Try, Catch, Finally, Throw,
+    Async, Await, Yield,
+    Struct, Enum, Class, Match,
+    OnStart, OnUpdate, OnDraw, OnExit,
+    Import, From, As, Export,
+    // Operators
+    Plus, Minus, Star, Slash, Percent, Power,
+    Assign, PlusEq, MinusEq, StarEq, SlashEq,
+    Eq, Neq, Lt, Lte, Gt, Gte,
+    And, Or, Not,
+    // Delimiters
+    LeftParen, RightParen, LeftBrace, RightBrace,
+    LeftBracket, RightBracket, Comma, Dot, Semicolon, Colon,
+    Arrow, FatArrow, Question, QuestionDot,
+    // Special
+    Eof,
+}
 ```
 
-## Priorities
+### Key implementation details
 
-### Phase 1: Language Foundation (NOW)
-- ✅ Core interpreter
-- In progress: More examples
-- In progress: Better error handling
+- **Built on the existing `token.rs`** — add missing variants rather than creating a new module
+- **Expose via PyO3** as a `#[pyfunction] fn lex(source: &str) -> Vec<PyDict>` returning the same dict format (token_type, value, line, column) that `test_rust_parser.py` already constructs
+- **Handle InScript-specific syntax:**
+  - `fn*` generator marker → two tokens `Fn` `Star`
+  - `#` comments → skip to newline
+  - `?.` optional chaining
+  - `->` arrow return type
+  - `=>` fat arrow (closures)
+  - `+=`, `-=`, etc. compound assignment
+  - `//` floor division vs. `#` comment
+  - `**` power vs. `*` multiply
+  - String escaping and interpolation markers
+  - Multi-line strings (if supported)
 
-### Phase 2: Standard Library (Next)
-- File I/O
-- String/list/dict methods
-- Math and utilities
-- Exception handling
+### Integration test
 
-### Phase 3: Developer Experience (Following)
-- Debugging
-- Profiling
-- Better error messages
-- REPL improvements
-- VS Code extension basics
+```python
+import inscript_rust_parser
+tokens = inscript_rust_parser.lex(source)
+# tokens is a list of dicts with token_type/value/line/column
+```
 
-### Phase 4: Production Ready (Final)
-- Full VS Code integration
-- Performance optimization
-- Complete documentation
-- Community tooling
+### Verification
 
-## Getting Help
+```
+Phase 1:  Rust Lexer (~0.3ms) → Rust Parser (0.56ms) → Python VM
+End-to-end: ~0.9ms  (current: 3.56ms → 3–4× faster)
+```
 
-- Check [CONTRIBUTING.md](CONTRIBUTING.md) for details
-- Issues are organized by version
-- Look for "help wanted" labels
-- Join discussions on specific features
+### Files to modify
 
-## Feedback & Suggestions
+| File | Change |
+|------|--------|
+| `inscript_rust_parser/src/token.rs` | Add missing token variants |
+| `inscript_rust_parser/src/lexer.rs` | **New file** — lexer implementation |
+| `inscript_rust_parser/src/lib.rs` | Add `lex` `#[pyfunction]`, register in module |
+| `test_rust_parser.py` | Add `lex()` test + benchmark |
 
-Have ideas for the roadmap? Please:
-1. Open an issue with the `enhancement` label
-2. Describe the feature or improvement
-3. Explain why it's important
-4. Include any example use cases
+---
 
-This roadmap is a living document and may change based on community feedback and priorities.
+## Phase 2 — Rust Compiler: AST → Stack Bytecode (1 week)
 
-**Last Updated**: February 2026
+**Bottleneck attacked:** Python compiler (`compiler.py`, ~1–2ms) and the architectural mismatch between register-based Python VM and stack-based Rust VM.
+
+**File:** Create `inscript_rust_parser/src/compiler.rs`
+
+### Why not bridge Python's register bytecode
+
+The Python VM uses `Instr(op, a, b, c)` — register-based. The Rust VM is stack-based. Translating between them requires a register-allocation pass that's as complex as writing a compiler from scratch. Instead, compile directly from the Rust parser's AST to Rust VM bytecode — no intermediate format.
+
+### What to build
+
+A `Compiler` struct that walks the Rust AST and emits `Vec<OpCode>`:
+
+```rust
+pub struct Compiler {
+    opcodes: Vec<OpCode>,
+    constants: Vec<Arc<Value>>,  // pooled literals
+    scopes: Vec<Scope>,
+}
+
+impl Compiler {
+    pub fn compile(program: &Program) -> (Vec<OpCode>, Vec<Arc<Value>>);
+    fn stmt(&mut self, stmt: &Stmt);
+    fn expr(&mut self, expr: &Expr) -> usize;  // returns register/stack depth
+}
+```
+
+### Opcode mapping (27 directly mappable)
+
+| AST node | Rust VM opcodes |
+|----------|----------------|
+| `Literal(Int(n))` | `Push(n)` |
+| `Literal(Float(f))` | `Push(f)` (via constant pool) |
+| `Literal(String(s))` | `Push(s)` (via constant pool) |
+| `Literal(Bool(b))` | `Push(1/0)` |
+| `Literal(Nil)` | `Push(0)` |
+| `Identifier(name)` | `LoadGlobal(idx)` / `LoadReg(idx)` |
+| `Binary(Add/Sub/... )` | `Add` / `Sub` / ... |
+| `Call { callee, args }` | `...exprs`, `Call(n)` |
+| `If { cond, then, else }` | `...cond`, `JumpIfFalse`, `...then`, `Jump`, `...else` |
+| `While { cond, body }` | `JumpIfFalse`, `...body`, `Jump` (loop) |
+| `For { target, iter, body }` | `...iter`, `ITER_START`, `ITER_NEXT`, loop |
+| `Return(expr)` | `...expr`, `Return` |
+| `VarDecl { name, init }` | `...init`, `StoreGlobal(idx)` |
+
+### 37 missing features → runtime helper calls (Phase 3 target)
+
+For features the Rust VM doesn't have opcodes for (closures, exceptions, structs), compile to:
+
+```
+Push(args...) → Call(runtime_function_index)
+```
+
+Where `runtime_function_index` points to a Python-provided or Rust-stub function. This means Phase 2 works **today** without implementing all opcodes — slow paths fall back to helpers. In Phase 3, each helper is replaced with native opcodes.
+
+### Verification
+
+After Phase 2, this pipeline works end-to-end:
+
+```
+Source → Rust Lexer → Rust Parser → Rust Compiler → Rust VM bytes
+```
+
+Test with programs that avoid the 37 unimplemented features (simple math, loops, conditionals, function calls, variables).
+
+### Files to create/modify
+
+| File | Change |
+|------|--------|
+| `inscript_rust_parser/src/compiler.rs` | **New file** — AST-to-bytecode compiler |
+| `inscript_rust_parser/src/lib.rs` | Add `compile` `#[pyfunction]`, register in module |
+| `test_rust_parser.py` | Add compiler tests |
+
+---
+
+## Phase 3 — Fill Rust VM Opcode Gaps (2–3 weeks)
+
+**Bottleneck attacked:** The 37 opcodes where the Rust VM falls back to runtime helpers.
+
+**File:** `rust_vm_engine/src/vm.rs`
+
+### Priority list (highest-impact first)
+
+#### Priority 1: Exception handling (2–3 days)
+
+```
+THROW, PUSH_HANDLER, POP_HANDLER
+```
+
+**Why first:** Every `try`/`catch`/`throw` program is broken without these. Game scripts use error handling.
+
+**Implementation:**
+
+```rust
+PUSH_HANDLER(addr)  // Push try block address onto handler stack
+POP_HANDLER         // Pop handler
+THROW               // Pop value, search handler stack, jump to catch
+```
+
+- Add a `handler_stack: Vec<HandlerFrame>` to `VMEngine`
+- `HandlerFrame { catch_addr: usize, finally_addr: Option<usize> }`
+- `THROW` unwinds the stack and register state to the handler
+
+**Test:** `try { throw "err" } catch(e) { print(e) }`
+
+#### Priority 2: Iteration (2–3 days)
+
+```
+ITER_START, ITER_NEXT
+```
+
+**Why next:** Every `for` loop depends on these. Most InScript code uses loops.
+
+**Implementation:**
+
+```rust
+ITER_START          // Top of stack is iterable → push iterator object
+ITER_NEXT           // Advance iterator, push next value (or nil if done)
+```
+
+- Use Python's iterator protocol via FFI, or implement iterators natively
+- Native iterators for arrays: pointer + length on stack
+- Python FFI fallback for custom iterator objects
+
+**Test:** `for i in range(10) { print(i) }`
+
+#### Priority 3: Struct/field operations (2–3 days)
+
+```
+GET_FIELD, SET_FIELD, MAKE_INSTANCE
+```
+
+**Why:** Structs and field access are fundamental to InScript game code (scenes, entities).
+
+**Implementation:**
+
+```rust
+MAKE_INSTANCE(n)    // Pop n field values, create object, push
+GET_FIELD           // Stack: object field_name → push value
+SET_FIELD           // Stack: object field_name value → mutate
+```
+
+- `MAKE_INSTANCE` creates a `Value::Object(HashMap)` with field name/value pairs
+- Fields are interned strings for fast comparison
+
+**Test:** `scene Player { let x: float = 0 }`
+
+#### Priority 4: Closures and generators (3–4 days)
+
+```
+LOAD_UPVAL, STORE_UPVAL, MAKE_CLOSURE, CAPTURE_UPVAL
+```
+
+**Why:** Generators (`fn*`) and closures enable coroutine-style game logic.
+
+**Implementation:**
+
+- Upvalue capture via `Vec<Arc<Value>>` stored in `CallFrame`
+- `MAKE_CLOSURE` creates a closure object with captured upvalue list
+- `fn*` generators use a suspended call frame with yield/resume
+
+**Test:** `fn* gen() { yield 1; yield 2 }`
+
+#### Priority 5: Bitwise operations (1 day)
+
+```
+BAND, BOR, BXOR, BNOT, BLSHIFT, BRSHIFT
+```
+
+Straightforward — same pattern as existing `Add`/`Sub` but with `i64` bitwise operations.
+
+**Test:** `let x = 0xFF & 0x0F`
+
+#### Priority 6: Remaining operations (2–3 days)
+
+```
+IMPORT, PRINT, CAST, IS_TYPE, INTERP, LINE
+```
+
+- `IMPORT` → module loading via Python `importlib`
+- `PRINT` → `print()` builtin
+- `CAST` → `int()`, `float()`, `string()` type coercion
+- `IS_TYPE` → `is` type check
+- `INTERP` → f-string interpolation (`f"...{expr}..."`)
+- `LINE` → debug info (skip during execution, used for stack traces)
+
+### Verification
+
+After Phase 3, the entire test suite (`test_interpreter.py`, 122 tests) should pass when compiled through the Rust pipeline and executed on the Rust VM.
+
+---
+
+## Phase 4 — Direct Rust Pipeline (1 week)
+
+**Bottleneck attacked:** FFI overhead between Python and Rust at each stage.
+
+### What to build
+
+A single `#[pyfunction]` entry point:
+
+```rust
+#[pyfunction]
+fn execute(source: &str, filename: &str) -> PyResult<String> {
+    let tokens = lexer::lex(source);
+    let program = parser::parse(tokens)?;
+    let (bytecode, constants) = compiler::compile(&program);
+    let mut vm = VMEngine::new(bytecode, constants);
+    match vm.execute() {
+        Ok(val) => Ok(val.to_string()),
+        Err(e) => Ok(format!("Error: {}", e)),
+    }
+}
+```
+
+No Python intermediate steps. No token dict conversion. No AST dict conversion. The entire pipeline runs in one FFI call.
+
+### Comparison
+
+| | Phase 3 | Phase 4 |
+|---|---|---|
+| FFI calls per execution | 3 (lex + parse + execute) | 1 |
+| Data crossing FFI | Token dicts + AST dicts + bytes | Nothing (all internal) |
+| Speedup over Python | ~8–12× | ~10–20× |
+
+### Integration
+
+```python
+import inscript_rust_parser as irp
+result = irp.execute(source)  # single call, returns string
+```
+
+The old Python pipeline continues to work for debugging/comparison. The Rust path is the default with a fallback flag `--python`.
+
+### Files to modify
+
+| File | Change |
+|------|--------|
+| `inscript_rust_parser/src/lib.rs` | Add `execute` `#[pyfunction]` that wires lex+parse+compile+run |
+| `inscript_rust_parser/Cargo.toml` | Add `rust_vm_engine` as dependency |
+| `inscript_package/inscript.py` | Add `--rust` flag to use Rust pipeline |
+
+---
+
+## Phase 5 — JIT Backend (stretch goal, months)
+
+### Not recommended for production
+
+| Factor | InScript | Ideal JIT workload |
+|--------|----------|-------------------|
+| Script lifetime | ~1 frame to ~1 second | Hours-long server processes |
+| Typical size | 50–500 lines | 10,000+ line hot loops |
+| Execution model | One-shot per frame | Long-running tight loops |
+| Warmup cost | High (JIT must compile) | Amortized over millions of iterations |
+
+### What exists
+
+The `rust_vm_engine` already has:
+
+- `ir.rs` — LLVM 17 IR emitter (produces valid `.ll` module text)
+- `jit.rs` — Hot-trace detection engine (tracks execution counts, identifies hot paths)
+- `JitEngine.collect_hot_traces()` — returns `(trace_name, ir_text)` pairs
+
+### What's missing
+
+- LLVM C API or Cranelift backend to compile `.ll` → machine code
+- Native function pointer trampoline to call compiled traces
+- On-stack replacement (OSR) for cases where a loop becomes hot after partial execution
+
+### Verdict
+
+The existing JIT infrastructure is useful as a **research prototype**. The 5-pass compiler (constant folding, instruction fusion, strength reduction, DCE, nop compaction) already eliminates most of the overhead that JIT would target. For game scripts, the Phases 1–4 deliver 95% of the possible speedup with 10% of the effort.
+
+---
+
+## Summary Timeline
+
+| Phase | Effort | Cumulative speedup | Go/no-go gate |
+|-------|--------|-------------------|---------------|
+| 1 — Rust lexer | 1–2 days | ~3–4× | All lexer tests pass |
+| 2 — Rust compiler | 1 week | ~5–8× | Simple programs compile and run |
+| 3 — Fill opcode gaps | 2–3 weeks | ~8–12× | Full test suite passes |
+| 4 — Direct pipeline | 1 week | ~10–20× | `execute(source)` returns correct results |
+| 5 — JIT | months | marginal | Blocked on real-world need |
+
+**Total production effort:** 4–6 weeks
+**Expected end-to-end speedup:** 10–20× over pure Python
+**JIT:** Skip unless a specific workload demonstrates it's needed.
