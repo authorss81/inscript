@@ -617,5 +617,116 @@ class Lexer:
             self._error(f"Unexpected character: {ch!r}", sl, sc)
 
 
+# ── Rust lexer bridge ───────────────────────────────────────────
+
+_RUST_TT: dict = {
+    "Int":   TT.INT,   "Float": TT.FLOAT, "String": TT.STRING,
+    "Bool":  TT.BOOL,  "Ident": TT.IDENT, "Nil":    TT.NIL,
+    "Let":   TT.LET,   "Const": TT.CONST, "Fn":     TT.FN,
+    "If":    TT.IF,    "Else":  TT.ELSE,  "While":  TT.WHILE,
+    "For":   TT.FOR,   "In":    TT.IN,    "Return": TT.RETURN,
+    "Break": TT.BREAK, "Continue": TT.CONTINUE,
+    "Struct": TT.STRUCT, "Enum": TT.ENUM, "Class": TT.SCENE,
+    "Switch": TT.MATCH,  "Case": TT.CASE, "Default": TT.CASE,
+    "Try":  TT.TRY,  "Catch": TT.CATCH, "Finally": TT.FINALLY,
+    "Throw": TT.THROW, "Yield": TT.YIELD,
+    "Async": TT.ASYNC, "Await": TT.AWAIT,
+    "And":  TT.AND,  "Or": TT.OR,  "Not": TT.NOT,
+    "OnStart": TT.ON_START, "OnUpdate": TT.ON_UPDATE,
+    "OnDraw":  TT.ON_DRAW,  "OnExit":   TT.ON_EXIT,
+    "Node": TT.NODE, "OnReady": TT.ON_READY,
+    "OnNodeUpdate": TT.ON_NODE_UPDATE, "OnNodeDraw": TT.ON_NODE_DRAW,
+    "IntType": TT.INT_TYPE, "FloatType": TT.FLOAT_TYPE,
+    "BoolType": TT.BOOL_TYPE, "StringType": TT.STRING_TYPE,
+    "VoidType": TT.VOID_TYPE,
+    "Import": TT.IMPORT, "From": TT.FROM, "As": TT.AS,
+    "Export": TT.EXPORT,
+    "Self":  TT.SELF,  "Super": TT.SUPER, "Null": TT.NULL,
+    "Spawn": TT.SPAWN, "Select": TT.SELECT, "Then": TT.THEN,
+    "Abstract": TT.ABSTRACT, "Interface": TT.INTERFACE,
+    "Impl": TT.IMPL, "Pub": TT.PUB,
+    "Is": TT.IS, "Div": TT.DIV,
+    "Defer": TT.DEFER, "Repeat": TT.REPEAT, "Until": TT.UNTIL,
+    "Plus": TT.PLUS, "Minus": TT.MINUS, "Star": TT.STAR,
+    "Slash": TT.SLASH, "Percent": TT.PERCENT, "Power": TT.POWER,
+    "Eq": TT.EQ, "Neq": TT.NEQ, "Lt": TT.LT, "Lte": TT.LTE,
+    "Gt": TT.GT, "Gte": TT.GTE,
+    "BitwiseAnd": TT.BIT_AND, "BitwiseOr": TT.BIT_OR,
+    "BitwiseXor": TT.BIT_XOR, "BitwiseNot": TT.BIT_NOT,
+    "LeftShift": TT.LSHIFT, "RightShift": TT.RSHIFT,
+    "PlusPlus": TT.PLUSPLUS, "SlashSlash": TT.SLASH_SLASH,
+    "Question": TT.QUESTION, "QuestionDot": TT.QUESTION_DOT,
+    "Nullish": TT.NULLISH, "NullishEq": TT.NULLISH_EQ,
+    "PipeGt": TT.PIPE_GT,
+    "Arrow": TT.ARROW, "FatArrow": TT.FAT_ARROW,
+    "LeftParen": TT.LPAREN, "RightParen": TT.RPAREN,
+    "LeftBrace": TT.LBRACE, "RightBrace": TT.RBRACE,
+    "LeftBracket": TT.LBRACKET, "RightBracket": TT.RBRACKET,
+    "Comma": TT.COMMA, "Dot": TT.DOT, "Semicolon": TT.SEMICOLON,
+    "Colon": TT.COLON, "DoubleColon": TT.DOUBLE_COLON,
+    "At": TT.AT,
+    "DotDot": TT.DOTDOT, "DotDotEq": TT.DOTDOT_EQ,
+    "Ellipsis": TT.ELLIPSIS,
+    "FString": TT.FSTRING, "Eof": TT.EOF,
+    "Pipe": TT.PIPE, "Assign": TT.ASSIGN,
+}
+
+# ── Compound assign → TT map ──────────────────────────────────
+
+_COMPOUND_ASSIGN: dict = {
+    "+=": TT.PLUS_EQ,   "-=": TT.MINUS_EQ,  "*=": TT.STAR_EQ,
+    "/=": TT.SLASH_EQ,  "%=": TT.PERCENT_EQ, "**=": TT.POWER_EQ,
+    "&=": TT.AMP_EQ,    "|=": TT.PIPE_EQ,   "^=": TT.CARET_EQ,
+    "<<=": TT.LSHIFT_EQ, ">>=": TT.RSHIFT_EQ,
+}
+
+# ── Ident value overrides (non-string values) ─────────────────
+
+_IDENT_MAP: dict = {
+    "true": True, "false": False, "nil": None, "null": None,
+}
+
 def tokenize(source: str, filename: str = "<stdin>") -> List[Token]:
-    return Lexer(source, filename).tokenize()
+    try:
+        from inscript_parser import lex as _rust_lex
+        tokens = []
+        for d in _rust_lex(source):
+            tt_name = d["token_type"]
+            tt = _RUST_TT.get(tt_name)
+            if tt is None:
+                continue
+            val_str = d["value"]
+            line, col = d["line"], d["column"]
+
+            # Disambiguate compound assigns
+            if tt == TT.ASSIGN and val_str in _COMPOUND_ASSIGN:
+                tt = _COMPOUND_ASSIGN[val_str]
+            # Disambiguate // floor division vs / division
+            elif tt == TT.SLASH and val_str == "//":
+                tt = TT.SLASH_SLASH
+            # Disambiguate ++ string concat vs + addition
+            elif tt == TT.PLUS and val_str == "++":
+                tt = TT.PLUSPLUS
+
+            # Convert value to correct Python type
+            if tt == TT.INT:
+                val = int(val_str) if val_str else 0
+            elif tt == TT.FLOAT:
+                val = float(val_str) if val_str else 0.0
+            elif tt == TT.BOOL:
+                val = val_str == "true"
+            elif tt == TT.STRING:
+                val = val_str
+            elif tt == TT.FSTRING:
+                val = val_str
+            elif tt == TT.NIL or tt == TT.NULL:
+                val = None
+            elif tt == TT.IDENT and val_str in _IDENT_MAP:
+                val = _IDENT_MAP[val_str]
+            else:
+                val = val_str if val_str else tt_name.lower()
+
+            tokens.append(Token(tt, val, line, col))
+        return tokens
+    except ImportError:
+        return Lexer(source, filename).tokenize()
