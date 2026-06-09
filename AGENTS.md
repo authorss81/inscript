@@ -68,6 +68,10 @@ Full architecture: `inscript_package/ARCHITECTURE.md`
 - **Compiler**: `inscript_rust_parser/src/compiler.rs` — AST-to-bytecode, produces `Vec<OpCode>` + `Vec<Value>`
 - **VM**: `rust_vm_engine/src/vm.rs` — `VMEngine::from_opcodes` and `from_opcodes_with_funcs`
 - **Function defs**: `rust_vm_engine/src/lib.rs` — `FuncDef` struct stores opcodes, constants, param count
+- **Bytecode optimizer**: `rust_vm_engine/src/compiler.rs` — 5 passes (constant fold, instruction fuse, strength reduce, DCE, nop compact) + type inference analysis
+- **JIT engine**: `rust_vm_engine/src/jit.rs` — hot trace detection (backward jumps), execution counting, IR generation on threshold
+- **LLVM IR emitter**: `rust_vm_engine/src/ir.rs` — converts opcodes to LLVM 17 IR text (.ll), all 37 opcodes supported
+- **Native compilation**: `rust_vm_engine/src/compile.rs` — writes IR to temp file, runs opt+llc+cc pipeline, loads shared library via libloading
 
 ### F-string encoding
 The lexer encodes f-string brace escapes with null-byte markers:
@@ -82,6 +86,7 @@ The parser's `parse_fstring_content` decodes these markers back to literal brace
 - `to_byte()` maps all parameterized opcodes to `0xFE` — serialization via `from_opcodes` only
 - Class methods are automatically bound to instances via `BoundMethod` value type
 - For loops compile to indexed while-loops (no iterator protocol, but works for arrays/strings/objects)
+- `compile.rs` native compilation requires `llc` + `opt` (LLVM 17) + `cc` in PATH
 
 ### Build & test
 ```bash
@@ -101,8 +106,8 @@ python test_fstring.py        # f-string interpolation tests
 cargo test --release -p inscript-parser
 cargo test --release -p rust-vm-engine
 
-# Use via --rust flag
-python inscript.py --rust file.ins
+# Use Rust VM (now the default — --python to opt out)
+python inscript.py file.ins
 ```
 
 ## Language conventions
