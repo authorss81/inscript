@@ -2662,7 +2662,9 @@ Examples:
     parser.add_argument("--errors", metavar="PREFIX", nargs="?", const="",
                          help="v1.9.4: Print error code catalogue (optional prefix filter, e.g. E003)")
     parser.add_argument("--rust", action="store_true",
-                         help="v3.9.3: Use experimental Rust compiler/VM instead of Python pipeline")
+                         help="[DEPRECATED] Rust is now the default — use --python to opt out")
+    parser.add_argument("--python", action="store_true",
+                         help="Use the Python tree-walk interpreter instead of the Rust VM")
     parser.add_argument("--changelog", metavar="RANGE",
                         help="v1.9.4: Print changelog for version range e.g. v1.6.0..v1.9.4")
     parser.add_argument("--benchmark", metavar="NAME", nargs="?", const="",
@@ -2788,6 +2790,10 @@ Examples:
     parser.add_argument("--incremental", action="store_true",
                         help="v2.4.0: Skip recompile if .ibc is newer than source")
     args = parser.parse_args()
+
+    # Backward compat: --rust is now the default, warn and ignore
+    if getattr(args, 'rust', False):
+        print("[InScript] Warning: --rust is now the default (no flag needed). Use --python to use the Python interpreter.", file=sys.stderr)
 
     if args.version:
         print(f"InScript {VERSION}")
@@ -3202,14 +3208,16 @@ Examples:
             print(e, file=sys.stderr); return 1
         return 0
 
-    # v3.9.3: --rust — experimental Rust compiler/VM fast path
-    if getattr(args, 'rust', False):
+    # Rust compiler/VM fast path (default). Use --python to use the Python interpreter.
+    if not getattr(args, 'python', False):
         try:
             sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "target", "release"))
             from inscript_parser import compile_and_run
             result = compile_and_run(source)
             print(result)
             return 0
+        except ImportError:
+            print("[InScript] Rust VM not available — falling back to Python interpreter", file=sys.stderr)
         except Exception as e:
             print(f"[Rust VM] Error: {e}", file=sys.stderr)
             return 1

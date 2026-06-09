@@ -15,6 +15,8 @@
 // Expected speedup: 2-4x reduction in executed instructions for typical code
 // Combined with v3.8.4 baseline: 70-100x vs v3.8.0
 
+use std::collections::HashMap;
+
 use crate::OpCode;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -42,6 +44,7 @@ pub fn optimize(opcodes: Vec<OpCode>) -> (Vec<OpCode>, OptStats) {
         instruction_fusions:   fuse_count,
         strength_reductions:   strength_count,
         dead_code_removed:     dce_count,
+        type_map:              None,
     })
 }
 
@@ -346,6 +349,293 @@ fn remap_target(old_addr: usize, index_map: &[usize]) -> usize {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Type Inference Pass
+//
+// Forward data-flow analysis that tracks types on the stack at each program
+// point. Uses fixed-point iteration to handle loops and conditional branches.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Abstract type lattice for InScript values.
+/// Order: Top > {Int, Float, Bool, String, Array, Object, Nil} > Bottom
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Type {
+    Top,
+    Int,
+    Float,
+    Bool,
+    String,
+    Array,
+    Object,
+    Nil,
+    Bottom,
+}
+
+/// State of the type system at a program point.
+/// Tracks both the value stack types and register types.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypeState {
+    stack: Vec<Type>,
+    registers: [Type; 256],
+}
+
+/// Maps opcode index → stack types just before executing that opcode.
+pub type TypeMap = HashMap<usize, Vec<Type>>;
+
+/// Greatest lower bound in the type lattice.
+/// Top ⊓ X = X, Bottom ⊓ X = Bottom, Int ⊓ Float = Top (mixed), etc.
+fn meet(a: Type, b: Type) -> Type {
+    if a == b { return a; }
+    match (a, b) {
+        (Type::Top, x) | (x, Type::Top) => x,
+        (Type::Bottom, _) | (_, Type::Bottom) => Type::Bottom,
+        _ => Type::Top,
+    }
+}
+
+/// Merge two type states at a control-flow join point.
+fn meet_type_state(a: &TypeState, b: &TypeState) -> TypeState {
+    let stack_len = a.stack.len().min(b.stack.len());
+    let mut stack = Vec::with_capacity(stack_len);
+    for i in 0..stack_len {
+        stack.push(meet(a.stack[i], b.stack[i]));
+    }
+    let mut registers = [Type::Bottom; 256];
+    for i in 0..256 {
+        registers[i] = meet(a.registers[i], b.registers[i]);
+    }
+    TypeState { stack, registers }
+}
+
+impl TypeState {
+    fn new() -> Self {
+        TypeState {
+            stack: Vec::new(),
+            registers: [Type::Top; 256],
+        }
+    }
+
+    /// Apply the transfer function for a single opcode.
+    fn transfer(&self, op: &OpCode) -> Self {
+        let mut new = self.clone();
+        match op {
+            OpCode::Push(_) => {
+                new.stack.push(Type::Int);
+            }
+            OpCode::Pop => {
+                new.stack.pop();
+            }
+            OpCode::Duplicate => {
+                if let Some(t) = new.stack.last().copied() {
+                    new.stack.push(t);
+                }
+            }
+            OpCode::Swap => {
+                let len = new.stack.len();
+                if len >= 2 {
+                    new.stack.swap(len - 1, len - 2);
+                }
+            }
+            OpCode::Add | OpCode::Sub | OpCode::Mul | OpCode::Mod => {
+                let b = new.stack.pop().unwrap_or(Type::Top);
+                let a = new.stack.pop().unwrap_or(Type::Top);
+                let result = match (a, b) {
+                    (Type::Int, Type::Int) => Type::Int,
+                    (Type::Float, _) | (_, Type::Float) => Type::Float,
+                    _ => Type::Top,
+                };
+                new.stack.push(result);
+            }
+            OpCode::Div | OpCode::Power => {
+                new.stack.pop();
+                new.stack.pop();
+                new.stack.push(Type::Float);
+            }
+            OpCode::Negate => {
+                if let Some(t) = new.stack.last().copied() {
+                    let result = match t {
+                        Type::Int => Type::Int,
+                        Type::Float => Type::Float,
+                        _ => Type::Top,
+                    };
+                    *new.stack.last_mut().unwrap() = result;
+                }
+            }
+            OpCode::Equal | OpCode::NotEqual
+            | OpCode::LessThan | OpCode::LessEqual
+            | OpCode::GreaterThan | OpCode::GreaterEqual => {
+                new.stack.pop();
+                new.stack.pop();
+                new.stack.push(Type::Bool);
+            }
+            OpCode::And | OpCode::Or => {
+                new.stack.pop();
+                new.stack.pop();
+                new.stack.push(Type::Bool);
+            }
+            OpCode::Not => {
+                new.stack.pop();
+                new.stack.push(Type::Bool);
+            }
+            OpCode::Jump(_) => {}
+            OpCode::JumpIfFalse(_) | OpCode::JumpIfTrue(_) => {
+                new.stack.pop();
+            }
+            OpCode::Call(n) => {
+                for _ in 0..=*n {
+                    new.stack.pop();
+                }
+                new.stack.push(Type::Top);
+            }
+            OpCode::Return | OpCode::Halt => {
+                new.stack.clear();
+            }
+            OpCode::StoreReg(idx) => {
+                if let Some(t) = new.stack.pop() {
+                    new.registers[*idx] = t;
+                }
+            }
+            OpCode::LoadReg(idx) => {
+                new.stack.push(new.registers[*idx]);
+            }
+            OpCode::StoreGlobal(_) => {
+                new.stack.pop();
+            }
+            OpCode::LoadGlobal(_) => {
+                new.stack.push(Type::Top);
+            }
+            OpCode::CreateArray(n) => {
+                for _ in 0..*n {
+                    new.stack.pop();
+                }
+                new.stack.push(Type::Array);
+            }
+            OpCode::CreateObject(n) => {
+                for _ in 0..(2 * *n) {
+                    new.stack.pop();
+                }
+                new.stack.push(Type::Object);
+            }
+            OpCode::Index => {
+                new.stack.pop();
+                new.stack.pop();
+                new.stack.push(Type::Top);
+            }
+            OpCode::SetIndex => {
+                new.stack.pop();
+                new.stack.pop();
+                new.stack.pop();
+            }
+            OpCode::LoadConst(_) => {
+                new.stack.push(Type::Top);
+            }
+            OpCode::Concat => {
+                new.stack.pop();
+                new.stack.pop();
+                new.stack.push(Type::String);
+            }
+            OpCode::Length => {
+                new.stack.pop();
+                new.stack.push(Type::Int);
+            }
+            OpCode::IterStart => {
+                new.stack.pop();
+                new.stack.push(Type::Array);
+            }
+            OpCode::IterNext => {
+                new.stack.pop();
+                new.stack.push(Type::Array);
+                new.stack.push(Type::Top);
+            }
+            OpCode::Nop => {}
+        }
+        new
+    }
+}
+
+/// Merge incoming state into a target program point.
+/// Returns true if the target state changed.
+fn merge_state(target: &mut Option<TypeState>, incoming: &TypeState) -> bool {
+    match target {
+        None => {
+            *target = Some(incoming.clone());
+            true
+        }
+        Some(existing) => {
+            let merged = meet_type_state(existing, incoming);
+            if merged == *existing {
+                false
+            } else {
+                *existing = merged;
+                true
+            }
+        }
+    }
+}
+
+/// Forward data-flow type inference pass.
+/// Returns a map from opcode index → stack types just before that opcode.
+///
+/// Uses fixed-point iteration: keeps re-processing opcodes until the type
+/// state at every program point stabilizes.
+pub fn pass_type_inference(ops: &[OpCode]) -> TypeMap {
+    let n = ops.len();
+    if n == 0 { return HashMap::new(); }
+
+    let mut states: Vec<Option<TypeState>> = vec![None; n + 1];
+    states[0] = Some(TypeState::new());
+
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for i in 0..n {
+            let state = match &states[i] {
+                Some(s) => s.clone(),
+                None => continue,
+            };
+
+            let new_state = state.transfer(&ops[i]);
+
+            match &ops[i] {
+                OpCode::Jump(addr) => {
+                    if *addr < states.len() {
+                        changed |= merge_state(&mut states[*addr], &new_state);
+                    }
+                }
+                OpCode::JumpIfFalse(addr) | OpCode::JumpIfTrue(addr) => {
+                    changed |= merge_state(&mut states[i + 1], &new_state);
+                    if *addr < states.len() {
+                        changed |= merge_state(&mut states[*addr], &new_state);
+                    }
+                }
+                OpCode::Halt | OpCode::Return => {
+                    changed |= merge_state(&mut states[n], &new_state);
+                }
+                _ => {
+                    changed |= merge_state(&mut states[i + 1], &new_state);
+                }
+            }
+        }
+    }
+
+    let mut map = HashMap::new();
+    for (i, state) in states.iter().enumerate() {
+        if let Some(s) = state {
+            map.insert(i, s.stack.clone());
+        }
+    }
+    map
+}
+
+/// Run all optimization passes AND type inference.
+/// Returns optimized opcodes, stats (with type map), and the type map.
+pub fn optimize_with_types(opcodes: Vec<OpCode>) -> (Vec<OpCode>, OptStats, TypeMap) {
+    let type_map = pass_type_inference(&opcodes);
+    let (optimized, mut stats) = optimize(opcodes);
+    stats.type_map = Some(type_map.clone());
+    (optimized, stats, type_map)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Stats
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -358,6 +648,7 @@ pub struct OptStats {
     pub instruction_fusions:   usize,
     pub strength_reductions:   usize,
     pub dead_code_removed:     usize,
+    pub type_map: Option<TypeMap>,
 }
 
 impl OptStats {
@@ -370,7 +661,7 @@ impl OptStats {
 impl std::fmt::Display for OptStats {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f,
-            "OptStats {{ {}/{} instructions ({:.1}% reduction) | folds={} fusions={} strength={} dce={} }}",
+            "OptStats {{ {}/{} instructions ({:.1}% reduction) | folds={} fusions={} strength={} dce={} type_map={} }}",
             self.final_instructions,
             self.original_instructions,
             self.reduction_pct(),
@@ -378,6 +669,7 @@ impl std::fmt::Display for OptStats {
             self.instruction_fusions,
             self.strength_reductions,
             self.dead_code_removed,
+            if self.type_map.is_some() { "yes" } else { "no" },
         )
     }
 }
@@ -621,5 +913,98 @@ mod tests {
     fn single_instruction_no_panic() {
         let (out, _) = optimize(vec![OpCode::Halt]);
         assert_eq!(out.len(), 1);
+    }
+
+    // ── Type inference ─────────────────────────────────────────────────────────
+    use super::Type;
+
+    #[test]
+    fn infer_push_int() {
+        let ops = vec![OpCode::Push(42)];
+        let map = pass_type_inference(&ops);
+        assert_eq!(map.get(&0).map(|s| s.len()), Some(0));
+        assert_eq!(map.get(&1).unwrap()[0], Type::Int);
+    }
+
+    #[test]
+    fn infer_add_int_int() {
+        let ops = vec![OpCode::Push(1), OpCode::Push(2), OpCode::Add];
+        let map = pass_type_inference(&ops);
+        assert_eq!(map.get(&3).unwrap()[0], Type::Int);
+    }
+
+    #[test]
+    fn infer_div_float() {
+        let ops = vec![OpCode::Push(5), OpCode::Push(2), OpCode::Div];
+        let map = pass_type_inference(&ops);
+        assert_eq!(map.get(&3).unwrap()[0], Type::Float);
+    }
+
+    #[test]
+    fn infer_comparison_bool() {
+        let ops = vec![OpCode::Push(1), OpCode::Push(2), OpCode::Equal];
+        let map = pass_type_inference(&ops);
+        assert_eq!(map.get(&3).unwrap()[0], Type::Bool);
+    }
+
+    #[test]
+    fn infer_negate_int() {
+        let ops = vec![OpCode::Push(5), OpCode::Negate];
+        let map = pass_type_inference(&ops);
+        assert_eq!(map.get(&2).unwrap()[0], Type::Int);
+    }
+
+    #[test]
+    fn infer_jump_merge_int() {
+        let ops = vec![
+            OpCode::Push(1),
+            OpCode::JumpIfFalse(4),
+            OpCode::Push(2),
+            OpCode::Jump(5),
+            OpCode::Push(3),
+            OpCode::Halt,
+        ];
+        let map = pass_type_inference(&ops);
+        // At the merge point before Halt (index 5), both paths push Int
+        assert_eq!(map.get(&5).unwrap().len(), 1);
+        assert_eq!(map.get(&5).unwrap()[0], Type::Int);
+    }
+
+    #[test]
+    fn infer_create_array() {
+        let ops = vec![
+            OpCode::Push(1),
+            OpCode::Push(2),
+            OpCode::Push(3),
+            OpCode::CreateArray(3),
+        ];
+        let map = pass_type_inference(&ops);
+        assert_eq!(map.get(&4).unwrap()[0], Type::Array);
+    }
+
+    #[test]
+    fn infer_concat_string() {
+        let ops = vec![
+            OpCode::LoadConst(0),
+            OpCode::LoadConst(1),
+            OpCode::Concat,
+        ];
+        let map = pass_type_inference(&ops);
+        assert_eq!(map.get(&3).unwrap()[0], Type::String);
+    }
+
+    #[test]
+    fn infer_length_int() {
+        let ops = vec![OpCode::Push(5), OpCode::Length];
+        let map = pass_type_inference(&ops);
+        assert_eq!(map.get(&2).unwrap()[0], Type::Int);
+    }
+
+    #[test]
+    fn infer_optimize_with_types() {
+        let ops = vec![OpCode::Push(2), OpCode::Push(3), OpCode::Add, OpCode::Halt];
+        let (_optimized, stats, type_map) = optimize_with_types(ops);
+        assert!(stats.type_map.is_some());
+        assert!(!type_map.is_empty());
     }
 }
