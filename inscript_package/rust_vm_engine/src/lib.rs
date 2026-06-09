@@ -257,6 +257,8 @@ pub use ir::IrEmitter;
 pub mod jit;
 pub use jit::{JitEngine, JitStats, StubEntry, TraceId, HOT_THRESHOLD, MAX_STUBS};
 
+pub mod compile;
+
 // ─────────────────────────────────────────────────────────────────────
 // PyO3 FFI — Python bindings for the VM engine
 // ─────────────────────────────────────────────────────────────────────

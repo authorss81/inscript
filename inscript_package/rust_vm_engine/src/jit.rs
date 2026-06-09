@@ -103,10 +103,16 @@ impl StubEntry {
         }
     }
 
-    /// Mark this trace as requiring IR emission.
+    /// Mark this trace as requiring IR emission and attempt native compilation.
     pub fn generate_ir(&mut self) {
         use crate::ir::emit_ir;
-        self.ir_text = Some(emit_ir(&self.trace_id.0, &self.opcodes));
+        let ir = emit_ir(&self.trace_id.0, &self.opcodes);
+        self.ir_text = Some(ir.clone());
+
+        // Attempt native compilation via llc/opt pipeline
+        if let Some(fn_ptr) = crate::compile::try_compile_trace(&self.trace_id.0, &ir) {
+            self.native_fn = Some(fn_ptr);
+        }
     }
 }
 
