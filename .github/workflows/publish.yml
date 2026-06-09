@@ -9,9 +9,13 @@
 #      → New repository secret → Name: PYPI_API_TOKEN → paste token → Save
 #
 # To publish:
-#   git tag -a v3.9.4 -m "InScript v3.9.4"
-#   git push origin v3.9.4
-#   → GitHub Actions: runs all tests → builds Rust extension → uploads to PyPI
+#   1. Bump VERSION in inscript_package/inscript.py
+#   2. Update version in Cargo.toml files to match
+#   3. git tag -a v3.9.4 -m "InScript v3.9.4"
+#   4. git push origin v3.9.4
+#
+# NOTE: version is READ DYNAMICALLY from inscript.py's VERSION constant.
+#       The tag must match or the workflow fails immediately.
 
 name: Publish to PyPI
 
@@ -20,158 +24,163 @@ on:
     tags:
       - 'v*.*.*'
 
+env:
+  PACKAGE_DIR: inscript_package
+
 jobs:
-  test:
-    name: Run tests before publish
+  # ──────────────────────────────────────────────
+  # 0. Extract & verify version from source
+  # ──────────────────────────────────────────────
+  version:
+    name: Read & verify version
     runs-on: ubuntu-latest
-    env:
-      PYTHONIOENCODING: utf-8
-      PYTHONUTF8: 1
-
+    outputs:
+      version: ${{ steps.getver.outputs.version }}
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          target: x86_64-unknown-linux-gnu
-
-      - name: Install deps
+      - id: getver
+        working-directory: ${{ env.PACKAGE_DIR }}
         run: |
-          pip install setuptools-rust pygame pygls
-          pip install -e . --no-build-isolation
-
-      - name: Build Rust extension
-        working-directory: inscript_package
-        run: cargo build --release -p inscript-parser
-
-      - name: Copy .dll to .pyd for Python import
-        working-directory: inscript_package
-        run: cp target/release/libinscript_parser.so target/release/inscript_parser.pyd 2>/dev/null || cp target/release/inscript_parser.dll target/release/inscript_parser.pyd 2>/dev/null || true
-
-      - name: Run test suite
-        working-directory: inscript_package
-        run: |
-          python test_lexer.py
-          python test_parser.py
-          python test_analyzer.py
-          python test_interpreter.py
-          python test_stdlib.py
-          python test_compiler.py
-          python test_fstring.py
-          python test_v12.py
-          python test_v120.py
-          python test_v130.py
-          python test_v140.py
-          python test_v150.py
-          python test_v160.py
-          python test_v170.py
-          python test_v172.py
-          python test_v173.py
-          python test_v174.py
-          python test_v181.py
-          python test_v182.py
-          python test_v183.py
-          python test_v184.py
-          python test_v191.py
-          python test_v192.py
-          python test_v193.py
-          python test_v194.py
-          python test_v195.py
-          python test_v196.py
-          python test_v197.py
-          python test_v198.py
-          python test_v199.py
-          python test_v1910.py
-          python test_v1911.py
-          python test_v1912.py
-          python test_v1913.py
-          python test_v1914.py
-          python test_v1915.py
-          python test_v200.py
-          python test_v201.py
-          python test_v202.py
-          python test_v203.py
-          python test_v210.py
-          python test_v211.py
-          python test_v212.py
-          python test_v220.py
-          python test_v230.py
-          python test_v240.py
-          python test_v250.py
-          python test_v260.py
-          python test_v270.py
-          python test_v280.py
-          python test_v290.py
-          python test_v2100.py
-          python test_v2110.py
-          python test_v2120.py
-          python test_v2130.py
-          python test_v300.py
-
-  build:
-    name: Build distribution
-    needs: test
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          target: x86_64-unknown-linux-gnu
-
-      - name: Install build tools
-        run: pip install build setuptools-rust
-
-      - name: Build wheel and sdist
-        working-directory: inscript_package
-        run: python -m build
-
-      - name: Verify built version matches tag
-        working-directory: inscript_package
-        run: |
-          TAG="${GITHUB_REF_NAME}"
-          PKG_VER="$(python -c "import inscript; print(inscript.VERSION)")"
-          echo "Tag: $TAG  |  inscript.VERSION: $PKG_VER"
-          if [ "v${PKG_VER}" != "${TAG}" ]; then
-            echo "ERROR: tag ${TAG} does not match inscript.VERSION ${PKG_VER}"
+          VER="$(python -c "
+import re; print(re.search(r'^VERSION\s*=\s*\"([^\"]+)\"', open('inscript.py').read(), re.M).group(1))
+")"
+          echo "version=${VER}" >> "$GITHUB_OUTPUT"
+          echo "Source VERSION = ${VER}, Tag = ${GITHUB_REF_NAME}"
+          if [ "v${VER}" != "${GITHUB_REF_NAME}" ]; then
+            echo "❌ Tag ${GITHUB_REF_NAME} != source v${VER}"
             exit 1
           fi
+          echo "✅ Version verified"
 
-      - name: Upload dist artifacts
-        uses: actions/upload-artifact@v4
+  # ──────────────────────────────────────────────
+  # 1. Test suite
+  # ──────────────────────────────────────────────
+  test:
+    name: Run tests
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - run: pip install setuptools-rust pygame pygls
+      - run: pip install -e . --no-build-isolation
+      - working-directory: ${{ env.PACKAGE_DIR }}
+        run: cargo build --release -p inscript-parser
+      - working-directory: ${{ env.PACKAGE_DIR }}
+        run: |
+          cp target/release/libinscript_parser.so target/release/inscript_parser.pyd 2>/dev/null || \
+          cp target/release/inscript_parser.dll target/release/inscript_parser.pyd 2>/dev/null || true
+      - working-directory: ${{ env.PACKAGE_DIR }}
+        run: cargo test --release -p inscript-parser -p inscript-vm-engine
+      - working-directory: ${{ env.PACKAGE_DIR }}
+        run: |
+          python test_lexer.py && python test_parser.py && python test_analyzer.py && \
+          python test_interpreter.py && python test_compiler.py && python test_fstring.py && \
+          python test_v12.py && python test_v120.py && python test_v130.py && \
+          python test_v140.py && python test_v150.py && python test_v160.py && \
+          python test_v170.py && python test_v172.py && python test_v173.py && \
+          python test_v174.py && python test_v181.py && python test_v182.py && \
+          python test_v183.py && python test_v184.py && python test_v191.py && \
+          python test_v192.py && python test_v193.py && python test_v194.py && \
+          python test_v195.py && python test_v196.py && python test_v197.py && \
+          python test_v198.py && python test_v199.py && python test_v1910.py && \
+          python test_v1911.py && python test_v1912.py && python test_v1913.py && \
+          python test_v1914.py && python test_v1915.py && python test_v200.py && \
+          python test_v201.py && python test_v202.py && python test_v203.py && \
+          python test_v210.py && python test_v211.py && python test_v212.py && \
+          python test_v220.py && python test_v230.py && python test_v240.py && \
+          python test_v250.py && python test_v260.py && python test_v270.py && \
+          python test_v280.py && python test_v290.py && python test_v2100.py && \
+          python test_v2110.py && python test_v2120.py && python test_v2130.py && \
+          python test_v300.py
+
+  # ──────────────────────────────────────────────
+  # 2. Build cross-platform wheels (cibuildwheel)
+  # ──────────────────────────────────────────────
+  build_wheels:
+    name: Wheel ${{ matrix.platform }}
+    needs: [version, test]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux_x86_64
+            target: x86_64-unknown-linux-gnu
+          - os: ubuntu-latest
+            platform: linux_aarch64
+            target: aarch64-unknown-linux-gnu
+          - os: macos-latest
+            platform: macos_x86_64
+            target: x86_64-apple-darwin
+          - os: macos-latest
+            platform: macos_arm64
+            target: aarch64-apple-darwin
+          - os: windows-latest
+            platform: windows_amd64
+            target: x86_64-pc-windows-msvc
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with: { target: ${{ matrix.target }} }
+      - run: pip install cibuildwheel
+      - working-directory: ${{ env.PACKAGE_DIR }}
+        env:
+          CIBW_BUILD: "cp310-* cp311-* cp312-*"
+          CIBW_SKIP: "*-musllinux_* *i686*"
+          CIBW_ARCHS_LINUX: "x86_64 aarch64"
+          CIBW_BEFORE_BUILD: "pip install setuptools-rust"
+          CIBW_ENVIRONMENT: CARGO_BUILD_TARGET=${{ matrix.target }}
+        run: python -m cibuildwheel --output-dir dist
+      - uses: actions/upload-artifact@v4
         with:
-          name: python-package-distributions
-          path: inscript_package/dist/
+          name: wheels-${{ matrix.platform }}
+          path: ${{ env.PACKAGE_DIR }}/dist/*.whl
 
+  # ──────────────────────────────────────────────
+  # 3. Build source distribution
+  # ──────────────────────────────────────────────
+  build_sdist:
+    name: Source distribution
+    needs: [version, test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - run: pip install build setuptools-rust
+      - working-directory: ${{ env.PACKAGE_DIR }}
+        run: python -m build --sdist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdist
+          path: ${{ env.PACKAGE_DIR }}/dist/*.tar.gz
+
+  # ──────────────────────────────────────────────
+  # 4. Publish to PyPI
+  # ──────────────────────────────────────────────
   publish:
     name: Publish to PyPI
-    needs: build
+    needs: [build_wheels, build_sdist]
     runs-on: ubuntu-latest
-
     steps:
-      - name: Download dist artifacts
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
-          name: python-package-distributions
+          pattern: wheels-*
+          merge-multiple: true
           path: dist/
-
-      - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+      - uses: actions/download-artifact@v4
+        with:
+          name: sdist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
         with:
           user: __token__
           password: ${{ secrets.PYPI_API_TOKEN }}
           attestations: false
-

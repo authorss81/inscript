@@ -1,17 +1,25 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-setup.py — InScript v3.7.3 Build Configuration
+setup.py — InScript Build Configuration
 
-Builds:
-  1. Python package (inscript)
-  2. Rust parser module (inscript_parser)
-  3. All extensions and tools
+Version is read dynamically from inscript.py's VERSION constant.
 """
 
 import sys
 import os
+import re
 from setuptools import setup, find_packages
+
+# ── Dynamic version: read from inscript.py ────────
+_here = os.path.dirname(os.path.abspath(__file__))
+_inscript_py = os.path.join(_here, "inscript.py")
+_version_line = open(_inscript_py, encoding="utf-8").read()
+_match = re.search(r'^VERSION\s*=\s*"([^"]+)"', _version_line, re.MULTILINE)
+if not _match:
+    raise RuntimeError(f"Cannot find VERSION in {_inscript_py}")
+VERSION = _match.group(1)
+# ──────────────────────────────────────────────────
 
 try:
     from setuptools_rust import RustExtension, build_rust
@@ -36,7 +44,7 @@ if RUST_AVAILABLE:
 
 setup(
     name='inscript-lang',
-    version='3.9.4',
+    version=VERSION,
     description='InScript: Real compilable scripting language for game development',
     author='Shreyasi Sarkar',
     url='https://github.com/authorss81/inscript',
