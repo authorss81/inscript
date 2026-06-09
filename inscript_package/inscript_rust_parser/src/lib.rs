@@ -8,6 +8,7 @@ mod ast;
 mod token;
 mod parser;
 mod lexer;
+mod compiler;
 mod error;
 
 use parser::Parser;
@@ -198,13 +199,13 @@ fn program_to_python(py: Python, program: &Program) -> PyResult<PyObject> {
 
 fn stmt_to_python(py: Python, stmt: &Stmt) -> PyResult<PyObject> {
     match stmt {
-        Stmt::Expression(expr) => {
+        Stmt::Expression(expr, ..) => {
             let dict = PyDict::new_bound(py);
             dict.set_item("type", "ExprStatement")?;
             dict.set_item("expression", expr_to_python(py, expr)?)?;
             Ok(dict.into())
         }
-        Stmt::VarDecl { name, init, type_hint, mutable } => {
+        Stmt::VarDecl { name, init, type_hint, mutable, .. } => {
             let dict = PyDict::new_bound(py);
             dict.set_item("type", "VarDecl")?;
             dict.set_item("name", name.clone())?;
@@ -217,7 +218,7 @@ fn stmt_to_python(py: Python, stmt: &Stmt) -> PyResult<PyObject> {
             }
             Ok(dict.into())
         }
-        Stmt::FunctionDef { name, params, body, return_type, is_async } => {
+        Stmt::FunctionDef { name, params, body, return_type, is_async, .. } => {
             let dict = PyDict::new_bound(py);
             dict.set_item("type", "FunctionDef")?;
             dict.set_item("name", name.clone())?;
@@ -248,7 +249,7 @@ fn stmt_to_python(py: Python, stmt: &Stmt) -> PyResult<PyObject> {
             }
             Ok(dict.into())
         }
-        Stmt::ClassDef { name, extends, body } => {
+        Stmt::ClassDef { name, extends, body, .. } => {
             let dict = PyDict::new_bound(py);
             dict.set_item("type", "ClassDef")?;
             dict.set_item("name", name.clone())?;
@@ -262,7 +263,7 @@ fn stmt_to_python(py: Python, stmt: &Stmt) -> PyResult<PyObject> {
             dict.set_item("body", py_body)?;
             Ok(dict.into())
         }
-        Stmt::If { condition, then_body, else_body } => {
+        Stmt::If { condition, then_body, else_body, .. } => {
             let dict = PyDict::new_bound(py);
             dict.set_item("type", "If")?;
             dict.set_item("condition", expr_to_python(py, condition)?)?;
@@ -280,7 +281,7 @@ fn stmt_to_python(py: Python, stmt: &Stmt) -> PyResult<PyObject> {
             }
             Ok(dict.into())
         }
-        Stmt::While { condition, body } => {
+        Stmt::While { condition, body, .. } => {
             let dict = PyDict::new_bound(py);
             dict.set_item("type", "While")?;
             dict.set_item("condition", expr_to_python(py, condition)?)?;
@@ -291,7 +292,7 @@ fn stmt_to_python(py: Python, stmt: &Stmt) -> PyResult<PyObject> {
             dict.set_item("body", py_body)?;
             Ok(dict.into())
         }
-        Stmt::For { target, iter, body } => {
+        Stmt::For { target, iter, body, .. } => {
             let dict = PyDict::new_bound(py);
             dict.set_item("type", "For")?;
             dict.set_item("target", target.clone())?;
@@ -303,7 +304,7 @@ fn stmt_to_python(py: Python, stmt: &Stmt) -> PyResult<PyObject> {
             dict.set_item("body", py_body)?;
             Ok(dict.into())
         }
-        Stmt::Switch { expr, cases } => {
+        Stmt::Switch { expr, cases, .. } => {
             let dict = PyDict::new_bound(py);
             dict.set_item("type", "Switch")?;
             dict.set_item("expr", expr_to_python(py, expr)?)?;
@@ -325,13 +326,13 @@ fn stmt_to_python(py: Python, stmt: &Stmt) -> PyResult<PyObject> {
             dict.set_item("cases", py_cases)?;
             Ok(dict.into())
         }
-        Stmt::Throw(expr) => {
+        Stmt::Throw(expr, ..) => {
             let dict = PyDict::new_bound(py);
             dict.set_item("type", "Throw")?;
             dict.set_item("expr", expr_to_python(py, expr)?)?;
             Ok(dict.into())
         }
-        Stmt::Try { body, catch_clauses, finally_body } => {
+        Stmt::Try { body, catch_clauses, finally_body, .. } => {
             let dict = PyDict::new_bound(py);
             dict.set_item("type", "Try")?;
             let py_body = PyList::empty_bound(py);
@@ -360,7 +361,7 @@ fn stmt_to_python(py: Python, stmt: &Stmt) -> PyResult<PyObject> {
             }
             Ok(dict.into())
         }
-        Stmt::Return(expr_opt) => {
+        Stmt::Return(expr_opt, ..) => {
             let dict = PyDict::new_bound(py);
             dict.set_item("type", "Return")?;
             if let Some(expr) = expr_opt {
@@ -368,12 +369,12 @@ fn stmt_to_python(py: Python, stmt: &Stmt) -> PyResult<PyObject> {
             }
             Ok(dict.into())
         }
-        Stmt::Break => {
+        Stmt::Break(..) => {
             let dict = PyDict::new_bound(py);
             dict.set_item("type", "Break")?;
             Ok(dict.into())
         }
-        Stmt::Continue => {
+        Stmt::Continue(..) => {
             let dict = PyDict::new_bound(py);
             dict.set_item("type", "Continue")?;
             Ok(dict.into())
@@ -745,10 +746,154 @@ fn lex(source: &str) -> PyResult<Vec<PyObject>> {
 #[pyo3(name = "inscript_parser")]
 fn inscript_parser_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyParser>()?;
-    m.add_function(wrap_pyfunction!(parse_tokens, m)?)?;
     m.add_function(wrap_pyfunction!(lex, m)?)?;
+    m.add_function(wrap_pyfunction!(parse_tokens, m)?)?;
+    m.add_function(wrap_pyfunction!(compile, m)?)?;
+    m.add_function(wrap_pyfunction!(compile_and_run, m)?)?;
     Ok(())
 }
+
+// ─────────────────────────────────────────────────────────────────────
+// Compile function — AST to bytecode
+// ─────────────────────────────────────────────────────────────────────
+
+use inscript_vm_engine::{VMEngine, OpCode, Value, FuncDef};
+use inscript_vm_engine::compiler::optimize;
+use std::sync::Arc;
+use std::collections::HashMap;
+
+#[pyfunction]
+fn compile(source: &str) -> PyResult<(Vec<u8>, Vec<u8>)> {
+    use compiler::Compiler;
+    use lexer::Lexer;
+    use parser::Parser;
+
+    let mut lx = Lexer::new(source);
+    let tokens = lx.tokenize().map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PySyntaxError, _>(e)
+    })?;
+
+    let mut parser = Parser::new(tokens);
+    let program = parser.parse().map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PySyntaxError, _>(format!("{}", e))
+    })?;
+
+    let (opcodes, constants, _functions, _source_map) = Compiler::compile(&program);
+
+    // Serialize opcodes for Python: each OpCode → its discriminant byte
+    {
+        let op_bytes: Vec<u8> = opcodes.iter().map(|op| opcode_discriminant(op)).collect();
+        let const_bytes = serialize_constants(&constants);
+        Ok((op_bytes, const_bytes))
+    }
+}
+
+fn opcode_discriminant(op: &OpCode) -> u8 {
+    // Match each variant to a unique byte
+    match op {
+        OpCode::Push(_) => 0x01,
+        OpCode::Pop => 0x02,
+        OpCode::Duplicate => 0x03,
+        OpCode::Swap => 0x04,
+        OpCode::Negate => 0x05,
+        OpCode::Concat => 0x06,
+        OpCode::Length => 0x07,
+        OpCode::Add => 0x10,
+        OpCode::Sub => 0x11,
+        OpCode::Mul => 0x12,
+        OpCode::Div => 0x13,
+        OpCode::Mod => 0x14,
+        OpCode::Power => 0x15,
+        OpCode::Equal => 0x20,
+        OpCode::NotEqual => 0x21,
+        OpCode::LessThan => 0x22,
+        OpCode::LessEqual => 0x23,
+        OpCode::GreaterThan => 0x24,
+        OpCode::GreaterEqual => 0x25,
+        OpCode::And => 0x30,
+        OpCode::Or => 0x31,
+        OpCode::Not => 0x32,
+        OpCode::Halt => 0xFF,
+        // Parameterized opcodes — not serializable via simple byte
+        OpCode::Jump(_) | OpCode::JumpIfFalse(_) | OpCode::JumpIfTrue(_)
+        | OpCode::Call(_) | OpCode::StoreReg(_) | OpCode::LoadReg(_)
+        | OpCode::StoreGlobal(_) | OpCode::LoadGlobal(_)
+        | OpCode::CreateArray(_) | OpCode::CreateObject(_)
+        | OpCode::LoadConst(_) => 0xFE,
+        OpCode::Nop => 0x00,
+        _ => 0xFE,
+    }
+}
+
+fn serialize_constants(constants: &[Value]) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    for val in constants {
+        match val {
+            Value::Nil => bytes.push(0),
+            Value::Bool(b) => {
+                bytes.push(1);
+                bytes.push(if *b { 1 } else { 0 });
+            }
+            Value::Int(n) => {
+                bytes.push(2);
+                bytes.extend_from_slice(&n.to_le_bytes());
+            }
+            Value::Float(f) => {
+                bytes.push(3);
+                bytes.extend_from_slice(&f.to_le_bytes());
+            }
+            Value::String(s) => {
+                bytes.push(4);
+                let len = s.len() as u32;
+                bytes.extend_from_slice(&len.to_le_bytes());
+                bytes.extend_from_slice(s.as_bytes());
+            }
+            _ => {
+                bytes.push(0); // unsupported → nil
+            }
+        }
+    }
+    bytes
+}
+
+/// Compile and execute source in one shot (pure Rust pipeline)
+#[pyfunction]
+fn compile_and_run(source: &str) -> PyResult<String> {
+    use compiler::Compiler;
+    use lexer::Lexer;
+    use parser::Parser;
+
+    let mut lx = Lexer::new(source);
+    let tokens = lx.tokenize()
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PySyntaxError, _>(format!("Lex error: {}", e)))?;
+
+    let mut parser = Parser::new(tokens);
+    let program = parser.parse()
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PySyntaxError, _>(format!("Parse error: {}", e)))?;
+
+    let (opcodes, raw_constants, raw_functions, source_map) = Compiler::compile(&program);
+
+    // Run optimization passes on main opcodes
+    let (opcodes, opt_stats) = optimize(opcodes);
+
+    // Convert constants to Arc<Value> for the VM
+    let constants: Vec<Arc<Value>> = raw_constants.into_iter()
+        .map(|v| Arc::new(v))
+        .collect();
+
+    // Build function table for the VM
+    let func_table: HashMap<String, FuncDef> = raw_functions.into_iter().collect();
+
+    let mut vm = VMEngine::from_opcodes_with_source_map(opcodes, constants, source_map, func_table, opt_stats);
+    match vm.execute() {
+        Ok(val) => Ok(val.to_string()),
+        Err(e) => Ok(format!("Runtime error: {}", e)),
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Update module exports
+// ─────────────────────────────────────────────────────────────────────
 
 /// Main parsing function
 #[pyfunction]

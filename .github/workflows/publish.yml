@@ -9,9 +9,9 @@
 #      → New repository secret → Name: PYPI_API_TOKEN → paste token → Save
 #
 # To publish:
-#   git tag -a v1.4.0 -m "InScript v1.4.0"
-#   git push origin v1.4.0
-#   → GitHub Actions: runs all tests → builds → uploads to PyPI
+#   git tag -a v3.9.4 -m "InScript v3.9.4"
+#   git push origin v3.9.4
+#   → GitHub Actions: runs all tests → builds Rust extension → uploads to PyPI
 
 name: Publish to PyPI
 
@@ -36,22 +36,83 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install optional deps
-        run: pip install pygame pygls
-        continue-on-error: true
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          target: x86_64-unknown-linux-gnu
 
-      - name: Run full test suite
+      - name: Install deps
+        run: |
+          pip install setuptools-rust pygame pygls
+          pip install -e . --no-build-isolation
+
+      - name: Build Rust extension
+        working-directory: inscript_package
+        run: cargo build --release -p inscript-parser
+
+      - name: Copy .dll to .pyd for Python import
+        working-directory: inscript_package
+        run: cp target/release/libinscript_parser.so target/release/inscript_parser.pyd 2>/dev/null || cp target/release/inscript_parser.dll target/release/inscript_parser.pyd 2>/dev/null || true
+
+      - name: Run test suite
         working-directory: inscript_package
         run: |
-          python test_phase6.py
-          python test_phase7.py
-          python test_audit.py
-          python test_comprehensive.py
+          python test_lexer.py
+          python test_parser.py
+          python test_analyzer.py
+          python test_interpreter.py
+          python test_stdlib.py
+          python test_compiler.py
+          python test_fstring.py
+          python test_v12.py
           python test_v120.py
           python test_v130.py
           python test_v140.py
           python test_v150.py
           python test_v160.py
+          python test_v170.py
+          python test_v172.py
+          python test_v173.py
+          python test_v174.py
+          python test_v181.py
+          python test_v182.py
+          python test_v183.py
+          python test_v184.py
+          python test_v191.py
+          python test_v192.py
+          python test_v193.py
+          python test_v194.py
+          python test_v195.py
+          python test_v196.py
+          python test_v197.py
+          python test_v198.py
+          python test_v199.py
+          python test_v1910.py
+          python test_v1911.py
+          python test_v1912.py
+          python test_v1913.py
+          python test_v1914.py
+          python test_v1915.py
+          python test_v200.py
+          python test_v201.py
+          python test_v202.py
+          python test_v203.py
+          python test_v210.py
+          python test_v211.py
+          python test_v212.py
+          python test_v220.py
+          python test_v230.py
+          python test_v240.py
+          python test_v250.py
+          python test_v260.py
+          python test_v270.py
+          python test_v280.py
+          python test_v290.py
+          python test_v2100.py
+          python test_v2110.py
+          python test_v2120.py
+          python test_v2130.py
+          python test_v300.py
 
   build:
     name: Build distribution
@@ -66,12 +127,28 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          target: x86_64-unknown-linux-gnu
+
       - name: Install build tools
-        run: pip install build
+        run: pip install build setuptools-rust
 
       - name: Build wheel and sdist
         working-directory: inscript_package
         run: python -m build
+
+      - name: Verify built version matches tag
+        working-directory: inscript_package
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          PKG_VER="$(python -c "import inscript; print(inscript.VERSION)")"
+          echo "Tag: $TAG  |  inscript.VERSION: $PKG_VER"
+          if [ "v${PKG_VER}" != "${TAG}" ]; then
+            echo "ERROR: tag ${TAG} does not match inscript.VERSION ${PKG_VER}"
+            exit 1
+          fi
 
       - name: Upload dist artifacts
         uses: actions/upload-artifact@v4
@@ -96,4 +173,5 @@ jobs:
         with:
           user: __token__
           password: ${{ secrets.PYPI_API_TOKEN }}
+          attestations: false
 

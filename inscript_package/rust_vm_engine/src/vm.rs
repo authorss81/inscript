@@ -17,6 +17,7 @@
 
 use crate::Value;
 use crate::OpCode;
+use crate::FuncDef;
 use crate::compiler::{optimize, OptStats};
 use crate::pool::{ArrayPool, ObjectPool, PoolStats, init_interns,
                   intern_nil, intern_bool, intern_int, intern_string};
@@ -46,8 +47,11 @@ pub struct CallFrame {
     pub name: String,
     pub registers: Vec<Arc<Value>>,
     pub instruction_pointer: usize,
-    pub locals: HashMap<String, Arc<Value>>,
     pub return_address: usize,
+    pub saved_opcodes: Vec<OpCode>,
+    pub saved_constants: Vec<Arc<Value>>,
+    pub saved_stack: Vec<Arc<Value>>,
+    pub saved_source_map: Vec<usize>,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -99,7 +103,7 @@ pub struct VMEngine {
     bytecode: Vec<u8>,
     opcodes:  Vec<OpCode>,        // pre-decoded for fast dispatch
     instruction_pointer: usize,
-    state: VMState,
+    pub(crate) state: VMState,
 
     // Stack / registers (Arc<Value> — O(1) clone)
     stack:      Vec<Arc<Value>>,
@@ -108,7 +112,10 @@ pub struct VMEngine {
 
     // Global state
     globals:      RwLock<HashMap<String, Arc<Value>>>,
+    constants:    Vec<Arc<Value>>,
+    func_table:   HashMap<String, FuncDef>,
     object_cache: Arc<ObjectCache>,
+    source_map: Vec<usize>,  // line number for each opcode (0 = unknown)
 
     // v3.8.4: Object pools
     array_pool:  Arc<ArrayPool>,
@@ -120,7 +127,7 @@ pub struct VMEngine {
 }
 
 impl VMEngine {
-    /// Create a new VM.
+    /// Create a new VM from raw bytecode.
     pub fn new(bytecode: Vec<u8>) -> Self {
         // Initialise interned constants once (no-op on subsequent calls)
         init_interns();
@@ -134,17 +141,74 @@ impl VMEngine {
         // v3.9.0: Run compiler optimization passes on decoded opcodes
         let (opcodes, opt_stats) = optimize(opcodes);
 
-        let nil = intern_nil();
+        Self::from_opcodes(opcodes, Vec::new(), opt_stats)
+    }
 
+    /// Create a new VM from pre-compiled opcodes (bypasses bytecode decoding).
+    pub fn from_opcodes(opcodes: Vec<OpCode>, constants: Vec<Arc<Value>>, opt_stats: OptStats) -> Self {
+        Self::from_opcodes_with_funcs(opcodes, constants, HashMap::new(), opt_stats)
+    }
+
+    /// Create a new VM with pre-compiled opcodes, source map, and a function table.
+    pub fn from_opcodes_with_funcs(
+        opcodes: Vec<OpCode>,
+        constants: Vec<Arc<Value>>,
+        func_table: HashMap<String, FuncDef>,
+        opt_stats: OptStats,
+    ) -> Self {
+        Self::from_opcodes_with_source_map(opcodes, constants, Vec::new(), func_table, opt_stats)
+    }
+
+    /// Create a new VM with pre-compiled opcodes and source map.
+    pub fn from_opcodes_with_source_map(
+        opcodes: Vec<OpCode>,
+        constants: Vec<Arc<Value>>,
+        source_map: Vec<usize>,
+        func_table: HashMap<String, FuncDef>,
+        opt_stats: OptStats,
+    ) -> Self {
+        init_interns();
+        let nil = intern_nil();
+        let mut globals = HashMap::new();
+        // Register user-defined functions from func_table
+        for (name, _def) in &func_table {
+            globals.insert(name.clone(), Arc::new(Value::Function(name.clone())));
+        }
+        // Register builtin functions
+        globals.insert("print".to_string(), Arc::new(Value::Function("print".to_string())));
+        globals.insert("clock".to_string(), Arc::new(Value::Function("clock".to_string())));
+        globals.insert("str".to_string(), Arc::new(Value::Function("str".to_string())));
+        globals.insert("int".to_string(), Arc::new(Value::Function("int".to_string())));
+        globals.insert("float".to_string(), Arc::new(Value::Function("float".to_string())));
+        globals.insert("len".to_string(), Arc::new(Value::Function("len".to_string())));
+        globals.insert("range".to_string(), Arc::new(Value::Function("range".to_string())));
+        globals.insert("typeof".to_string(), Arc::new(Value::Function("typeof".to_string())));
+        globals.insert("input".to_string(), Arc::new(Value::Function("input".to_string())));
+        globals.insert("sqrt".to_string(), Arc::new(Value::Function("sqrt".to_string())));
+        globals.insert("abs".to_string(), Arc::new(Value::Function("abs".to_string())));
+        globals.insert("min".to_string(), Arc::new(Value::Function("min".to_string())));
+        globals.insert("max".to_string(), Arc::new(Value::Function("max".to_string())));
+        globals.insert("pow".to_string(), Arc::new(Value::Function("pow".to_string())));
+        globals.insert("round".to_string(), Arc::new(Value::Function("round".to_string())));
+        globals.insert("rand".to_string(), Arc::new(Value::Function("rand".to_string())));
+        globals.insert("cos".to_string(), Arc::new(Value::Function("cos".to_string())));
+        globals.insert("sin".to_string(), Arc::new(Value::Function("sin".to_string())));
+        // Register user-defined functions in globals
+        for (name, _def) in &func_table {
+            globals.insert(name.clone(), Arc::new(Value::Function(name.clone())));
+        }
         VMEngine {
-            bytecode,
+            bytecode: Vec::new(),
             opcodes,
             instruction_pointer: 0,
             state: VMState::Running,
             stack:      Vec::with_capacity(1024),
             registers:  vec![nil; 256],
             call_stack: Vec::with_capacity(128),
-            globals:      RwLock::new(HashMap::new()),
+            globals:      RwLock::new(globals),
+            constants,
+            func_table,
+            source_map,
             object_cache: Arc::new(ObjectCache::new()),
             array_pool:   Arc::new(ArrayPool::new()),
             object_pool:  Arc::new(ObjectPool::new()),
@@ -159,9 +223,17 @@ impl VMEngine {
 
     pub fn execute(&mut self) -> Result<Value, String> {
         while self.instruction_pointer < self.opcodes.len() {
-            let opcode = self.opcodes[self.instruction_pointer];
+            let ip = self.instruction_pointer;
+            let opcode = self.opcodes[ip];
             self.instruction_pointer += 1;
-            self.execute_opcode(opcode)?;
+            self.execute_opcode(opcode).map_err(|e| {
+                let line = self.source_map.get(ip).copied().unwrap_or(0);
+                if line > 0 {
+                    format!("Line {}: {}", line, e)
+                } else {
+                    e
+                }
+            })?;
             self.instructions_executed += 1;
         }
 
@@ -232,7 +304,7 @@ impl VMEngine {
             OpCode::Concat => {
                 let b = self.stack.pop().ok_or("Stack underflow")?;
                 let a = self.stack.pop().ok_or("Stack underflow")?;
-                let s = format!("{}{}", a.as_ref(), b.as_ref());
+                let s = format!("{}{}", a.as_ref().to_display_string(), b.as_ref().to_display_string());
                 self.stack.push(intern_string(s));
                 Ok(())
             }
@@ -245,6 +317,70 @@ impl VMEngine {
                     _ => return Err("Type error: len() requires string/array/object".to_string()),
                 };
                 self.stack.push(intern_int(len));
+                Ok(())
+            }
+            OpCode::IterStart => {
+                let val = self.stack.pop().ok_or("Stack underflow")?;
+                let items: Arc<Value> = match val.as_ref() {
+                    Value::Array(_) => {
+                        // Use the array itself as the items to iterate
+                        Arc::clone(&val)
+                    }
+                    Value::String(s) => {
+                        let chars: Vec<Arc<Value>> = s.chars()
+                            .map(|c| intern_string(c.to_string()))
+                            .collect();
+                        Arc::new(Value::Array(chars))
+                    }
+                    Value::Object(obj) => {
+                        // Iterate over object keys (sorted)
+                        let mut keys: Vec<String> = obj.keys().cloned().collect();
+                        keys.sort();
+                        let key_vals: Vec<Arc<Value>> = keys.into_iter()
+                            .map(|k| intern_string(k))
+                            .collect();
+                        Arc::new(Value::Array(key_vals))
+                    }
+                    _ => return Err("Type error: cannot iterate over value".to_string()),
+                };
+                // Push iterator state: [items_array, index=0]
+                self.stack.push(Arc::new(Value::Array(vec![items, intern_int(0)])));
+                Ok(())
+            }
+            OpCode::IterNext => {
+                let iter = self.stack.pop().ok_or("Stack underflow")?;
+                match iter.as_ref() {
+                    Value::Array(pair) if pair.len() == 2 => {
+                        let items = Arc::clone(&pair[0]);
+                        let idx = match pair[1].as_ref() {
+                            Value::Int(i) if *i >= 0 => *i as usize,
+                            _ => return Err("Invalid iterator: bad index".to_string()),
+                        };
+                        let len = match items.as_ref() {
+                            Value::Array(arr) => arr.len(),
+                            _ => return Err("Invalid iterator state".to_string()),
+                        };
+                        if idx < len {
+                            let value = match items.as_ref() {
+                                Value::Array(arr) => Arc::clone(&arr[idx]),
+                                _ => intern_nil(),
+                            };
+                            self.stack.push(Arc::new(Value::Array(vec![items, intern_int(idx as i64 + 1)])));
+                            self.stack.push(value);
+                        } else {
+                            // Done: push nil placeholder + nil sentinel
+                            self.stack.push(intern_nil());
+                            self.stack.push(intern_nil());
+                        }
+                    }
+                    _ => return Err("Invalid iterator state".to_string()),
+                }
+                Ok(())
+            }
+            OpCode::LoadConst(idx) => {
+                let val = self.constants.get(idx)
+                    .ok_or_else(|| format!("Constant pool index {} out of bounds", idx))?;
+                self.stack.push(Arc::clone(val));
                 Ok(())
             }
 
@@ -372,16 +508,28 @@ impl VMEngine {
 
             OpCode::StoreGlobal(idx) => {
                 let val = self.stack.pop().ok_or("Stack underflow")?;
-                let name = format!("global_{}", idx);
+                let name = match self.constants.get(idx) {
+                    Some(c) => match &**c {
+                        Value::String(s) => s.clone(),
+                        _ => format!("global_{}", idx),
+                    },
+                    None => format!("global_{}", idx),
+                };
                 self.globals.write().insert(name, val);
                 Ok(())
             }
             OpCode::LoadGlobal(idx) => {
-                let name = format!("global_{}", idx);
+                let name = match self.constants.get(idx) {
+                    Some(c) => match &**c {
+                        Value::String(s) => s.clone(),
+                        _ => format!("global_{}", idx),
+                    },
+                    None => format!("global_{}", idx),
+                };
                 let val = self.globals.read()
                     .get(&name)
                     .map(|v| Arc::clone(v))
-                    .unwrap_or_else(intern_nil);  // interned nil — 0 alloc
+                    .unwrap_or_else(intern_nil);
                 self.stack.push(val);
                 Ok(())
             }
@@ -429,9 +577,13 @@ impl VMEngine {
                         Ok(())
                     }
                     (Value::Object(o), Value::String(key)) => {
-                        let val = o.get(key)
-                            .map(Arc::clone)
-                            .unwrap_or_else(intern_nil);
+                        // First check instance fields
+                        if let Some(val) = o.get(key) {
+                            self.stack.push(Arc::clone(val));
+                            return Ok(());
+                        }
+                        // Not found — check class descriptor's methods (includes parent chain)
+                        let val = self._lookup_method_in_class(o, key, &obj);
                         self.stack.push(val);
                         Ok(())
                     }
@@ -440,10 +592,27 @@ impl VMEngine {
             }
             OpCode::SetIndex => {
                 let val = self.stack.pop().ok_or("Stack underflow")?;
-                let _idx = self.stack.pop().ok_or("Stack underflow")?;
-                let _obj = self.stack.pop().ok_or("Stack underflow")?;
-                // TODO: mutable array/object indexing (requires CoW on Arc)
-                self.stack.push(val);
+                let idx = self.stack.pop().ok_or("Stack underflow")?;
+                let mut obj = self.stack.pop().ok_or("Stack underflow")?;
+                let obj_mut = Arc::make_mut(&mut obj);
+                match (obj_mut, idx.as_ref()) {
+                    (Value::Array(arr), Value::Int(i)) => {
+                        let index = if *i < 0 {
+                            ((arr.len() as i64) + i) as usize
+                        } else {
+                            *i as usize
+                        };
+                        if index < arr.len() {
+                            arr[index] = val;
+                        }
+                    }
+                    (Value::Object(m), value) => {
+                        let key = value.to_display_string();
+                        m.insert(key, val);
+                    }
+                    _ => {}
+                }
+                self.stack.push(obj);
                 Ok(())
             }
 
@@ -454,8 +623,6 @@ impl VMEngine {
                 Ok(())
             }
             OpCode::Nop => Ok(()),
-
-            _ => Err(format!("Unimplemented opcode: {:?}", op)),
         }
     }
 
@@ -580,26 +747,411 @@ impl VMEngine {
         }
     }
 
-    fn call_function(&mut self, args: usize) -> Result<(), String> {
-        let _func = self.stack.pop().ok_or("Stack underflow")?;
-        for _ in 0..args {
-            self.stack.pop().ok_or("Stack underflow")?;
-        }
-        let nil = intern_nil();
-        let frame = CallFrame {
-            name: "user_function".to_string(),
-            registers: vec![nil; 256],
-            instruction_pointer: self.instruction_pointer,
-            locals: HashMap::new(),
-            return_address: self.instruction_pointer,
+    /// Look up a method name in a class descriptor (including parent chain).
+    /// Returns BoundMethod if found, Nil otherwise.
+    fn _lookup_method_in_class(&self, obj_fields: &HashMap<String, Arc<Value>>, key: &str, obj: &Arc<Value>) -> Arc<Value> {
+        let class_name = match obj_fields.get("__class__").and_then(|v| {
+            if let Value::String(cname) = v.as_ref() { Some(cname.clone()) } else { None }
+        }) {
+            Some(cn) => cn,
+            None => return intern_nil(),
         };
-        self.call_stack.push(frame);
-        Ok(())
+        let globals = self.globals.read();
+        let mut current = Some(class_name);
+        while let Some(cname) = current.take() {
+            if let Some(desc) = globals.get(&cname) {
+                if let Value::Object(desc_obj) = desc.as_ref() {
+                    // Check methods in this class
+                    if let Some(methods) = desc_obj.get("__methods__") {
+                        if let Value::Object(methods_obj) = methods.as_ref() {
+                            if let Some(method_name) = methods_obj.get(key) {
+                                if let Value::String(full_name) = method_name.as_ref() {
+                                    return Arc::new(Value::BoundMethod(full_name.clone(), Arc::clone(obj)));
+                                }
+                            }
+                        }
+                    }
+                    // Walk up parent chain
+                    if let Some(parent_name) = desc_obj.get("__parent__") {
+                        if let Value::String(pname) = parent_name.as_ref() {
+                            if !pname.is_empty() {
+                                current = Some(pname.clone());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        intern_nil()
+    }
+
+    fn call_function(&mut self, args: usize) -> Result<(), String> {
+        // Stack layout: [func, arg1, arg2, ..., argN]
+        // Pop args first, then func
+        let mut call_args = Vec::with_capacity(args);
+        for _ in 0..args {
+            call_args.push(self.stack.pop().ok_or("Stack underflow")?);
+        }
+        call_args.reverse();
+        let func = self.stack.pop().ok_or("Stack underflow")?;
+
+        match &*func {
+            Value::BoundMethod(method_name, instance) => {
+                // Bound method: prepend instance as first arg (self)
+                if let Some(func_def) = self.func_table.get(method_name) {
+                    let nil = intern_nil();
+                    let saved_opcodes = std::mem::replace(&mut self.opcodes, func_def.opcodes.clone());
+                    let saved_constants = std::mem::replace(&mut self.constants, func_def.constants.clone());
+                    let saved_registers = std::mem::replace(&mut self.registers, vec![nil; 256]);
+                    let saved_stack = std::mem::take(&mut self.stack);
+                    let saved_source_map = std::mem::replace(&mut self.source_map, func_def.source_map.clone());
+                    let saved_ip = self.instruction_pointer;
+
+                    // Set arg[0] = self (the instance), then remaining args
+                    self.registers[0] = Arc::clone(instance);
+                    for (i, arg) in call_args.iter().enumerate() {
+                        if i + 1 < func_def.param_count {
+                            self.registers[i + 1] = Arc::clone(arg);
+                        }
+                    }
+                    let frame = CallFrame {
+                        name: method_name.clone(),
+                        registers: saved_registers,
+                        instruction_pointer: saved_ip,
+                        return_address: saved_ip,
+                        saved_opcodes,
+                        saved_constants,
+                        saved_stack,
+                        saved_source_map,
+                    };
+                    self.call_stack.push(frame);
+                    self.instruction_pointer = 0;
+                    Ok(())
+                } else {
+                    let nil = intern_nil();
+                    self.stack.push(nil);
+                    Ok(())
+                }
+            }
+            Value::Function(name) => {
+                // Check if this is a user-defined function
+                if let Some(func_def) = self.func_table.get(name) {
+                    // Save caller state
+                    let nil = intern_nil();
+                    let saved_opcodes = std::mem::replace(&mut self.opcodes, func_def.opcodes.clone());
+                    let saved_constants = std::mem::replace(&mut self.constants, func_def.constants.clone());
+                    let saved_registers = std::mem::replace(&mut self.registers, vec![nil; 256]);
+                    let saved_stack = std::mem::take(&mut self.stack);
+                    let saved_source_map = std::mem::replace(&mut self.source_map, func_def.source_map.clone());
+                    let saved_ip = self.instruction_pointer;
+
+                    // Set up arguments in registers
+                    for (i, arg) in call_args.iter().enumerate() {
+                        if i < func_def.param_count {
+                            self.registers[i] = Arc::clone(arg);
+                        }
+                    }
+                    // Push call frame
+                    let frame = CallFrame {
+                        name: name.clone(),
+                        registers: saved_registers,
+                        instruction_pointer: saved_ip,
+                        return_address: saved_ip,
+                        saved_opcodes,
+                        saved_constants,
+                        saved_stack,
+                        saved_source_map,
+                    };
+                    self.call_stack.push(frame);
+                    self.instruction_pointer = 0;
+                    Ok(())
+                } else {
+                match name.as_str() {
+                    "print" => {
+                        use std::io::Write;
+                        let stdout = std::io::stdout();
+                        let mut handle = stdout.lock();
+                        for v in &call_args {
+                            write!(handle, "{}", v).ok();
+                        }
+                        writeln!(handle).ok();
+                        handle.flush().ok();
+                        let nil = intern_nil();
+                        self.stack.push(nil);
+                        Ok(())
+                    }
+                    "clock" => {
+                        let now = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_secs_f64();
+                        self.stack.push(Arc::new(Value::Float(now)));
+                        Ok(())
+                    }
+                    "str" => {
+                        let val = call_args.first().cloned().unwrap_or_else(intern_nil);
+                        let s = val.as_ref().to_display_string();
+                        self.stack.push(intern_string(s));
+                        Ok(())
+                    }
+                    "int" => {
+                        let val = call_args.first().cloned().unwrap_or_else(intern_nil);
+                        let n = match &*val {
+                            Value::Int(i) => *i,
+                            Value::Float(f) => *f as i64,
+                            Value::String(s) => s.parse::<i64>().unwrap_or(0),
+                            Value::Bool(b) => if *b { 1 } else { 0 },
+                            _ => 0,
+                        };
+                        self.stack.push(intern_int(n));
+                        Ok(())
+                    }
+                    "float" => {
+                        let val = call_args.first().cloned().unwrap_or_else(intern_nil);
+                        let f = match &*val {
+                            Value::Int(i) => *i as f64,
+                            Value::Float(fv) => *fv,
+                            Value::String(s) => s.parse::<f64>().unwrap_or(0.0),
+                            Value::Bool(b) => if *b { 1.0 } else { 0.0 },
+                            _ => 0.0,
+                        };
+                        self.stack.push(Arc::new(Value::Float(f)));
+                        Ok(())
+                    }
+                    "len" => {
+                        let val = call_args.first().cloned().unwrap_or_else(intern_nil);
+                        let n = match &*val {
+                            Value::String(s) => s.len() as i64,
+                            Value::Array(a) => a.len() as i64,
+                            Value::Object(o) => o.len() as i64,
+                            _ => 0,
+                        };
+                        self.stack.push(intern_int(n));
+                        Ok(())
+                    }
+                    "range" => {
+                        let start = call_args.get(0).cloned().unwrap_or_else(|| intern_int(0));
+                        let end = call_args.get(1).cloned().unwrap_or_else(|| intern_int(0));
+                        let s = match &*start { Value::Int(n) => *n, _ => 0 };
+                        let e = match &*end { Value::Int(n) => *n, _ => 0 };
+                        let mut arr = Vec::new();
+                        for i in s..e {
+                            arr.push(intern_int(i));
+                        }
+                        self.stack.push(Arc::new(Value::Array(arr)));
+                        Ok(())
+                    }
+                    "typeof" => {
+                        let val = call_args.first().cloned().unwrap_or_else(intern_nil);
+                        let s = val.type_name().to_string();
+                        self.stack.push(intern_string(s));
+                        Ok(())
+                    }
+                    "input" => {
+                        use std::io::Write;
+                        let stdout = std::io::stdout();
+                        let mut handle = stdout.lock();
+                        if let Some(prompt) = call_args.first() {
+                            write!(handle, "{}", prompt).ok();
+                            handle.flush().ok();
+                        }
+                        let mut line = String::new();
+                        match std::io::stdin().read_line(&mut line) {
+                            Ok(_) => {
+                                let trimmed = line.trim_end_matches('\n').trim_end_matches('\r').to_string();
+                                self.stack.push(intern_string(trimmed));
+                            }
+                            Err(_) => {
+                                let nil = intern_nil();
+                                self.stack.push(nil);
+                            }
+                        }
+                        Ok(())
+                    }
+                    "sqrt" => {
+                        let val = call_args.first().cloned().unwrap_or_else(intern_nil);
+                        let n = match &*val {
+                            Value::Int(i) => *i as f64,
+                            Value::Float(f) => *f,
+                            _ => 0.0,
+                        };
+                        self.stack.push(Arc::new(Value::Float(n.sqrt())));
+                        Ok(())
+                    }
+                    "abs" => {
+                        let val = call_args.first().cloned().unwrap_or_else(intern_nil);
+                        match &*val {
+                            Value::Int(i) => {
+                                self.stack.push(intern_int(i.abs()));
+                            }
+                            Value::Float(f) => {
+                                self.stack.push(Arc::new(Value::Float(f.abs())));
+                            }
+                            _ => {
+                                self.stack.push(Arc::clone(&val));
+                            }
+                        }
+                        Ok(())
+                    }
+                    "min" => {
+                        let a = call_args.get(0).cloned().unwrap_or_else(intern_nil);
+                        let b = call_args.get(1).cloned().unwrap_or_else(intern_nil);
+                        let result = match (&*a, &*b) {
+                            (Value::Int(x), Value::Int(y)) => Value::Int((*x).min(*y)),
+                            (Value::Float(x), Value::Float(y)) => Value::Float((*x).min(*y)),
+                            (Value::Int(x), Value::Float(y)) => Value::Float((*x as f64).min(*y)),
+                            (Value::Float(x), Value::Int(y)) => Value::Float((*x).min(*y as f64)),
+                            (Value::String(x), Value::String(y)) => Value::String(if *x < *y { x.clone() } else { y.clone() }),
+                            _ => Value::Nil,
+                        };
+                        self.stack.push(Arc::new(result));
+                        Ok(())
+                    }
+                    "max" => {
+                        let a = call_args.get(0).cloned().unwrap_or_else(intern_nil);
+                        let b = call_args.get(1).cloned().unwrap_or_else(intern_nil);
+                        let result = match (&*a, &*b) {
+                            (Value::Int(x), Value::Int(y)) => Value::Int((*x).max(*y)),
+                            (Value::Float(x), Value::Float(y)) => Value::Float((*x).max(*y)),
+                            (Value::Int(x), Value::Float(y)) => Value::Float((*x as f64).max(*y)),
+                            (Value::Float(x), Value::Int(y)) => Value::Float((*x).max(*y as f64)),
+                            (Value::String(x), Value::String(y)) => Value::String(if *x > *y { x.clone() } else { y.clone() }),
+                            _ => Value::Nil,
+                        };
+                        self.stack.push(Arc::new(result));
+                        Ok(())
+                    }
+                    "pow" => {
+                        let a = call_args.get(0).cloned().unwrap_or_else(intern_nil);
+                        let b = call_args.get(1).cloned().unwrap_or_else(intern_nil);
+                        let x = match &*a { Value::Int(i) => *i as f64, Value::Float(f) => *f, _ => 0.0 };
+                        let y = match &*b { Value::Int(i) => *i as f64, Value::Float(f) => *f, _ => 0.0 };
+                        self.stack.push(Arc::new(Value::Float(x.powf(y))));
+                        Ok(())
+                    }
+                    "round" => {
+                        let val = call_args.first().cloned().unwrap_or_else(intern_nil);
+                        let n = match call_args.get(1) {
+                            Some(places) => match (&*val, &**places) {
+                                (Value::Float(f), Value::Int(p)) => {
+                                    let factor = 10f64.powi(*p as i32);
+                                    (f * factor).round() / factor
+                                }
+                                (Value::Int(i), Value::Int(p)) => {
+                                    let factor = 10f64.powi(*p as i32);
+                                    (*i as f64 * factor).round() / factor
+                                }
+                                (Value::Float(f), _) => f.round(),
+                                (Value::Int(i), _) => *i as f64,
+                                _ => 0.0,
+                            },
+                            None => match &*val {
+                                Value::Float(f) => f.round(),
+                                Value::Int(i) => *i as f64,
+                                _ => 0.0,
+                            },
+                        };
+                        self.stack.push(Arc::new(Value::Float(n)));
+                        Ok(())
+                    }
+                    "rand" => {
+                        use std::time::{SystemTime, UNIX_EPOCH};
+                        let seed = SystemTime::now()
+                            .duration_since(UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_nanos();
+                        let mut state = seed;
+                        state ^= state >> 12;
+                        state ^= state << 25;
+                        state ^= state >> 27;
+                        let val = (state as f64) / (u64::MAX as f64);
+                        match call_args.len() {
+                            0 => {
+                                // rand()
+                                self.stack.push(Arc::new(Value::Float(val)));
+                            }
+                            1 => {
+                                // rand(max)
+                                let max = &*call_args[0];
+                                let m = match max {
+                                    Value::Int(i) => *i as f64,
+                                    Value::Float(f) => *f,
+                                    _ => 1.0,
+                                };
+                                self.stack.push(Arc::new(Value::Float(val * m)));
+                            }
+                            _ => {
+                                // rand(min, max)
+                                let min = match &*call_args[0] {
+                                    Value::Int(i) => *i as f64,
+                                    Value::Float(f) => *f,
+                                    _ => 0.0,
+                                };
+                                let max = match &*call_args[1] {
+                                    Value::Int(i) => *i as f64,
+                                    Value::Float(f) => *f,
+                                    _ => 1.0,
+                                };
+                                self.stack.push(Arc::new(Value::Float(min + val * (max - min))));
+                            }
+                        }
+                        Ok(())
+                    }
+                    "cos" => {
+                        let val = call_args.first().cloned().unwrap_or_else(intern_nil);
+                        let n = match &*val {
+                            Value::Int(i) => (*i as f64).cos(),
+                            Value::Float(f) => f.cos(),
+                            _ => 0.0,
+                        };
+                        self.stack.push(Arc::new(Value::Float(n)));
+                        Ok(())
+                    }
+                    "sin" => {
+                        let val = call_args.first().cloned().unwrap_or_else(intern_nil);
+                        let n = match &*val {
+                            Value::Int(i) => (*i as f64).sin(),
+                            Value::Float(f) => f.sin(),
+                            _ => 0.0,
+                        };
+                        self.stack.push(Arc::new(Value::Float(n)));
+                        Ok(())
+                    }
+                    _ => {
+                        // Unknown function — return nil
+                        let nil = intern_nil();
+                        self.stack.push(nil);
+                        Ok(())
+                    }
+                }
+                }
+            }
+            _ => {
+                // Not a function — return nil
+                let nil = intern_nil();
+                self.stack.push(nil);
+                Ok(())
+            }
+        }
     }
 
     fn return_from_function(&mut self) -> Result<(), String> {
         match self.call_stack.pop() {
-            Some(frame) => { self.instruction_pointer = frame.return_address; Ok(()) }
+            Some(frame) => {
+                // Keep the return value (top of current stack)
+                let return_val = self.stack.pop()
+                    .unwrap_or_else(intern_nil);
+                // Restore caller state
+                self.opcodes = frame.saved_opcodes;
+                self.constants = frame.saved_constants;
+                self.registers = frame.registers;
+                self.stack = frame.saved_stack;
+                self.source_map = frame.saved_source_map;
+                self.instruction_pointer = frame.return_address;
+                // Push return value onto caller's stack
+                self.stack.push(return_val);
+                Ok(())
+            }
             None => Err("Return without matching call".to_string()),
         }
     }

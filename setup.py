@@ -16,7 +16,7 @@ from setuptools import setup, find_packages
 
 setup(
     name             = "inscript-lang",
-    version          = "1.0.1",
+    version          = "3.9.3",
     author           = "InScript Contributors",
     description      = "InScript — a modern scripting language for game development",
     long_description = open("README.md", encoding="utf-8").read(),

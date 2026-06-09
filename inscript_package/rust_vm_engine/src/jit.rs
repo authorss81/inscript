@@ -25,7 +25,7 @@
 use crate::OpCode;
 use std::collections::HashMap;
 use std::fmt::Write as FmtWrite;
-use std::sync::Arc;
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Configuration
@@ -150,7 +150,7 @@ impl JitEngine {
     /// Register a new trace for JIT tracking.
     pub fn register_trace(&mut self, trace_id: TraceId, opcodes: Vec<OpCode>) {
         if self.stubs.len() < MAX_STUBS {
-            self.stubs.insert(trace_id, StubEntry::new(trace_id.clone(), opcodes));
+            self.stubs.insert(trace_id.clone(), StubEntry::new(trace_id, opcodes));
             self.stats.total_traces += 1;
         }
     }

@@ -24,7 +24,7 @@ from errors   import (InScriptError, LexerError, ParseError,
                        SemanticError, InScriptRuntimeError,
                        MultiError, InScriptWarning)
 
-VERSION = "3.0.0"
+VERSION = "3.9.4"
 
 MANIFEST_FILENAME = "inscript.toml"
 LOCK_FILENAME     = "inscript.lock"
@@ -2660,7 +2660,9 @@ Examples:
     parser.add_argument("--doc-out", metavar="DIR", default=None,
                         help="v1.9.3: Output directory for --doc (default: stdout / docs/api/)")
     parser.add_argument("--errors", metavar="PREFIX", nargs="?", const="",
-                        help="v1.9.4: Print error code catalogue (optional prefix filter, e.g. E003)")
+                         help="v1.9.4: Print error code catalogue (optional prefix filter, e.g. E003)")
+    parser.add_argument("--rust", action="store_true",
+                         help="v3.9.3: Use experimental Rust compiler/VM instead of Python pipeline")
     parser.add_argument("--changelog", metavar="RANGE",
                         help="v1.9.4: Print changelog for version range e.g. v1.6.0..v1.9.4")
     parser.add_argument("--benchmark", metavar="NAME", nargs="?", const="",
@@ -3199,6 +3201,18 @@ Examples:
         except (LexerError, ParseError, SemanticError) as e:
             print(e, file=sys.stderr); return 1
         return 0
+
+    # v3.9.3: --rust — experimental Rust compiler/VM fast path
+    if getattr(args, 'rust', False):
+        try:
+            sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "target", "release"))
+            from inscript_parser import compile_and_run
+            result = compile_and_run(source)
+            print(result)
+            return 0
+        except Exception as e:
+            print(f"[Rust VM] Error: {e}", file=sys.stderr)
+            return 1
 
     # Normal run
     type_check    = not getattr(args, 'no_typecheck', False) and \

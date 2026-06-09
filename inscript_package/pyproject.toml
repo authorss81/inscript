@@ -2,7 +2,7 @@
 requires = [
     "setuptools>=65",
     "wheel",
-    # setuptools-scm not needed — we read VERSION from inscript.py directly
+    "setuptools-rust>=1.1",
 ]
 build-backend = "setuptools.build_meta"
 
@@ -67,3 +67,6 @@ py-modules = [
 
 [tool.setuptools.package-data]
 "*" = ["examples/*.ins", "*.md", "lsp/*.py"]
+
+[tool.setuptools-rust]
+# Rust extension is defined in setup.py via RustExtension

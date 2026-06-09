@@ -49,7 +49,7 @@ fn tag_int(n: i32) -> i64 {
     (TAG_INT | (n as u64 & 0x0000_FFFF_FFFF_FFFF)) as i64
 }
 
-/// Encode a compile-time bool as a tagged i64.
+#[cfg(test)]
 fn tag_bool(b: bool) -> i64 {
     (TAG_BOOL | (b as u64)) as i64
 }
@@ -386,7 +386,8 @@ impl IrEmitter {
 
                     OpCode::CreateArray(_) | OpCode::CreateObject(_)
                     | OpCode::Index | OpCode::SetIndex
-                    | OpCode::Concat | OpCode::Length => {
+                    | OpCode::Concat | OpCode::Length
+                    | OpCode::IterStart | OpCode::IterNext => {
                         // Collection ops always call runtime — can't inline
                         needs_runtime = true;
                         let r = self.fresh();
@@ -424,6 +425,12 @@ impl IrEmitter {
                         self.terminated = true;
                     }
 
+                    OpCode::LoadConst(idx) => {
+                        needs_runtime = true;
+                        let r = self.fresh();
+                        self.emit(format!("{} = call i64 @__inscript_load_const(i64 {})  ; LoadConst({})", r, idx, idx));
+                        self.vpush(r);
+                    }
                     OpCode::Nop => { /* already removed by compiler passes */ }
                 }
                 // NOTE: match is exhaustive — all 37 OpCode variants are handled above.

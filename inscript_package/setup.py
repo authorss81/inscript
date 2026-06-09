@@ -20,7 +20,7 @@ except ImportError:
     RUST_AVAILABLE = False
     build_rust = None
 
-# Rust extension for parser (v3.7.3)
+# Rust extension for parser
 rust_extensions = []
 cmdclass = {}
 
@@ -36,7 +36,7 @@ if RUST_AVAILABLE:
 
 setup(
     name='inscript-lang',
-    version='3.7.3',
+    version='3.9.4',
     description='InScript: Real compilable scripting language for game development',
     author='Shreyasi Sarkar',
     url='https://github.com/authorss81/inscript',
@@ -47,10 +47,10 @@ setup(
     rust_extensions=rust_extensions,
     cmdclass=cmdclass,
     
-    install_requires=['pyo3>=0.21'] if RUST_AVAILABLE else [],
-    
     extras_require={
-        'dev': ['pytest>=7.0', 'setuptools-rust>=1.1', 'maturin>=0.14'],
+        'game': ['pygame>=2.0'],
+        'lsp':  ['pygls>=1.0'],
+        'dev': ['pytest>=7.0', 'setuptools-rust>=1.1'],
     },
     
     entry_points={
@@ -59,6 +59,6 @@ setup(
         ],
     },
     
-    python_requires='>=3.8',
+    python_requires='>=3.10',
     zip_safe=False,
 )

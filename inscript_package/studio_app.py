@@ -512,7 +512,7 @@ async function newVisualScript() {
   if (!name) return;
   const fname = name.replace(/[^a-zA-Z0-9_]/g,'') + '.vins';
   const tmpl  = JSON.stringify({
-    version:'3.0.0', name,
+    version:'3.9.3', name,
     nodes:[
       {id:'n1',type:'event',event:'_ready',x:80,y:120},
       {id:'n2',type:'print',x:320,y:120},
@@ -567,7 +567,7 @@ class _StudioHandler(BaseHTTPRequestHandler):
             self._send_file_content(fpath)
 
         elif path == "/status":
-            self._send_json({"ok": True, "version": "3.0.0",
+            self._send_json({"ok": True, "version": "3.9.3",
                              "bridge_port": self.server._app._bridge_port})
 
         else:

@@ -484,8 +484,8 @@ mod tests {
     fn fuse_add_zero() {
         let ops = vec![OpCode::Push(42), OpCode::Push(0), OpCode::Add];
         let (out, stats) = optimize(ops);
-        // Push(0) Add fuses away; Push(42) survives
-        assert!(stats.instruction_fusions >= 1);
+        // Push(0) Add is handled by constant folding, not instruction fusion
+        assert!(stats.constant_folds >= 1, "Expected constant fold, got folds={}", stats.constant_folds);
         assert!(out.iter().any(|o| matches!(o, OpCode::Push(42))));
         assert!(!out.iter().any(|o| matches!(o, OpCode::Add)));
     }
@@ -494,7 +494,8 @@ mod tests {
     fn fuse_mul_one() {
         let ops = vec![OpCode::Push(99), OpCode::Push(1), OpCode::Mul];
         let (out, stats) = optimize(ops);
-        assert!(stats.instruction_fusions >= 1);
+        // Push(1) Mul is handled by constant folding, not instruction fusion
+        assert!(stats.constant_folds >= 1, "Expected constant fold, got folds={}", stats.constant_folds);
         assert!(!out.iter().any(|o| matches!(o, OpCode::Mul)));
     }
 

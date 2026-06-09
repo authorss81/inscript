@@ -317,12 +317,14 @@ impl Lexer {
                 }
                 Some('\n') => return Err(self.error("Unterminated f-string — newline inside string")),
                 Some('{') if self.peek() == Some('{') && brace_depth == 0 => {
-                    self.advance();
+                    self.advance(); // consume first {
+                    self.advance(); // consume second {
                     chars.push('\x00');
                     chars.push('{');
                 }
                 Some('}') if self.peek() == Some('}') && brace_depth == 0 => {
-                    self.advance();
+                    self.advance(); // consume first }
+                    self.advance(); // consume second }
                     chars.push('}');
                     chars.push('\x00');
                 }
@@ -506,6 +508,7 @@ impl Lexer {
             "break" => Token::Break,
             "continue" => Token::Continue,
             "struct" => Token::Struct,
+            "class" => Token::Class,
             "enum" => Token::Enum,
             "scene" => Token::Class,
             "match" => Token::Switch,

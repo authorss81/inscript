@@ -21,6 +21,7 @@ impl ParseError {
         }
     }
 
+    #[allow(dead_code)]
     pub fn with_context(mut self, context: impl Into<String>) -> Self {
         self.context = context.into();
         self

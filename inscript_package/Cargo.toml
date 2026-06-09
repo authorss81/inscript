@@ -5,7 +5,14 @@ members = [
 ]
 resolver = "2"
 
-# Legacy flat lexer (kept for backward compat; superseded by inscript_rust_parser)
-# [package]
-# name = "inscript-lexer"
-# version = "3.7.2"
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"
+
+[profile.bench]
+opt-level = 3
+lto = true
+codegen-units = 1

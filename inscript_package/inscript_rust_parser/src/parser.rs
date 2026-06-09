@@ -35,27 +35,31 @@ impl Parser {
             Token::Switch => self.parse_switch(),
             Token::Return => self.parse_return(),
             Token::Break => {
+                let line = self.peek().line;
                 self.advance();
                 self.consume_semicolon();
-                Ok(Stmt::Break)
+                Ok(Stmt::Break(line))
             }
             Token::Continue => {
+                let line = self.peek().line;
                 self.advance();
                 self.consume_semicolon();
-                Ok(Stmt::Continue)
+                Ok(Stmt::Continue(line))
             }
             Token::Throw => self.parse_throw(),
             Token::Yield => self.parse_yield_stmt(),
             Token::Try => self.parse_try(),
             _ => {
+                let line = self.peek().line;
                 let expr = self.parse_expression()?;
                 self.consume_semicolon();
-                Ok(Stmt::Expression(expr))
+                Ok(Stmt::Expression(expr, line))
             }
         }
     }
 
     fn parse_var_decl(&mut self) -> Result<Stmt, ParseError> {
+        let line = self.peek().line;
         let mutable = matches!(self.peek().token, Token::Let);
         self.advance(); // Let or Const
 
@@ -81,6 +85,7 @@ impl Parser {
                 init: None,
                 type_hint: None,
                 mutable,
+                line,
             });
         }
 
@@ -105,10 +110,12 @@ impl Parser {
             init,
             type_hint,
             mutable,
+            line,
         })
     }
 
     fn parse_function_def(&mut self) -> Result<Stmt, ParseError> {
+        let line = self.peek().line;
         self.advance(); // fn
         if matches!(self.peek().token, Token::Star) {
             self.advance(); // *
@@ -135,10 +142,12 @@ impl Parser {
             body,
             return_type,
             is_async: false,
+            line,
         })
     }
 
     fn parse_class_def(&mut self) -> Result<Stmt, ParseError> {
+        let line = self.peek().line;
         self.advance(); // class or struct
         let name = self.consume_identifier()?;
 
@@ -200,6 +209,7 @@ impl Parser {
                         }
                     }
                 } else {
+                    let field_line = self.peek().line;
                     // Field declaration: name : Type = expr?
                     let type_hint = if matches!(self.peek().token, Token::Colon) {
                         self.advance();
@@ -216,6 +226,7 @@ impl Parser {
                         init: None,
                         type_hint,
                         mutable: true,
+                        line: field_line,
                     });
                 }
             }
@@ -227,15 +238,18 @@ impl Parser {
             name,
             extends,
             body,
+            line,
         })
     }
 
     fn parse_enum_def(&mut self) -> Result<Stmt, ParseError> {
+        let line = self.peek().line;
         self.advance(); // enum
         let name = self.consume_identifier()?;
         self.consume(&Token::LeftBrace)?;
         let mut body = Vec::new();
         while !matches!(self.peek().token, Token::RightBrace | Token::Eof) {
+            let variant_line = self.peek().line;
             let variant_name = self.consume_identifier()?;
             // Variant may have optional fields: Variant(f1: T1, f2: T2)
             if matches!(self.peek().token, Token::LeftParen) {
@@ -259,6 +273,7 @@ impl Parser {
                 init: None,
                 type_hint: None,
                 mutable: false,
+                line: variant_line,
             });
         }
         self.consume(&Token::RightBrace)?;
@@ -266,10 +281,12 @@ impl Parser {
             name,
             extends: None,
             body,
+            line,
         })
     }
 
     fn parse_if(&mut self) -> Result<Stmt, ParseError> {
+        let line = self.peek().line;
         self.advance(); // if
         let condition = self.parse_expression()?;
 
@@ -297,10 +314,12 @@ impl Parser {
             condition,
             then_body,
             else_body,
+            line,
         })
     }
 
     fn parse_while(&mut self) -> Result<Stmt, ParseError> {
+        let line = self.peek().line;
         self.advance(); // while
         let condition = self.parse_expression()?;
 
@@ -308,10 +327,11 @@ impl Parser {
         let body = self.parse_block()?;
         self.consume(&Token::RightBrace)?;
 
-        Ok(Stmt::While { condition, body })
+        Ok(Stmt::While { condition, body, line })
     }
 
     fn parse_for(&mut self) -> Result<Stmt, ParseError> {
+        let line = self.peek().line;
         self.advance(); // for
         let target = self.consume_identifier()?;
         self.consume(&Token::In)?;
@@ -321,10 +341,11 @@ impl Parser {
         let body = self.parse_block()?;
         self.consume(&Token::RightBrace)?;
 
-        Ok(Stmt::For { target, iter, body })
+        Ok(Stmt::For { target, iter, body, line })
     }
 
     fn parse_switch(&mut self) -> Result<Stmt, ParseError> {
+        let line = self.peek().line;
         self.advance(); // switch/match
         let expr = self.parse_expression()?;
         self.consume(&Token::LeftBrace)?;
@@ -362,10 +383,11 @@ impl Parser {
         }
 
         self.consume(&Token::RightBrace)?;
-        Ok(Stmt::Switch { expr, cases })
+        Ok(Stmt::Switch { expr, cases, line })
     }
 
     fn parse_return(&mut self) -> Result<Stmt, ParseError> {
+        let line = self.peek().line;
         self.advance(); // return
         let value = if !matches!(self.peek().token, Token::Semicolon | Token::RightBrace) {
             Some(self.parse_expression()?)
@@ -373,17 +395,19 @@ impl Parser {
             None
         };
         self.consume_semicolon();
-        Ok(Stmt::Return(value))
+        Ok(Stmt::Return(value, line))
     }
 
     fn parse_throw(&mut self) -> Result<Stmt, ParseError> {
+        let line = self.peek().line;
         self.advance(); // throw
         let expr = self.parse_expression()?;
         self.consume_semicolon();
-        Ok(Stmt::Throw(expr))
+        Ok(Stmt::Throw(expr, line))
     }
 
     fn parse_yield_stmt(&mut self) -> Result<Stmt, ParseError> {
+        let line = self.peek().line;
         self.advance(); // yield
         let value = if !matches!(self.peek().token, Token::Semicolon | Token::RightBrace) {
             Some(self.parse_expression()?)
@@ -391,10 +415,11 @@ impl Parser {
             None
         };
         self.consume_semicolon();
-        Ok(Stmt::Expression(Expr::Yield(value.map(Box::new))))
+        Ok(Stmt::Expression(Expr::Yield(value.map(Box::new)), line))
     }
 
     fn parse_try(&mut self) -> Result<Stmt, ParseError> {
+        let line = self.peek().line;
         self.advance(); // try
         self.consume(&Token::LeftBrace)?;
         let body = self.parse_block()?;
@@ -431,6 +456,7 @@ impl Parser {
             body,
             catch_clauses,
             finally_body,
+            line,
         })
     }
 
@@ -504,7 +530,7 @@ impl Parser {
 
         while precedence(&self.peek().token) >= min_prec {
             let op = self.parse_binary_op()?;
-            let right = self.parse_binary(precedence(&Token::Plus) + 1)?;
+            let right = self.parse_binary(precedence(&binop_to_token(&op)) + 1)?;
             left = Expr::Binary {
                 left: Box::new(left),
                 op,
@@ -611,6 +637,20 @@ impl Parser {
                 self.advance();
                 Ok(Expr::Literal(Literal::String(s)))
             }
+            Token::FString(s) => {
+                let parts = self.parse_fstring_content(s)?;
+                self.advance();
+                if parts.len() == 1 && matches!(&parts[0], InterpolationPart::String(_)) {
+                    // No interpolation — treat as plain string
+                    if let InterpolationPart::String(text) = parts.into_iter().next().unwrap() {
+                        Ok(Expr::Literal(Literal::String(text)))
+                    } else {
+                        unreachable!()
+                    }
+                } else {
+                    Ok(Expr::StringInterpolation(parts))
+                }
+            }
             Token::Bool(val) => {
                 let v = *val;
                 self.advance();
@@ -661,6 +701,49 @@ impl Parser {
                 }
                 self.consume(&Token::RightBrace)?;
                 Ok(Expr::Object(pairs))
+            }
+            Token::Fn => {
+                // Lambda expression: fn(params) body_expr  or  fn(params) { stmts }
+                self.advance(); // consume fn
+                self.consume(&Token::LeftParen)?;
+                let mut params = Vec::new();
+                while !matches!(self.peek().token, Token::RightParen | Token::Eof) {
+                    let name = self.consume_identifier()?;
+                    let type_hint = if matches!(self.peek().token, Token::Colon) {
+                        self.advance();
+                        Some(self.parse_type_hint()?)
+                    } else {
+                        None
+                    };
+                    let default = if matches!(self.peek().token, Token::Assign) {
+                        self.advance();
+                        Some(Box::new(self.parse_expression()?))
+                    } else {
+                        None
+                    };
+                    params.push(Param { name, type_hint, default });
+                    if matches!(self.peek().token, Token::Comma) {
+                        self.advance();
+                    } else {
+                        break;
+                    }
+                }
+                self.consume(&Token::RightParen)?;
+                // Body: either a single expression or a { ... } block
+                let body = if matches!(self.peek().token, Token::LeftBrace) {
+                    // Block body — parse as a brace-enclosed expression
+                    self.advance(); // consume {
+                    let expr = self.parse_expression()?;
+                    self.consume(&Token::RightBrace)?;
+                    expr
+                } else {
+                    self.parse_expression()?
+                };
+                Ok(Expr::Lambda {
+                    params,
+                    body: Box::new(body),
+                    return_type: None,
+                })
             }
             _ => Err(ParseError::new(
                 format!("Unexpected token: {:?}", self.peek().token),
@@ -834,5 +917,93 @@ impl Parser {
         if matches!(self.peek().token, Token::Semicolon) {
             self.advance();
         }
+    }
+
+    /// Parse f-string content into interpolation parts.
+    /// Handles the lexer's special encoding:
+    ///   `\x00{` — literal `{` (escaped `{{`)
+    ///   `}\x00` — literal `}` (escaped `}}`)
+    ///   `{expr}` — interpolation expression
+    fn parse_fstring_content(&mut self, content: &str) -> Result<Vec<InterpolationPart>, ParseError> {
+        let mut parts: Vec<InterpolationPart> = Vec::new();
+        let mut text = String::new();
+        let mut chars = content.chars().peekable();
+        let null_marker: char = '\x00';
+
+        while let Some(ch) = chars.next() {
+            if ch == null_marker {
+                // \x00 marks an escaped brace
+                // \x00{ → literal { (from {{ escape)
+                if chars.peek() == Some(&'{') {
+                    chars.next(); // consume {
+                    text.push('{');
+                }
+                // Otherwise: orphaned null byte — ignore
+            } else if ch == '}' && chars.peek() == Some(&null_marker) {
+                // }\x00 → literal } (from }} escape)
+                chars.next(); // consume \x00
+                text.push('}');
+            } else if ch == '{' {
+                // Start of interpolation expression
+                if !text.is_empty() {
+                    parts.push(InterpolationPart::String(std::mem::take(&mut text)));
+                }
+                // Parse expression until matching }
+                let mut expr_text = String::new();
+                let mut depth = 1;
+                while let Some(ec) = chars.next() {
+                    if ec == '{' { depth += 1; }
+                    else if ec == '}' {
+                        depth -= 1;
+                        if depth == 0 { break; }
+                    }
+                    if depth > 0 {
+                        expr_text.push(ec);
+                    }
+                }
+                if !expr_text.is_empty() {
+                    let mut sub_lex = crate::lexer::Lexer::new(&expr_text);
+                    let sub_tokens = sub_lex.tokenize().map_err(|e| {
+                        ParseError::new(format!("In f-string: {}", e), 0, 0)
+                    })?;
+                    let mut sub_parser = Parser::new(sub_tokens);
+                    let expr = sub_parser.parse_expression().map_err(|e| {
+                        ParseError::new(format!("In f-string: {}", e), 0, 0)
+                    })?;
+                    parts.push(InterpolationPart::Expr(Box::new(expr)));
+                }
+            } else {
+                text.push(ch);
+            }
+        }
+        if !text.is_empty() {
+            parts.push(InterpolationPart::String(text));
+        }
+        Ok(parts)
+    }
+}
+
+fn binop_to_token(op: &BinOp) -> Token {
+    match op {
+        BinOp::Add => Token::Plus,
+        BinOp::Sub => Token::Minus,
+        BinOp::Mul => Token::Star,
+        BinOp::Div => Token::Slash,
+        BinOp::Mod => Token::Percent,
+        BinOp::Power => Token::Power,
+        BinOp::Eq => Token::Eq,
+        BinOp::Neq => Token::Neq,
+        BinOp::Lt => Token::Lt,
+        BinOp::Lte => Token::Lte,
+        BinOp::Gt => Token::Gt,
+        BinOp::Gte => Token::Gte,
+        BinOp::And => Token::And,
+        BinOp::Or => Token::Or,
+        BinOp::Assign => Token::Assign,
+        BinOp::BitwiseAnd => Token::BitwiseAnd,
+        BinOp::BitwiseOr => Token::BitwiseOr,
+        BinOp::BitwiseXor => Token::BitwiseXor,
+        BinOp::LeftShift => Token::LeftShift,
+        BinOp::RightShift => Token::RightShift,
     }
 }

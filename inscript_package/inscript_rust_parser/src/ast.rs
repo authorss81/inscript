@@ -1,8 +1,6 @@
 // inscript_rust_parser/src/ast.rs
 // Abstract Syntax Tree node definitions
 
-use std::collections::HashMap;
-
 #[derive(Debug, Clone)]
 pub enum Literal {
     Nil,
@@ -13,15 +11,18 @@ pub enum Literal {
 }
 
 #[derive(Debug, Clone, Copy)]
+#[allow(dead_code)]
 pub enum BinOp {
     Add, Sub, Mul, Div, Mod, Power,
     Eq, Neq, Lt, Lte, Gt, Gte,
     And, Or,
-    BitwiseAnd, BitwiseOr, BitwiseXor, BitwiseNot,
+    BitwiseAnd, BitwiseOr, BitwiseXor,
     LeftShift, RightShift,
+    Assign,
 }
 
 #[derive(Debug, Clone, Copy)]
+#[allow(dead_code)]
 pub enum UnaryOp {
     Neg, Not, BitwiseNot,
 }
@@ -41,9 +42,11 @@ pub struct Param {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub enum Expr {
     Literal(Literal),
     Identifier(String),
+    Propagate(Box<Expr>),
     Binary {
         left: Box<Expr>,
         op: BinOp,
@@ -83,6 +86,7 @@ pub enum Expr {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub enum InterpolationPart {
     String(String),
     Expr(Box<Expr>),
@@ -90,12 +94,13 @@ pub enum InterpolationPart {
 
 #[derive(Debug, Clone)]
 pub enum Stmt {
-    Expression(Expr),
+    Expression(Expr, usize),
     VarDecl {
         name: String,
         init: Option<Expr>,
         type_hint: Option<TypeHint>,
         mutable: bool,
+        line: usize,
     },
     FunctionDef {
         name: String,
@@ -103,38 +108,45 @@ pub enum Stmt {
         body: Vec<Stmt>,
         return_type: Option<TypeHint>,
         is_async: bool,
+        line: usize,
     },
     ClassDef {
         name: String,
         extends: Option<String>,
         body: Vec<Stmt>,
+        line: usize,
     },
     If {
         condition: Expr,
         then_body: Vec<Stmt>,
         else_body: Option<Vec<Stmt>>,
+        line: usize,
     },
     While {
         condition: Expr,
         body: Vec<Stmt>,
+        line: usize,
     },
     For {
         target: String,
         iter: Expr,
         body: Vec<Stmt>,
+        line: usize,
     },
     Switch {
         expr: Expr,
         cases: Vec<(Option<Expr>, Vec<Stmt>)>,
+        line: usize,
     },
-    Return(Option<Expr>),
-    Break,
-    Continue,
-    Throw(Expr),
+    Return(Option<Expr>, usize),
+    Break(usize),
+    Continue(usize),
+    Throw(Expr, usize),
     Try {
         body: Vec<Stmt>,
         catch_clauses: Vec<(String, Vec<Stmt>)>,
         finally_body: Option<Vec<Stmt>>,
+        line: usize,
     },
 }
 

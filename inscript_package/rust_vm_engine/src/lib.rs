@@ -9,6 +9,15 @@ pub mod pool;
 pub mod compiler;
 pub use compiler::OptStats;
 
+/// Descriptor for a compiled user-defined function.
+#[derive(Debug, Clone)]
+pub struct FuncDef {
+    pub opcodes: Vec<OpCode>,
+    pub constants: Vec<Arc<Value>>,
+    pub param_count: usize,
+    pub source_map: Vec<usize>,
+}
+
 /// Value types in the VM (OPTIMIZATION v3.8.3: Arrays and Objects store Arc<Value> for O(1) clones)
 /// v3.8.4: pool.rs interns Nil/Bool/small-Int to avoid repeated Arc::new() calls
 #[derive(Debug, Clone)]
@@ -21,6 +30,7 @@ pub enum Value {
     Array(Vec<Arc<Value>>),              // OPTIMIZATION: Arc for O(1) reference counting
     Object(HashMap<String, Arc<Value>>), // OPTIMIZATION: Arc for O(1) reference counting
     Function(String),                    // Function name
+    BoundMethod(String, Arc<Value>),     // Method name + instance (self-binding)
 }
 
 impl Value {
@@ -34,6 +44,7 @@ impl Value {
             Value::Array(a) => !a.is_empty(),
             Value::Object(o) => !o.is_empty(),
             Value::Function(_) => true,
+            Value::BoundMethod(_, _) => true,
         }
     }
 
@@ -47,6 +58,37 @@ impl Value {
             Value::Array(_) => "array",
             Value::Object(_) => "object",
             Value::Function(_) => "function",
+            Value::BoundMethod(_, _) => "function",
+        }
+    }
+}
+
+impl Value {
+    /// Format value WITHOUT surrounding quotes (unlike Display which quotes strings).
+    /// Used for string concatenation and str() conversion.
+    pub fn to_display_string(&self) -> String {
+        match self {
+            Value::Nil => "nil".to_string(),
+            Value::Bool(b) => b.to_string(),
+            Value::Int(n) => n.to_string(),
+            Value::Float(fl) => {
+                if fl.fract() == 0.0 {
+                    format!("{:.1}", fl)
+                } else {
+                    fl.to_string()
+                }
+            }
+            Value::String(s) => s.clone(),
+            Value::Array(a) => {
+                let items: Vec<String> = a.iter().map(|v| v.to_display_string()).collect();
+                format!("[{}]", items.join(", "))
+            }
+            Value::Object(o) => {
+                let items: Vec<String> = o.iter().map(|(k, v)| format!("{}: {}", k, v.to_display_string())).collect();
+                format!("{{{}}}", items.join(", "))
+            }
+            Value::Function(name) => format!("<function {}>", name),
+            Value::BoundMethod(name, _) => format!("<method {}>", name),
         }
     }
 }
@@ -69,6 +111,7 @@ impl fmt::Display for Value {
             Value::Array(a) => write!(f, "[array:{}]", a.len()),
             Value::Object(o) => write!(f, "{{object:{}}}", o.len()),
             Value::Function(name) => write!(f, "<function {}>", name),
+            Value::BoundMethod(name, _) => write!(f, "<method {}>", name),
         }
     }
 }
@@ -125,9 +168,16 @@ pub enum OpCode {
     Index,
     SetIndex,
 
+    // Constant pool
+    LoadConst(usize),  // load constant by index from pool
+
     // String operations (NEW v3.8.4)
     Concat,   // string concatenation via + on strings
     Length,   // len(x)
+
+    // Iterator protocol (NEW v3.9.4)
+    IterStart,   // pop iterable, push [items_array, 0]
+    IterNext,    // pop [items, idx], push [items, idx+1], push value_or_nil
 
     // Other
     Halt,
@@ -144,6 +194,8 @@ impl OpCode {
             0x04 => Some(OpCode::Negate),
             0x05 => Some(OpCode::Concat),
             0x06 => Some(OpCode::Length),
+            0x07 => Some(OpCode::IterStart),
+            0x08 => Some(OpCode::IterNext),
             0x10 => Some(OpCode::Add),
             0x11 => Some(OpCode::Sub),
             0x12 => Some(OpCode::Mul),
@@ -173,6 +225,8 @@ impl OpCode {
             OpCode::Negate => 0x04,
             OpCode::Concat => 0x05,
             OpCode::Length => 0x06,
+            OpCode::IterStart => 0x07,
+            OpCode::IterNext => 0x08,
             OpCode::Add => 0x10,
             OpCode::Sub => 0x11,
             OpCode::Mul => 0x12,
@@ -202,3 +256,105 @@ pub use ir::IrEmitter;
 
 pub mod jit;
 pub use jit::{JitEngine, JitStats, StubEntry, TraceId, HOT_THRESHOLD, MAX_STUBS};
+
+// ─────────────────────────────────────────────────────────────────────
+// PyO3 FFI — Python bindings for the VM engine
+// ─────────────────────────────────────────────────────────────────────
+
+use pyo3::prelude::*;
+use pyo3::types::{PyDict, PyBytes};
+
+/// Convert a Value to a Python object (int/float/bool/str/list/dict/nil)
+fn value_to_py(py: Python, value: &Value) -> PyObject {
+    match value {
+        Value::Nil => py.None(),
+        Value::Bool(b) => b.into_py(py),
+        Value::Int(n) => n.into_py(py),
+        Value::Float(f) => f.into_py(py),
+        Value::String(s) => s.clone().into_py(py),
+        Value::Array(arr) => {
+            let py_list: Vec<PyObject> = arr.iter().map(|v| value_to_py(py, v)).collect();
+            py_list.into_py(py)
+        }
+        Value::Object(obj) => {
+            let dict = PyDict::new_bound(py);
+            for (k, v) in obj {
+                dict.set_item(k.as_str(), value_to_py(py, v)).ok();
+            }
+            dict.into()
+        }
+        Value::Function(name) => format!("<function {}>", name).into_py(py),
+        Value::BoundMethod(name, _) => format!("<method {}>", name).into_py(py),
+    }
+}
+
+/// Python wrapper for VMEngine
+#[pyclass(name = "VMEngine")]
+pub struct PyVMEngine {
+    engine: vm::VMEngine,
+}
+
+#[pymethods]
+impl PyVMEngine {
+    #[new]
+    fn new(bytecode: Bound<'_, PyBytes>) -> PyResult<Self> {
+        let code = bytecode.as_bytes().to_vec();
+        Ok(PyVMEngine {
+            engine: vm::VMEngine::new(code),
+        })
+    }
+
+    fn execute(&mut self) -> PyResult<String> {
+        match self.engine.execute() {
+            Ok(value) => Ok(value.to_string()),
+            Err(e) => Ok(format!("Error: {}", e)),
+        }
+    }
+
+    fn reset(&mut self, bytecode: Bound<'_, PyBytes>) {
+        let code = bytecode.as_bytes().to_vec();
+        self.engine = vm::VMEngine::new(code);
+    }
+
+    fn state(&self) -> String {
+        format!("{:?}", self.engine.state)
+    }
+
+    fn stats(&self, py: Python) -> PyObject {
+        let s = self.engine.stats();
+        let dict = PyDict::new_bound(py);
+        dict.set_item("instructions_executed", s.instructions_executed).ok();
+        dict.set_item("stack_depth", s.stack_depth).ok();
+        dict.set_item("call_depth", s.call_depth).ok();
+        dict.set_item("cache_hits", s.cache_hits).ok();
+        dict.set_item("cache_misses", s.cache_misses).ok();
+        dict.set_item("cache_hit_rate", s.cache_hit_rate).ok();
+        dict.into()
+    }
+}
+
+/// Optimize InScript bytecode (passed as bytes) and return optimized bytes
+#[pyfunction]
+fn optimize_bytecode<'a>(py: Python<'a>, bytecode: Bound<'a, PyBytes>) -> Bound<'a, PyBytes> {
+    let code = bytecode.as_bytes().to_vec();
+    let opcodes: Vec<OpCode> = code.iter().filter_map(|&b| OpCode::from_byte(b)).collect();
+    let (optimized, _stats) = compiler::optimize(opcodes);
+    let bytes: Vec<u8> = optimized.iter().map(|op| op.to_byte()).collect();
+    PyBytes::new_bound(py, &bytes)
+}
+
+/// Emit LLVM IR for a named trace
+#[pyfunction]
+fn emit_ir(trace_name: &str, opcodes_str: Bound<'_, PyBytes>) -> String {
+    let bytes = opcodes_str.as_bytes();
+    let opcodes: Vec<OpCode> = bytes.iter().filter_map(|&b| OpCode::from_byte(b)).collect();
+    ir::emit_ir(trace_name, &opcodes)
+}
+
+#[pymodule]
+fn inscript_vm_engine(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_class::<PyVMEngine>()?;
+    m.add_function(wrap_pyfunction!(optimize_bytecode, m)?)?;
+    m.add_function(wrap_pyfunction!(emit_ir, m)?)?;
+    Ok(())
+}
