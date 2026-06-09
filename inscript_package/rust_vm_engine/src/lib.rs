@@ -265,6 +265,7 @@ use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyBytes};
 
 /// Convert a Value to a Python object (int/float/bool/str/list/dict/nil)
+#[allow(dead_code)]
 fn value_to_py(py: Python, value: &Value) -> PyObject {
     match value {
         Value::Nil => py.None(),
@@ -311,6 +312,21 @@ impl PyVMEngine {
         }
     }
 
+    fn enable_jit(&mut self) {
+        self.engine.enable_jit();
+    }
+
+    fn collect_hot_traces_ir(&self, py: Python) -> PyObject {
+        let traces = self.engine.collect_hot_traces_ir();
+        let list: Vec<PyObject> = traces.iter().map(|(name, ir)| {
+            let d = PyDict::new_bound(py);
+            d.set_item("name", name).ok();
+            d.set_item("ir", ir).ok();
+            d.into()
+        }).collect();
+        list.into_py(py)
+    }
+
     fn reset(&mut self, bytecode: Bound<'_, PyBytes>) {
         let code = bytecode.as_bytes().to_vec();
         self.engine = vm::VMEngine::new(code);
@@ -329,6 +345,9 @@ impl PyVMEngine {
         dict.set_item("cache_hits", s.cache_hits).ok();
         dict.set_item("cache_misses", s.cache_misses).ok();
         dict.set_item("cache_hit_rate", s.cache_hit_rate).ok();
+        if let Some(ref jit) = s.jit_stats {
+            dict.set_item("jit_stats", jit).ok();
+        }
         dict.into()
     }
 }

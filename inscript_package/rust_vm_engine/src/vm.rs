@@ -19,6 +19,7 @@ use crate::Value;
 use crate::OpCode;
 use crate::FuncDef;
 use crate::compiler::{optimize, OptStats};
+use crate::jit::{JitEngine, TraceId};
 use crate::pool::{ArrayPool, ObjectPool, PoolStats, init_interns,
                   intern_nil, intern_bool, intern_int, intern_string};
 use std::collections::HashMap;
@@ -121,6 +122,9 @@ pub struct VMEngine {
     array_pool:  Arc<ArrayPool>,
     object_pool: Arc<ObjectPool>,
 
+    // v3.9.4+: JIT compilation engine (hot trace detection → LLVM IR)
+    jit: Option<JitEngine>,
+
     // Performance metrics
     instructions_executed: usize,
     opt_stats: OptStats,       // v3.9.0: compiler optimization pass results
@@ -212,9 +216,52 @@ impl VMEngine {
             object_cache: Arc::new(ObjectCache::new()),
             array_pool:   Arc::new(ArrayPool::new()),
             object_pool:  Arc::new(ObjectPool::new()),
+            jit: None,
             instructions_executed: 0,
             opt_stats,
         }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // JIT control
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// Enable JIT trace detection. Hot loops will be compiled to LLVM IR
+    /// automatically during execution.
+    pub fn enable_jit(&mut self) {
+        self.jit = Some(JitEngine::new());
+    }
+
+    /// Returns true if JIT is enabled.
+    pub fn jit_enabled(&self) -> bool {
+        self.jit.is_some()
+    }
+
+    /// Collect all hot traces as (trace_name, llvm_ir) pairs.
+    pub fn collect_hot_traces_ir(&self) -> Vec<(String, String)> {
+        self.jit.as_ref()
+            .map(|j| j.collect_hot_traces())
+            .unwrap_or_default()
+    }
+
+    /// Get JIT stats as a formatted string, or None if JIT is disabled.
+    pub fn jit_stats_string(&self) -> Option<String> {
+        self.jit.as_ref().map(|j| j.stats_string())
+    }
+
+    /// Record execution of a loop body for JIT trace detection.
+    fn record_loop_execution(&mut self, loop_header: usize, jump_ip: usize) {
+        let jit = match self.jit.as_mut() {
+            Some(j) => j,
+            None => return,
+        };
+        let trace_id = TraceId::from_index(loop_header);
+        if jit.get_stub(&trace_id).is_none() {
+            // Extract loop body opcodes from header to the backward jump (inclusive)
+            let body = self.opcodes[loop_header..=jump_ip].to_vec();
+            jit.register_trace(trace_id.clone(), body);
+        }
+        jit.record_trace_execution(&trace_id);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -466,20 +513,32 @@ impl VMEngine {
             // ── Control flow ─────────────────────────────────────────────────
 
             OpCode::Jump(addr) => {
+                let jump_ip = self.instruction_pointer - 1;
                 self.instruction_pointer = addr;
+                if addr < jump_ip {
+                    self.record_loop_execution(addr, jump_ip);
+                }
                 Ok(())
             }
             OpCode::JumpIfFalse(addr) => {
+                let jump_ip = self.instruction_pointer - 1;
                 let val = self.stack.pop().ok_or("Stack underflow")?;
                 if !val.is_truthy() {
                     self.instruction_pointer = addr;
+                    if addr < jump_ip {
+                        self.record_loop_execution(addr, jump_ip);
+                    }
                 }
                 Ok(())
             }
             OpCode::JumpIfTrue(addr) => {
+                let jump_ip = self.instruction_pointer - 1;
                 let val = self.stack.pop().ok_or("Stack underflow")?;
                 if val.is_truthy() {
                     self.instruction_pointer = addr;
+                    if addr < jump_ip {
+                        self.record_loop_execution(addr, jump_ip);
+                    }
                 }
                 Ok(())
             }
@@ -1208,6 +1267,7 @@ impl VMEngine {
                 object_misses:   om,
             },
             opt_stats: self.opt_stats.clone(),
+            jit_stats: self.jit_stats_string(),
         }
     }
 
@@ -1246,6 +1306,7 @@ pub struct VMStats {
     pub cache_hit_rate:        f64,
     pub pool_stats:            PoolStats,  // NEW v3.8.4
     pub opt_stats:             OptStats,   // NEW v3.9.0
+    pub jit_stats:             Option<String>,  // v3.9.4+: JIT stats
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1255,6 +1316,7 @@ pub struct VMStats {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::jit::HOT_THRESHOLD;
 
     #[test]
     fn test_vm_creation() {
@@ -1397,5 +1459,119 @@ mod tests {
         // Freshly created VM should have 0 pool recycles
         assert_eq!(stats.pool_stats.array_recycles, 0);
         assert_eq!(stats.pool_stats.object_recycles, 0);
+    }
+
+    // ── JIT integration tests ─────────────────────────────────────────────
+
+    /// Build a counter loop: count reg[0] from 0 to LIMIT, then halt.
+    ///   IP 0: Push(0)              # init counter
+    ///   IP 1: StoreReg(0)
+    ///   IP 2: LoadReg(0)           # ← loop header
+    ///   IP 3: Push(LIMIT)
+    ///   IP 4: LessThan
+    ///   IP 5: JumpIfFalse(11)      # exit if counter >= LIMIT
+    ///   IP 6: LoadReg(0)
+    ///   IP 7: Push(1)
+    ///   IP 8: Add
+    ///   IP 9: StoreReg(0)
+    ///   IP 10: Jump(2)             # ← backward jump (loop backedge)
+    ///   IP 11: LoadReg(0)          # result
+    ///   IP 12: Halt
+    fn make_loop_opcodes(limit: i32) -> Vec<OpCode> {
+        vec![
+            OpCode::Push(0),
+            OpCode::StoreReg(0),
+            OpCode::LoadReg(0),
+            OpCode::Push(limit),
+            OpCode::LessThan,
+            OpCode::JumpIfFalse(11),
+            OpCode::LoadReg(0),
+            OpCode::Push(1),
+            OpCode::Add,
+            OpCode::StoreReg(0),
+            OpCode::Jump(2),
+            OpCode::LoadReg(0),
+            OpCode::Halt,
+        ]
+    }
+
+    #[test]
+    fn test_jit_disabled_by_default() {
+        let vm = VMEngine::from_opcodes(make_loop_opcodes(10), vec![], OptStats::default());
+        assert!(!vm.jit_enabled());
+        assert!(vm.collect_hot_traces_ir().is_empty());
+        assert!(vm.jit_stats_string().is_none());
+    }
+
+    #[test]
+    fn test_jit_enable() {
+        let mut vm = VMEngine::from_opcodes(make_loop_opcodes(10), vec![], OptStats::default());
+        assert!(!vm.jit_enabled());
+        vm.enable_jit();
+        assert!(vm.jit_enabled());
+        assert!(vm.jit_stats_string().is_some());
+    }
+
+    #[test]
+    fn test_jit_detects_loop_backedge() {
+        // Use a loop that runs more than HOT_THRESHOLD iterations to trigger IR gen
+        let mut vm = VMEngine::from_opcodes(make_loop_opcodes(HOT_THRESHOLD as i32 + 200), vec![], OptStats::default());
+        vm.enable_jit();
+
+        let result = vm.execute();
+        assert!(result.is_ok(), "VM execution should succeed: {:?}", result);
+
+        let stats = vm.jit_stats_string().unwrap();
+        assert!(stats.contains("JIT Stats"), "Stats: {}", stats);
+
+        let traces = vm.collect_hot_traces_ir();
+        assert!(!traces.is_empty(), "Expected at least one hot trace after {} iterations", HOT_THRESHOLD + 200);
+        let (_name, ir) = &traces[0];
+        assert!(ir.contains("define i64 @"), "IR missing function def");
+        // Loop trace ends with a backward branch (not ret), which is valid IR
+        assert!(ir.contains("br label") || ir.contains("ret i64"),
+            "IR should contain a valid terminator (br or ret)");
+    }
+
+    #[test]
+    fn test_jit_loop_hot_after_threshold() {
+        let mut vm = VMEngine::from_opcodes(make_loop_opcodes(HOT_THRESHOLD as i32 + 100), vec![], OptStats::default());
+        vm.enable_jit();
+
+        let result = vm.execute();
+        assert!(result.is_ok(), "VM execution should succeed: {:?}", result);
+
+        let traces = vm.collect_hot_traces_ir();
+        assert!(!traces.is_empty(), "Expected hot traces after >= HOT_THRESHOLD loop iterations");
+        for (name, ir) in &traces {
+            assert!(ir.contains("define i64 @"), "IR for {} should contain function def", name);
+            assert!(ir.contains("br label") || ir.contains("ret i64"),
+                "IR for {} should contain a valid terminator (br or ret)", name);
+        }
+    }
+
+    #[test]
+    fn test_jit_below_threshold_not_hot() {
+        // A small loop should NOT produce hot traces
+        let mut vm = VMEngine::from_opcodes(make_loop_opcodes(5), vec![], OptStats::default());
+        vm.enable_jit();
+
+        let result = vm.execute();
+        assert!(result.is_ok());
+
+        let traces = vm.collect_hot_traces_ir();
+        assert!(traces.is_empty(), "Small loop should not produce hot traces");
+    }
+
+    #[test]
+    fn test_jit_stats_in_vm_stats() {
+        let mut vm = VMEngine::from_opcodes(make_loop_opcodes(HOT_THRESHOLD as i32 + 50), vec![], OptStats::default());
+        vm.enable_jit();
+        let _ = vm.execute();
+
+        let stats = vm.stats();
+        assert!(stats.jit_stats.is_some(), "JIT stats should be present in VMStats");
+        let jit = stats.jit_stats.unwrap();
+        assert!(jit.contains("Total traces:"), "JIT stats should mention total traces: {}", jit);
     }
 }
