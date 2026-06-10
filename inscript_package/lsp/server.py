@@ -141,7 +141,7 @@ else:
 if HAS_PYGLS:
     server = LanguageServer(
         name="inscript-lsp",
-        version="3.9.3",
+        version="3.9.4",
         text_document_sync_kind=TextDocumentSyncKind.Full,
     )
 
