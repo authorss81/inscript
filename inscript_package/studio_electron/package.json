@@ -7,23 +7,39 @@
   "author": "Shreyasi Sarkar",
   "license": "MIT",
   "scripts": {
-    "start":   "electron .",
-    "build":   "electron-builder --dir",
-    "dist":    "electron-builder",
+    "start": "electron .",
+    "build": "electron-builder --dir",
+    "dist": "electron-builder",
     "install-python": "pip install inscript-lang"
   },
-  "dependencies": {},
   "devDependencies": {
-    "electron":          "^29.0.0",
-    "electron-builder":  "^24.0.0"
+    "electron": "^42.4.0",
+    "electron-builder": "^26.15.2"
   },
   "build": {
-    "appId":       "dev.inscript.studio",
+    "appId": "dev.inscript.studio",
     "productName": "InScript Studio",
-    "files":       ["src/**/*", "assets/**/*"],
-    "extraResources": [{"from": "../inscript_package", "to": "inscript_runtime"}],
-    "win":  {"target": "nsis",   "icon": "assets/icon.ico"},
-    "mac":  {"target": "dmg",    "icon": "assets/icon.icns"},
-    "linux":{"target": "AppImage","icon": "assets/icon.png"}
+    "files": [
+      "src/**/*",
+      "assets/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "../inscript_package",
+        "to": "inscript_runtime"
+      }
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.ico"
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "assets/icon.icns"
+    },
+    "linux": {
+      "target": "AppImage",
+      "icon": "assets/icon.png"
+    }
   }
 }
