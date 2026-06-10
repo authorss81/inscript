@@ -512,7 +512,7 @@ async function newVisualScript() {
   if (!name) return;
   const fname = name.replace(/[^a-zA-Z0-9_]/g,'') + '.vins';
   const tmpl  = JSON.stringify({
-    version:'3.9.4', name,
+    version:'{VERSION}', name,
     nodes:[
       {id:'n1',type:'event',event:'_ready',x:80,y:120},
       {id:'n2',type:'print',x:320,y:120},
@@ -546,7 +546,8 @@ class _StudioHandler(BaseHTTPRequestHandler):
         path   = parsed.path
 
         if path in ("/", "/index.html"):
-            self._send_html(_STUDIO_HTML)
+            from _version import VERSION as _studio_ver
+            self._send_html(_STUDIO_HTML.replace("{VERSION}", _studio_ver))
 
         elif path == "/visual":
             # v3.0.0: Drag-and-drop visual script editor
@@ -567,7 +568,8 @@ class _StudioHandler(BaseHTTPRequestHandler):
             self._send_file_content(fpath)
 
         elif path == "/status":
-            self._send_json({"ok": True, "version": "3.9.4",
+            from _version import VERSION as _status_ver
+            self._send_json({"ok": True, "version": _status_ver,
                              "bridge_port": self.server._app._bridge_port})
 
         else:

@@ -28,7 +28,7 @@ Methods
   inspect      — full project introspection (scenes, nodes, fns, assets)
   eval         — evaluate an InScript expression in live env
   ping         — health check; returns {"pong": true}
-  version      — returns {"version": "3.9.3"}
+  version      — returns {"version": VERSION}
 """
 
 from __future__ import annotations

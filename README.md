@@ -6,14 +6,16 @@
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-331%20passing-brightgreen.svg)](#testing)
-[![Version](https://img.shields.io/badge/version-1.1.0-blue.svg)](#)
+[![Tests](https://img.shields.io/badge/tests-287%20passing-brightgreen.svg)](#testing)
+[![Version](https://img.shields.io/badge/version-3.9.4-blue.svg)](#)
 
 </div>
 
 ---
 
-InScript is a statically-typed scripting language designed for games. It brings Rust-style safety — pattern matching, ADT enums, Result types, generics — with Python-like readability, and runs out of the box with a single Python install.
+InScript is a statically-typed scripting language designed for games. It brings Rust-style safety — pattern matching, ADT enums, Result types, generics — with Python-like readability.
+
+**Game hooks run at CPython native speed** via Phase 7 Python AST transpilation — 67× faster than the tree-walk interpreter, 122× faster than the bytecode VM (benchmarked on pong.ins).
 
 ```inscript
 struct Ship {
@@ -48,10 +50,13 @@ fn apply(p: Pickup, ship: Ship) {
 ```bash
 # No install needed — just Python 3.10+
 git clone https://github.com/YOUR_USERNAME/inscript.git
-cd inscript
+cd inscript/inscript_package
 python inscript.py examples/asteroid_blaster.ins
 
-# Or launch the REPL
+# Or launch a game
+python inscript.py --game examples/pong.ins
+
+# Or the REPL
 python inscript.py --repl
 ```
 
@@ -59,6 +64,7 @@ python inscript.py --repl
 ```bash
 pip install inscript-lang
 inscript mygame.ins
+inscript --game mygame.ins       # Run as a game (requires pygame)
 inscript --repl
 ```
 
@@ -310,22 +316,16 @@ while !spawner.done {
 ## CLI Reference
 
 ```bash
-inscript <file.ins>            # Run a file
-inscript --repl                # Interactive REPL
-inscript --check <file.ins>    # Type-check without running
-inscript --tokens <file.ins>   # Print lexer tokens
-inscript --ast <file.ins>      # Print AST
-inscript --version             # Print version
-
-# Package manager
-inscript --install <pkg>       # Install from registry
-inscript --remove  <pkg>       # Uninstall a package
-inscript --search  <query>     # Search registry
-inscript --info    <pkg>       # Show package info
-inscript --packages            # List installed packages
-
-# Language server (requires: pip install pygls)
-inscript --lsp                 # Start LSP on stdio
+inscript <file.ins>                # Run a file
+inscript --repl                    # Interactive REPL
+inscript --game <file.ins>         # Run as pygame game
+inscript --check <file.ins>        # Type-check without running
+inscript --fmt <file.ins>          # Format source code
+inscript --tokens <file.ins>       # Print lexer tokens
+inscript --ast <file.ins>          # Print AST
+inscript --profile                 # Show per-frame timings (with --game)
+inscript --batch-draw              # Batch sprite draws (with --game)
+inscript --version                 # Print version
 ```
 
 ### REPL Commands
@@ -351,25 +351,34 @@ exit / Ctrl+D    Quit
 ## Project Structure
 
 ```
-inscript/
-├── inscript.py          ← CLI entry point + package manager
-├── lexer.py             ← Tokenizer (handles all syntax)
-├── parser.py            ← Recursive-descent parser → AST
-├── ast_nodes.py         ← All AST node dataclasses
-├── interpreter.py       ← Tree-walk interpreter
-├── analyzer.py          ← Static semantic analyzer
-├── environment.py       ← Scope and variable resolution
-├── errors.py            ← Error and control-flow signals
-├── stdlib.py            ← 18 standard library modules
-├── stdlib_values.py     ← Runtime types (Vec2, Color, Range …)
-├── repl.py              ← Enhanced interactive REPL + web playground
+inscript_package/               ← All real source code
+├── inscript.py                 ← CLI entry point + package manager
+├── lexer.py                    ← Tokenizer
+├── parser.py                   ← Recursive-descent parser → AST
+├── ast_nodes.py                ← AST node dataclasses
+├── interpreter.py              ← Tree-walk interpreter
+├── analyzer.py                 ← Static semantic analyzer
+├── environment.py              ← Scope and variable resolution
+├── errors.py                   ← Error signals
+├── compiler.py                 ← InScript bytecode compiler
+├── vm.py                       ← Register-based bytecode VM
+├── py_compiler.py              ← Phase 7: InScript→Python AST transpiler (67× speedup)
+├── pygame_backend.py           ← pygame game loop + draw namespaces
+├── pyproject.toml              ← Build config (dynamic version from VERSION)
+├── stdlib.py                   ← 18 standard library modules
+├── stdlib_values.py            ← Runtime types (Vec2, Color, Range …)
+├── repl.py                     ← Enhanced interactive REPL + web playground
+├── _version.py                 ← Dynamic version reader (change inscript.py:VERSION only)
 ├── lsp/
-│   ├── server.py        ← LSP server (stdin/stdout, pygls-based)
-│   ├── diagnostics.py   ← Real-time error reporting
-│   ├── completions.py   ← Keyword, builtin, and symbol completions
-│   └── hover.py         ← Built-in function documentation on hover
-└── examples/
-    └── asteroid_blaster.ins
+│   ├── server.py               ← LSP server (pygls-based)
+│   ├── diagnostics.py          ← Real-time error reporting
+│   └── completions.py          ← Keyword, builtin, symbol completions
+├── examples/
+│   ├── pong.ins                ← Pong game (W/S + UP/DOWN)
+│   ├── breakout.ins            ← Breakout clone
+│   ├── dino.ins                ← Dino runner
+│   └── platformer.ins          ← Platformer demo
+└── studio_electron/            ← Electron desktop app for Studio IDE
 ```
 
 ---
@@ -377,15 +386,21 @@ inscript/
 ## Testing
 
 ```bash
-python test_lexer.py         # 25 tests   — tokenization
-python test_parser.py        # 49 tests   — parsing + AST
-python test_analyzer.py      # 35 tests   — semantic analysis
-python test_interpreter.py   # 122 tests  — runtime behavior
-python test_stdlib.py        # 45 tests   — standard library
-python test_v12.py           # 55 tests   — new stdlib + LSP + channels
+python test_lexer.py          # 25 tests   — tokenization
+python test_parser.py         # 49 tests   — parsing + AST
+python test_analyzer.py       # 35 tests   — semantic analysis
+python test_interpreter.py    # 123 tests  — runtime behavior
+python test_v12.py            # 55 tests   — stdlib + LSP + channels
+python test_py_compiler.py    # Compile + execute all pong.ins hooks
 ```
 
-**Total: 331 tests, 0 failing** across Python 3.10, 3.11, 3.12.
+**Total: 287+ tests, 0 failing** (run from `inscript_package/`).
+
+Benchmarks:
+```bash
+python bench_phase7.py        # Phase 7 vs AST walker vs bytecode VM
+python bench_phase6.py        # Legacy Phase 6 benchmarks
+```
 
 ---
 
@@ -411,7 +426,7 @@ MIT — see [LICENSE](LICENSE)
 
 <div align="center">
 
-**InScript v1.0.0** · Built with Python 3.10+
+**InScript v3.9.4** · Built with Python 3.10+
 
 [Documentation](https://inscript-lang.dev) · [Package Registry](https://github.com/YOUR_USERNAME/inscript-packages) · [VS Code Extension](https://marketplace.visualstudio.com/items?itemName=inscript.inscript-lang)
 

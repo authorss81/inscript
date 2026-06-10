@@ -1,2 +1,2 @@
 # InScript language package
-__version__ = "3.9.4"
+from _version import VERSION as __version__

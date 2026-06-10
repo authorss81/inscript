@@ -139,9 +139,10 @@ else:
 
 # ── Server ────────────────────────────────────────────────────────────────────
 if HAS_PYGLS:
+    from _version import VERSION
     server = LanguageServer(
         name="inscript-lsp",
-        version="3.9.4",
+        version=VERSION,
         text_document_sync_kind=TextDocumentSyncKind.Full,
     )
 
