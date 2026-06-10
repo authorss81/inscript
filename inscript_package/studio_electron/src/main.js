@@ -25,20 +25,20 @@ let pythonProc  = null;
 // ── Python server ──────────────────────────────────────────────────────────
 
 function findPython() {
-  // Try venv first, then system python3/python
+  // Try system python first (dev mode), then resourcesPath (production build)
   const candidates = [
-    path.join(process.resourcesPath, 'inscript_runtime', '.venv', 'bin', 'python'),
-    path.join(process.resourcesPath, 'inscript_runtime', '.venv', 'Scripts', 'python.exe'),
     'python3',
     'python',
+    path.join(process.resourcesPath, 'inscript_runtime', '.venv', 'bin', 'python'),
+    path.join(process.resourcesPath, 'inscript_runtime', '.venv', 'Scripts', 'python.exe'),
   ];
-  return candidates[0];  // Electron-builder bundles the runtime; use resourcesPath
+  return candidates.find(c => { try { require('child_process').execSync(c + ' --version', {stdio:'ignore'}); return true; } catch { return false; } }) || 'python';
 }
 
 function startPythonServer(projectDir) {
   const python = findPython();
   const inscript = path.join(
-    process.resourcesPath, 'inscript_runtime', 'inscript.py'
+    __dirname, '..', '..', 'inscript.py'  // dev: ../.. is inscript_package/
   );
 
   pythonProc = spawn(python, [
