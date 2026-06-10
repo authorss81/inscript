@@ -18,7 +18,7 @@
 use crate::Value;
 use crate::OpCode;
 use crate::FuncDef;
-use crate::compiler::{optimize, OptStats};
+use crate::compiler::{optimize_with_types, OptStats};
 use crate::jit::{JitEngine, TraceId};
 use crate::pool::{ArrayPool, ObjectPool, PoolStats, init_interns,
                   intern_nil, intern_bool, intern_int, intern_string};
@@ -96,6 +96,45 @@ impl ObjectCache {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// InlineCache — Phase 4.2
+//
+// Caches method resolution results keyed by (class_name, method_name).
+// Eliminates the O(n) class hierarchy walk for monomorphic call sites.
+// ─────────────────────────────────────────────────────────────────────────────
+
+pub struct InlineCache {
+    cache: std::sync::Mutex<HashMap<(String, String), Option<String>>>,
+}
+
+impl InlineCache {
+    pub fn new() -> Self {
+        InlineCache { cache: std::sync::Mutex::new(HashMap::new()) }
+    }
+
+    pub fn lookup(&self, class_name: &str, method_name: &str) -> Option<Option<String>> {
+        self.cache.lock().unwrap().get(&(class_name.to_string(), method_name.to_string())).cloned()
+    }
+
+    pub fn insert(&self, class_name: &str, method_name: &str, resolved: Option<String>) {
+        self.cache.lock().unwrap().insert((class_name.to_string(), method_name.to_string()), resolved);
+    }
+
+    pub fn len(&self) -> usize {
+        self.cache.lock().unwrap().len()
+    }
+
+    pub fn clear(&self) {
+        self.cache.lock().unwrap().clear();
+    }
+}
+
+impl Default for InlineCache {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // VMEngine
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -125,6 +164,12 @@ pub struct VMEngine {
     // v3.9.4+: JIT compilation engine (hot trace detection → LLVM IR)
     jit: Option<JitEngine>,
 
+    // Phase 4.2: Inline cache for method dispatch
+    method_cache: InlineCache,
+
+    // Phase 5.1: Native function callbacks (Python bridge)
+    native_callbacks: HashMap<String, Arc<dyn Fn(&[Arc<Value>]) -> Result<Arc<Value>, String> + Send + Sync>>,
+
     // Performance metrics
     instructions_executed: usize,
     opt_stats: OptStats,       // v3.9.0: compiler optimization pass results
@@ -142,8 +187,8 @@ impl VMEngine {
             .filter_map(|&b| OpCode::from_byte(b))
             .collect();
 
-        // v3.9.0: Run compiler optimization passes on decoded opcodes
-        let (opcodes, opt_stats) = optimize(opcodes);
+        // v3.9.0: Run compiler optimization passes (including type specialization)
+        let (opcodes, opt_stats, _type_map) = optimize_with_types(opcodes);
 
         Self::from_opcodes(opcodes, Vec::new(), opt_stats)
     }
@@ -217,6 +262,8 @@ impl VMEngine {
             array_pool:   Arc::new(ArrayPool::new()),
             object_pool:  Arc::new(ObjectPool::new()),
             jit: None,
+            method_cache: InlineCache::new(),
+            native_callbacks: HashMap::new(),
             instructions_executed: 0,
             opt_stats,
         }
@@ -327,7 +374,7 @@ impl VMEngine {
                 Ok(())
             }
 
-            // ── Arithmetic ───────────────────────────────────────────────────
+            // ── Arithmetic (generic) ───────────────────────────────────────
 
             OpCode::Add  => self.typed_binary_op("add"),
             OpCode::Sub  => self.typed_binary_op("sub"),
@@ -345,6 +392,32 @@ impl VMEngine {
                 self.stack.push(result);
                 Ok(())
             }
+
+            // ── Phase 4.1: Type-specialized arithmetic fast paths ──────────
+
+            OpCode::AddInt => self.int_binary_op(|a, b| Ok(a.saturating_add(b))),
+            OpCode::SubInt => self.int_binary_op(|a, b| Ok(a.saturating_sub(b))),
+            OpCode::MulInt => self.int_binary_op(|a, b| Ok(a.saturating_mul(b))),
+            OpCode::ModInt => self.int_binary_op(|a, b| if b == 0 {
+                Err("Modulo by zero".to_string())
+            } else {
+                Ok(a % b)
+            }),
+            OpCode::AddFloat => self.float_binary_op(|a, b| Ok(a + b)),
+            OpCode::SubFloat => self.float_binary_op(|a, b| Ok(a - b)),
+            OpCode::MulFloat => self.float_binary_op(|a, b| Ok(a * b)),
+            OpCode::DivFloat => self.float_binary_op(|a, b| {
+                if b == 0.0 { Err("Division by zero".to_string()) }
+                else { Ok(a / b) }
+            }),
+            OpCode::ModFloat => self.float_binary_op(|a, b| {
+                if b == 0.0 { Err("Modulo by zero".to_string()) }
+                else { Ok(a % b) }
+            }),
+            OpCode::EqualInt => self.int_cmp_op(|a, b| a == b),
+            OpCode::EqualFloat => self.float_cmp_op(|a, b| (a - b).abs() < f64::EPSILON),
+            OpCode::LessThanInt => self.int_cmp_op(|a, b| a < b),
+            OpCode::LessThanFloat => self.float_cmp_op(|a, b| a < b),
 
             // ── String operations ────────────────────────────────────────────
 
@@ -806,6 +879,54 @@ impl VMEngine {
         }
     }
 
+    // ── Phase 4.1: Typed opcode helpers ──────────────────────────────────
+
+    /// Fast path: both operands are Int, result is Int.
+    fn int_binary_op<F>(&mut self, op: F) -> Result<(), String>
+    where F: FnOnce(i64, i64) -> Result<i64, String> {
+        let b = self.stack.pop().ok_or("Stack underflow")?;
+        let a = self.stack.pop().ok_or("Stack underflow")?;
+        let x = match a.as_ref() { Value::Int(n) => *n, _ => return Err("Type error: expected int".to_string()) };
+        let y = match b.as_ref() { Value::Int(n) => *n, _ => return Err("Type error: expected int".to_string()) };
+        let result = op(x, y)?;
+        self.stack.push(intern_int(result));
+        Ok(())
+    }
+
+    /// Fast path: both operands are Float, result is Float.
+    fn float_binary_op<F>(&mut self, op: F) -> Result<(), String>
+    where F: FnOnce(f64, f64) -> Result<f64, String> {
+        let b = self.stack.pop().ok_or("Stack underflow")?;
+        let a = self.stack.pop().ok_or("Stack underflow")?;
+        let x = match a.as_ref() { Value::Float(f) => *f, _ => return Err("Type error: expected float".to_string()) };
+        let y = match b.as_ref() { Value::Float(f) => *f, _ => return Err("Type error: expected float".to_string()) };
+        let result = op(x, y)?;
+        self.stack.push(Arc::new(Value::Float(result)));
+        Ok(())
+    }
+
+    /// Fast path: Int comparison → Bool.
+    fn int_cmp_op<F>(&mut self, op: F) -> Result<(), String>
+    where F: FnOnce(i64, i64) -> bool {
+        let b = self.stack.pop().ok_or("Stack underflow")?;
+        let a = self.stack.pop().ok_or("Stack underflow")?;
+        let x = match a.as_ref() { Value::Int(n) => *n, _ => return Err("Type error: expected int".to_string()) };
+        let y = match b.as_ref() { Value::Int(n) => *n, _ => return Err("Type error: expected int".to_string()) };
+        self.stack.push(intern_bool(op(x, y)));
+        Ok(())
+    }
+
+    /// Fast path: Float comparison → Bool.
+    fn float_cmp_op<F>(&mut self, op: F) -> Result<(), String>
+    where F: FnOnce(f64, f64) -> bool {
+        let b = self.stack.pop().ok_or("Stack underflow")?;
+        let a = self.stack.pop().ok_or("Stack underflow")?;
+        let x = match a.as_ref() { Value::Float(f) => *f, _ => return Err("Type error: expected float".to_string()) };
+        let y = match b.as_ref() { Value::Float(f) => *f, _ => return Err("Type error: expected float".to_string()) };
+        self.stack.push(intern_bool(op(x, y)));
+        Ok(())
+    }
+
     /// Look up a method name in a class descriptor (including parent chain).
     /// Returns BoundMethod if found, Nil otherwise.
     fn _lookup_method_in_class(&self, obj_fields: &HashMap<String, Arc<Value>>, key: &str, obj: &Arc<Value>) -> Arc<Value> {
@@ -815,17 +936,27 @@ impl VMEngine {
             Some(cn) => cn,
             None => return intern_nil(),
         };
+
+        // Phase 4.2: Inline cache check — fast path for monomorphic call sites
+        if let Some(cached) = self.method_cache.lookup(&class_name, key) {
+            return match cached {
+                Some(full_name) => Arc::new(Value::BoundMethod(full_name, Arc::clone(obj))),
+                None => intern_nil(),
+            };
+        }
+
         let globals = self.globals.read();
-        let mut current = Some(class_name);
+        let mut current = Some(class_name.clone());
+        let mut resolved: Option<String> = None;
         while let Some(cname) = current.take() {
             if let Some(desc) = globals.get(&cname) {
                 if let Value::Object(desc_obj) = desc.as_ref() {
-                    // Check methods in this class
                     if let Some(methods) = desc_obj.get("__methods__") {
                         if let Value::Object(methods_obj) = methods.as_ref() {
                             if let Some(method_name) = methods_obj.get(key) {
                                 if let Value::String(full_name) = method_name.as_ref() {
-                                    return Arc::new(Value::BoundMethod(full_name.clone(), Arc::clone(obj)));
+                                    resolved = Some(full_name.clone());
+                                    break;
                                 }
                             }
                         }
@@ -841,7 +972,14 @@ impl VMEngine {
                 }
             }
         }
-        intern_nil()
+
+        // Cache the result (even if not found — negative caching avoids re-walking)
+        self.method_cache.insert(&class_name, key, resolved.clone());
+
+        match resolved {
+            Some(full_name) => Arc::new(Value::BoundMethod(full_name, Arc::clone(obj))),
+            None => intern_nil(),
+        }
     }
 
     fn call_function(&mut self, args: usize) -> Result<(), String> {
@@ -892,7 +1030,25 @@ impl VMEngine {
                     Ok(())
                 }
             }
+            Value::NativeFn(name) => {
+                // Native function callback (Python bridge)
+                if let Some(callback) = self.native_callbacks.get(name) {
+                    let result = (callback)(&call_args)?;
+                    self.stack.push(result);
+                    Ok(())
+                } else {
+                    let nil = intern_nil();
+                    self.stack.push(nil);
+                    Ok(())
+                }
+            }
             Value::Function(name) => {
+                // Phase 5.1: Check native callbacks first (Python bridge)
+                if let Some(callback) = self.native_callbacks.get(name) {
+                    let result = (callback)(&call_args)?;
+                    self.stack.push(result);
+                    return Ok(());
+                }
                 // Check if this is a user-defined function
                 if let Some(func_def) = self.func_table.get(name) {
                     // Save caller state
@@ -1268,7 +1424,19 @@ impl VMEngine {
             },
             opt_stats: self.opt_stats.clone(),
             jit_stats: self.jit_stats_string(),
+            method_cache_entries: self.method_cache.len(),
         }
+    }
+
+    // ── Phase 5.1: Native function callbacks ─────────────────────────────
+
+    /// Register a native (Python) function callback by name.
+    pub fn register_native_fn<F>(&mut self, name: &str, callback: F)
+    where F: Fn(&[Arc<Value>]) -> Result<Arc<Value>, String> + Send + Sync + 'static,
+    {
+        self.native_callbacks.insert(name.to_string(), Arc::new(callback));
+        // Also add to globals so LoadGlobal can find it as NativeFn value
+        self.globals.write().insert(name.to_string(), Arc::new(Value::NativeFn(name.to_string())));
     }
 
     pub fn reset(&mut self, bytecode: Vec<u8>) {
@@ -1276,7 +1444,7 @@ impl VMEngine {
             .iter()
             .filter_map(|&b| OpCode::from_byte(b))
             .collect();
-        let (opcodes, opt_stats) = optimize(raw_opcodes);
+        let (opcodes, opt_stats, _type_map) = optimize_with_types(raw_opcodes);
         self.opcodes = opcodes;
         self.opt_stats = opt_stats;
         let nil = intern_nil();
@@ -1307,6 +1475,7 @@ pub struct VMStats {
     pub pool_stats:            PoolStats,  // NEW v3.8.4
     pub opt_stats:             OptStats,   // NEW v3.9.0
     pub jit_stats:             Option<String>,  // v3.9.4+: JIT stats
+    pub method_cache_entries:  usize,       // Phase 4.2: inline cache size
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

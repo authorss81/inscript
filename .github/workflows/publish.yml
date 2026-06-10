@@ -70,8 +70,20 @@ import re; print(re.search(r'^VERSION\s*=\s*\"([^\"]+)\"', open('inscript.py').r
         run: cargo build --release -p inscript-parser
       - working-directory: ${{ env.PACKAGE_DIR }}
         run: |
-          cp target/release/libinscript_parser.so target/release/inscript_parser.pyd 2>/dev/null || \
-          cp target/release/inscript_parser.dll target/release/inscript_parser.pyd 2>/dev/null || true
+          if [ -f target/release/inscript_parser.dll ]; then
+            cp target/release/inscript_parser.dll target/release/inscript_parser.pyd
+            echo "Windows: copied .dll -> .pyd"
+          elif [ -f target/release/libinscript_parser.dylib ]; then
+            cp target/release/libinscript_parser.dylib target/release/inscript_parser.so
+            echo "macOS: copied .dylib -> .so"
+          elif [ -f target/release/libinscript_parser.so ]; then
+            cp target/release/libinscript_parser.so target/release/inscript_parser.so
+            echo "Linux: copied .so"
+          else
+            echo "No Rust library found — cargo build may have failed"
+            ls -la target/release/ 2>/dev/null || true
+            exit 1
+          fi
       - working-directory: ${{ env.PACKAGE_DIR }}
         run: cargo test --release -p inscript-parser -p inscript-vm-engine
       - working-directory: ${{ env.PACKAGE_DIR }}

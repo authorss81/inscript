@@ -16,7 +16,7 @@ Or directly:
 Install pygame first:  pip install pygame
 """
 
-import sys, os, math
+import sys, os, math, time as _time
 
 # Suppress "Hello from the pygame community" banner
 os.environ.setdefault('PYGAME_HIDE_SUPPORT_PROMPT', '1')
@@ -246,6 +246,96 @@ class DrawNamespace(_NS):
     def sprite_size(self, path):
         """Return [w, h] of image without drawing."""
         img = self._img(path); return [img.get_width(), img.get_height()]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# BatchedDrawNamespace — P7.3: Mixed pass-through + blits batch rendering
+# ─────────────────────────────────────────────────────────────────────────────
+class BatchedDrawNamespace(_NS):
+    """Wraps DrawNamespace with sprite blits batching.
+
+    Non-sprite calls (rect, circle, text, etc.) pass through directly with
+    zero queue overhead. Sprite calls (sprite, sprite_ex) are batched and
+    flushed via pygame.Surface.blits() for reduced C call overhead.
+
+    Caller must call flush() at end of each on_draw frame.
+    """
+    def __init__(self, real_draw):
+        self._real = real_draw
+        self._sprite_batch = []
+
+    # ── Direct pass-through (zero overhead for non-sprite ops) ────────────
+    def rect(self, x, y, w, h, color, filled=True, thickness=1):
+        self._real.rect(x, y, w, h, color, filled, thickness)
+    def rect_outline(self, x, y, w, h, color, thickness=1):
+        self._real.rect_outline(x, y, w, h, color, thickness)
+    def rounded_rect(self, x, y, w, h, color, radius=8, filled=True):
+        self._real.rounded_rect(x, y, w, h, color, radius, filled)
+    def circle(self, x, y, radius, color, filled=True, thickness=1):
+        self._real.circle(x, y, radius, color, filled, thickness)
+    def line(self, x1, y1, x2, y2, color, thickness=1):
+        self._real.line(x1, y1, x2, y2, color, thickness)
+    def lines(self, points, color, closed=False, thickness=1):
+        self._real.lines(points, color, closed, thickness)
+    def polygon(self, points, color, filled=True):
+        self._real.polygon(points, color, filled)
+    def ellipse(self, x, y, w, h, color, filled=True):
+        self._real.ellipse(x, y, w, h, color, filled)
+    def arc(self, x, y, w, h, start_deg, end_deg, color, thickness=2):
+        self._real.arc(x, y, w, h, start_deg, end_deg, color, thickness)
+    def pixel(self, x, y, color):
+        self._real.pixel(x, y, color)
+    def text(self, x, y, text, color=None, size=16, bold=False, font_path=None):
+        self._real.text(x, y, text, color, size, bold, font_path)
+    def text_centered(self, cx, cy, text, color=None, size=16, bold=False, font_path=None):
+        self._real.text_centered(cx, cy, text, color, size, bold, font_path)
+    def text_size(self, text, size=16, font_path=None):
+        return self._real.text_size(text, size, font_path)
+    def set_color(self, color):
+        self._real.set_color(color)
+    def set_font(self, name, size):
+        self._real.set_font(name, size)
+    def set_font_size(self, size):
+        self._real.set_font_size(size)
+
+    # ── Sprite ops: batch for blits() ────────────────────────────────────
+    def sprite(self, x, y, path, alpha=255):
+        surf = self._real._img(path)
+        if int(alpha) != 255:
+            surf = surf.copy()
+            surf.set_alpha(max(0, min(255, int(alpha))))
+        self._sprite_batch.append((surf, (int(x), int(y))))
+
+    def sprite_ex(self, x, y, path, angle=0.0, scale=1.0, flip_x=False, flip_y=False, alpha=255):
+        img = self._real._img(path)
+        if flip_x or flip_y:
+            img = pygame.transform.flip(img, bool(flip_x), bool(flip_y))
+        s = float(scale)
+        if abs(s - 1.0) > 0.001:
+            nw = max(1, int(img.get_width() * s))
+            nh = max(1, int(img.get_height() * s))
+            img = pygame.transform.smoothscale(img, (nw, nh))
+        a = float(angle)
+        if abs(a) > 0.001:
+            img = pygame.transform.rotate(img, -a)
+        if int(alpha) != 255:
+            img = img.copy()
+            img.set_alpha(max(0, min(255, int(alpha))))
+        self._sprite_batch.append((img, (int(x), int(y))))
+
+    def sprite_size(self, path):
+        return self._real.sprite_size(path)
+
+    @property
+    def _surf(self): return self._real._surf
+    @_surf.setter
+    def _surf(self, v): self._real._surf = v
+
+    def flush(self):
+        if self._sprite_batch:
+            self._real._surf.blits(self._sprite_batch)
+            self._sprite_batch.clear()
+        # Non-sprite calls were already issued directly — nothing else to do
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -607,7 +697,7 @@ class ColorHelper(_NS):
 # ─────────────────────────────────────────────────────────────────────────────
 # run_scene — main entry point
 # ─────────────────────────────────────────────────────────────────────────────
-def run_scene(ins_file: str, width=800, height=600, fps=60, title=None):
+def run_scene(ins_file: str, width=800, height=600, fps=60, title=None, profile=False, rust_vm=False, batch_draw=False):
     """
     Load an InScript .ins file and run it in a real-time pygame window.
 
@@ -637,6 +727,9 @@ def run_scene(ins_file: str, width=800, height=600, fps=60, title=None):
     # ── namespaces ────────────────────────────────────────────────────────
     screen_ns = ScreenNamespace(surface, pg_clock)
     draw_ns   = DrawNamespace(surface)
+    if batch_draw:
+        _real_draw = draw_ns
+        draw_ns   = BatchedDrawNamespace(draw_ns)
     input_ns  = InputNamespace()
     audio_ns  = AudioNamespace()
     font_ns   = FontNamespace(draw_ns)
@@ -713,8 +806,85 @@ def run_scene(ins_file: str, width=800, height=600, fps=60, title=None):
                     interp._pop()
                 return
 
+    # ── Phase 7: Compile hooks with py_compiler (three-path router) ────────
+    from py_compiler import compile_hook as _py_compile_hook
+
+    # Build scene state dict from interpreter environment
+    def _build_state_dict():
+        _d = {}
+        _e = env
+        while _e is not None:
+            for _k, _v in _e._store.items():
+                if _k not in _d:
+                    _d[_k] = _v
+            _e = _e.parent
+        return _d
+
+    _state = _build_state_dict()
+
+    # Compile each hook once; cache HookCode on hook object
+    for hook in scene_node.hooks:
+        try:
+            param_names = [p.name for p in hook.params]
+            hook._compiled_hook = _py_compile_hook(
+                hook.body, param_names, hook.hook_type
+            )
+        except Exception:
+            hook._compiled_hook = None
+
+    # Game namespace globals dict (shared by all compiled hooks)
+    _game_globals = {
+        "screen": screen_ns, "draw": draw_ns, "input": input_ns,
+        "audio": audio_ns, "font": font_ns, "math2d": math2d_ns,
+        "Color": color_ns, "clock": game_clk,
+        "print": print,
+    }
+    for _n in ["WHITE","BLACK","RED","GREEN","BLUE","YELLOW","CYAN","MAGENTA",
+               "ORANGE","GRAY","DARK_GRAY","LIGHT_GRAY","PURPLE","PINK",
+               "TEAL","NAVY","LIME","BROWN","SKY","GOLD","TRANSPARENT"]:
+        _game_globals[_n] = getattr(color_ns, _n)
+
+    def _sync_state_to_env():
+        """Write state dict back to interpreter environment."""
+        for _k, _v in _state.items():
+            _e = env
+            while _e is not None:
+                if _k in _e._store:
+                    _e._store[_k] = _v
+                    break
+                _e = _e.parent
+
+    def run_hook_phase7(hook_type, *args):
+        for hook in scene_node.hooks:
+            if hook.hook_type == hook_type:
+                hc = getattr(hook, '_compiled_hook', None)
+                if hc is not None:
+                    try:
+                        hc.exec(_game_globals, list(args), _state)
+                        _sync_state_to_env()
+                        return
+                    except Exception:
+                        pass  # fall through to AST walker
+                # Fallback to AST walker
+                interp._push(hook_type)
+                try:
+                    for i, param in enumerate(hook.params):
+                        if i < len(args): env.define(param.name, args[i])
+                    interp.visit(hook.body)
+                except Exception:
+                    pass
+                finally:
+                    interp._pop()
+                return
+    _run_hook = run_hook_phase7  # replace original runner
+
+    # ── Phase 5: Profiling ────────────────────────────────────────────────
+    if profile:
+        _profile_times: dict = {"on_update": [], "on_draw": []}
+        _profile_start_time = _time.perf_counter()
+
     # ── on_start ──────────────────────────────────────────────────────────
-    run_hook("on_start")
+    _run_hook("on_start")
 
     # ── game loop ─────────────────────────────────────────────────────────
     running = True
@@ -736,8 +906,19 @@ def run_scene(ins_file: str, width=800, height=600, fps=60, title=None):
         screen_ns._surf = pygame.display.get_surface()
         draw_ns._surf   = screen_ns._surf
 
-        run_hook("on_update", dt)
-        run_hook("on_draw")
+        if profile:
+            _t0 = _time.perf_counter()
+            _run_hook("on_update", dt)
+            _t1 = _time.perf_counter()
+            _run_hook("on_draw")
+            if batch_draw: draw_ns.flush()
+            _t2 = _time.perf_counter()
+            _profile_times["on_update"].append((_t1 - _t0) * 1000)
+            _profile_times["on_draw"].append((_t2 - _t1) * 1000)
+        else:
+            _run_hook("on_update", dt)
+            _run_hook("on_draw")
+            if batch_draw: draw_ns.flush()
         # v2.7.0: if a SceneManager is active and has a current scene, drive it
         if _scene_mgr is not None and _scene_mgr.current is not None:
             _scene_mgr.update(dt)
@@ -745,10 +926,25 @@ def run_scene(ins_file: str, width=800, height=600, fps=60, title=None):
         pygame.display.flip()
 
     # ── on_exit ───────────────────────────────────────────────────────────
-    run_hook("on_exit")
+    _run_hook("on_exit")
     if _scene_mgr is not None:
         _scene_mgr.stop_all()
     pygame.quit()
+
+    # ── Profiling summary ─────────────────────────────────────────────────
+    if profile:
+        _profile_elapsed = _time.perf_counter() - _profile_start_time
+        print(f"\n{'='*50}")
+        print(f"  Profiling summary ({_profile_elapsed:.2f}s total)")
+        print(f"{'='*50}")
+        for _hook_name, _times in _profile_times.items():
+            if _times:
+                _avg = sum(_times) / len(_times)
+                _min = min(_times)
+                _max = max(_times)
+                print(f"  {_hook_name:12s}: avg={_avg:.3f}ms  min={_min:.3f}ms  "
+                      f"max={_max:.3f}ms  calls={len(_times)}")
+        print(f"{'='*50}\n")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -762,16 +958,21 @@ if __name__ == "__main__":
     p.add_argument("--height", type=int, default=600)
     p.add_argument("--fps",    type=int, default=60)
     p.add_argument("--title",  default=None)
+    p.add_argument("--profile",   action="store_true", help="per-hook timing")
+    p.add_argument("--batch-draw", action="store_true", help="batch draw ops, flush once per frame")
+    p.add_argument("--rust-vm",   action="store_true", help="trial-compile hooks via Rust VM")
     a = p.parse_args()
 
     if not HAS_PYGAME:
         print("pygame not installed.  pip install pygame"); sys.exit(1)
 
     if a.file:
-        run_scene(a.file, a.width, a.height, a.fps, a.title)
+        run_scene(a.file, a.width, a.height, a.fps, a.title,
+                  profile=a.profile, rust_vm=a.rust_vm, batch_draw=a.batch_draw)
     else:
         _ex = os.path.join(os.path.dirname(__file__), "..", "examples", "pong.ins")
         if os.path.exists(_ex):
-            run_scene(_ex, 800, 600, 60, "Pong — InScript")
+            run_scene(_ex, 800, 600, 60, "Pong — InScript",
+                      profile=a.profile, rust_vm=a.rust_vm, batch_draw=a.batch_draw)
         else:
             print("Usage: python pygame_backend.py game.ins")

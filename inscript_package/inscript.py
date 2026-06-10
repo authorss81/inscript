@@ -2777,6 +2777,10 @@ Examples:
                         help="Window height for --game mode (default: 600)")
     parser.add_argument("--fps",    type=int, default=60,
                         help="Target FPS for --game mode   (default: 60)")
+    parser.add_argument("--batch-draw", action="store_true",
+                        help="Batch draw ops (--game mode only)")
+    parser.add_argument("--rust-vm", action="store_true",
+                        help="Use Rust VM for game hooks (--game mode only)")
     # ── v2.4.0: compilation flags ────────────────────────────────────────────
     parser.add_argument("--compile", metavar="FILE",
                         help="v2.4.0: AOT-compile FILE.ins → FILE.ibc bytecode")
@@ -2944,7 +2948,10 @@ Examples:
             from pygame_backend import run_scene
             run_scene(args.file,
                       width=args.width, height=args.height, fps=args.fps,
-                      title=os.path.basename(args.file))
+                      title=os.path.basename(args.file),
+                      profile=getattr(args, 'profile', False),
+                      rust_vm=getattr(args, 'rust_vm', False),
+                      batch_draw=getattr(args, 'batch_draw', False))
             return 0
         except ImportError:
             print("[InScript] pygame_backend not found next to inscript.py", file=sys.stderr)

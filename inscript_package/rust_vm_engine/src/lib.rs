@@ -31,6 +31,9 @@ pub enum Value {
     Object(HashMap<String, Arc<Value>>), // OPTIMIZATION: Arc for O(1) reference counting
     Function(String),                    // Function name
     BoundMethod(String, Arc<Value>),     // Method name + instance (self-binding)
+
+    // Phase 5.1: Native function callbacks (Python → Rust VM bridge)
+    NativeFn(String),  // name only — callback stored in VMEngine's native_callbacks table
 }
 
 impl Value {
@@ -45,6 +48,7 @@ impl Value {
             Value::Object(o) => !o.is_empty(),
             Value::Function(_) => true,
             Value::BoundMethod(_, _) => true,
+            Value::NativeFn(_) => true,
         }
     }
 
@@ -59,6 +63,7 @@ impl Value {
             Value::Object(_) => "object",
             Value::Function(_) => "function",
             Value::BoundMethod(_, _) => "function",
+            Value::NativeFn(_) => "native_fn",
         }
     }
 }
@@ -89,6 +94,7 @@ impl Value {
             }
             Value::Function(name) => format!("<function {}>", name),
             Value::BoundMethod(name, _) => format!("<method {}>", name),
+            Value::NativeFn(name) => format!("<native {}>", name),
         }
     }
 }
@@ -112,6 +118,7 @@ impl fmt::Display for Value {
             Value::Object(o) => write!(f, "{{object:{}}}", o.len()),
             Value::Function(name) => write!(f, "<function {}>", name),
             Value::BoundMethod(name, _) => write!(f, "<method {}>", name),
+            Value::NativeFn(name) => write!(f, "<native {}>", name),
         }
     }
 }
@@ -125,7 +132,7 @@ pub enum OpCode {
     Duplicate,
     Swap,          // NEW v3.8.4: swap top two stack items
 
-    // Arithmetic
+    // Arithmetic (generic)
     Add,
     Sub,
     Mul,
@@ -133,6 +140,21 @@ pub enum OpCode {
     Mod,
     Power,
     Negate,        // NEW v3.8.4: unary negation
+
+    // Phase 4.1: Type-specialized arithmetic (monomorphized by compiler pass)
+    AddInt,
+    AddFloat,
+    SubInt,
+    SubFloat,
+    MulInt,
+    MulFloat,
+    DivFloat,
+    ModInt,
+    ModFloat,
+    EqualInt,
+    EqualFloat,
+    LessThanInt,
+    LessThanFloat,
 
     // Comparison
     Equal,
@@ -243,7 +265,7 @@ impl OpCode {
             OpCode::Or => 0x31,
             OpCode::Not => 0x32,
             OpCode::Halt => 0xFF,
-            _ => 0xFE,
+            _ => 0xFE,  // typed opcodes, parameterized opcodes → 0xFE
         }
     }
 }
@@ -267,8 +289,7 @@ use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyBytes};
 
 /// Convert a Value to a Python object (int/float/bool/str/list/dict/nil)
-#[allow(dead_code)]
-fn value_to_py(py: Python, value: &Value) -> PyObject {
+pub fn value_to_py(py: Python, value: &Value) -> PyObject {
     match value {
         Value::Nil => py.None(),
         Value::Bool(b) => b.into_py(py),
@@ -288,6 +309,7 @@ fn value_to_py(py: Python, value: &Value) -> PyObject {
         }
         Value::Function(name) => format!("<function {}>", name).into_py(py),
         Value::BoundMethod(name, _) => format!("<method {}>", name).into_py(py),
+        Value::NativeFn(name) => format!("<native {}>", name).into_py(py),
     }
 }
 
@@ -370,6 +392,46 @@ fn emit_ir(trace_name: &str, opcodes_str: Bound<'_, PyBytes>) -> String {
     let bytes = opcodes_str.as_bytes();
     let opcodes: Vec<OpCode> = bytes.iter().filter_map(|&b| OpCode::from_byte(b)).collect();
     ir::emit_ir(trace_name, &opcodes)
+}
+
+/// Convert a Python object to a Value (int/float/bool/str/list/dict/nil → Value)
+pub fn py_to_value(py: Python, obj: PyObject) -> Arc<Value> {
+    use crate::pool::{intern_nil, intern_bool, intern_int, intern_string};
+    // Use Bound API for extraction
+    if let Ok(s) = obj.extract::<String>(py) {
+        return intern_string(s);
+    }
+    if let Ok(n) = obj.extract::<i64>(py) {
+        return intern_int(n);
+    }
+    if let Ok(f) = obj.extract::<f64>(py) {
+        return Arc::new(Value::Float(f));
+    }
+    if let Ok(b) = obj.extract::<bool>(py) {
+        return intern_bool(b);
+    }
+    // Try list via extract
+    if let Ok(items_vec) = obj.extract::<Vec<PyObject>>(py) {
+        let mut items = Vec::with_capacity(items_vec.len());
+        for item in items_vec {
+            items.push(py_to_value(py, item));
+        }
+        return Arc::new(Value::Array(items));
+    }
+    // Try dict via extract
+    if let Ok(pairs) = obj.extract::<Vec<(String, PyObject)>>(py) {
+        let mut map = HashMap::new();
+        for (key, val) in pairs {
+            map.insert(key, py_to_value(py, val));
+        }
+        return Arc::new(Value::Object(map));
+    }
+    // None → Nil
+    if obj.is_none(py) {
+        return intern_nil();
+    }
+    // Fallback: string representation
+    intern_string(format!("{}", obj.bind(py)))
 }
 
 #[pymodule]

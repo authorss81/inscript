@@ -2,7 +2,18 @@
 // Complete PyO3 module integration for full AST serialization
 
 use pyo3::prelude::*;
-use pyo3::types::{PyDict, PyList};
+use pyo3::types::{PyDict, PyList, PyTuple};
+use std::sync::Mutex;
+use std::sync::OnceLock;
+use std::collections::HashMap;
+
+// Phase 5.1: Global registry of native (Python) function callbacks
+// Keyed by InScript function name, values are Python callables.
+// Set once (during game init), read by compile_and_run on every frame.
+fn native_bindings() -> &'static Mutex<HashMap<String, PyObject>> {
+    static BINDINGS: OnceLock<Mutex<HashMap<String, PyObject>>> = OnceLock::new();
+    BINDINGS.get_or_init(|| Mutex::new(HashMap::new()))
+}
 
 mod ast;
 mod token;
@@ -750,6 +761,8 @@ fn inscript_parser_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(parse_tokens, m)?)?;
     m.add_function(wrap_pyfunction!(compile, m)?)?;
     m.add_function(wrap_pyfunction!(compile_and_run, m)?)?;
+    m.add_function(wrap_pyfunction!(set_native_binding, m)?)?;
+    m.add_function(wrap_pyfunction!(clear_native_bindings, m)?)?;
     Ok(())
 }
 
@@ -757,10 +770,9 @@ fn inscript_parser_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
 // Compile function — AST to bytecode
 // ─────────────────────────────────────────────────────────────────────
 
-use inscript_vm_engine::{VMEngine, OpCode, Value, FuncDef};
+use inscript_vm_engine::{VMEngine, OpCode, Value, FuncDef, value_to_py, py_to_value};
 use inscript_vm_engine::compiler::optimize;
 use std::sync::Arc;
-use std::collections::HashMap;
 
 #[pyfunction]
 fn compile(source: &str) -> PyResult<(Vec<u8>, Vec<u8>)> {
@@ -885,10 +897,45 @@ fn compile_and_run(source: &str) -> PyResult<String> {
     let func_table: HashMap<String, FuncDef> = raw_functions.into_iter().collect();
 
     let mut vm = VMEngine::from_opcodes_with_source_map(opcodes, constants, source_map, func_table, opt_stats);
+
+    // Phase 5.1: Register native callbacks from global registry
+    let bindings = native_bindings().lock().unwrap();
+    for (name, py_callback) in bindings.iter() {
+        let cb = py_callback.clone();  // PyObject is Send in PyO3
+        vm.register_native_fn(name, move |args: &[Arc<Value>]| -> Result<Arc<Value>, String> {
+            // Convert Arc<Value> args to Python objects
+            Python::with_gil(|py| {
+                let py_args: Vec<PyObject> = args.iter().map(|v| value_to_py(py, v)).collect();
+                let py_args_tuple = PyTuple::new_bound(py, &py_args);
+                match cb.call1(py, py_args_tuple) {
+                    Ok(result) => Ok(py_to_value(py, result)),
+                    Err(e) => Err(format!("Native error: {}", e)),
+                }
+            })
+        });
+
+    }
+    drop(bindings);  // release lock before execution
+
     match vm.execute() {
         Ok(val) => Ok(val.to_string()),
         Err(e) => Ok(format!("Runtime error: {}", e)),
     }
+}
+
+/// Register a Python callable as a native InScript function.
+/// These are checked before user-defined functions and builtins.
+#[pyfunction]
+fn set_native_binding(name: &str, callback: PyObject) {
+    let mut bindings = native_bindings().lock().unwrap();
+    bindings.insert(name.to_string(), callback);
+}
+
+/// Clear all registered native bindings.
+#[pyfunction]
+fn clear_native_bindings() {
+    let mut bindings = native_bindings().lock().unwrap();
+    bindings.clear();
 }
 
 // ─────────────────────────────────────────────────────────────────────

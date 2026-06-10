@@ -232,6 +232,21 @@ impl IrEmitter {
                     OpCode::Mod  => self.emit_int_arith("srem"),
                     OpCode::Div  => self.emit_int_div(),
 
+                    // Phase 4.1: typed opcodes alias to same IR (type dispatch is a VM-level optimization)
+                    OpCode::AddInt     => self.emit_int_arith("add nsw"),
+                    OpCode::AddFloat   => self.emit_int_arith("add nsw"),
+                    OpCode::SubInt     => self.emit_int_arith("sub nsw"),
+                    OpCode::SubFloat   => self.emit_int_arith("sub nsw"),
+                    OpCode::MulInt     => self.emit_int_arith("mul nsw"),
+                    OpCode::MulFloat   => self.emit_int_arith("mul nsw"),
+                    OpCode::DivFloat   => self.emit_int_div(),
+                    OpCode::ModInt     => self.emit_int_arith("srem"),
+                    OpCode::ModFloat   => self.emit_int_arith("srem"),
+                    OpCode::EqualInt   => self.emit_cmp("eq"),
+                    OpCode::EqualFloat => self.emit_cmp("eq"),
+                    OpCode::LessThanInt   => self.emit_cmp("slt"),
+                    OpCode::LessThanFloat => self.emit_cmp("slt"),
+
                     OpCode::Negate => {
                         if let Some(r) = self.vpop() {
                             let m = self.fresh();

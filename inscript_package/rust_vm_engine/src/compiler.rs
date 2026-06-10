@@ -28,11 +28,11 @@ use crate::OpCode;
 pub fn optimize(opcodes: Vec<OpCode>) -> (Vec<OpCode>, OptStats) {
     let original_len = opcodes.len();
 
-    let (opcodes, fold_count)   = pass_constant_fold(opcodes);
-    let (opcodes, fuse_count)   = pass_instruction_fuse(opcodes);
+    let (opcodes, fold_count)     = pass_constant_fold(opcodes);
+    let (opcodes, fuse_count)     = pass_instruction_fuse(opcodes);
     let (opcodes, strength_count) = pass_strength_reduce(opcodes);
-    let (opcodes, dce_count)    = pass_dead_code_elim(opcodes);
-    let opcodes                  = pass_nop_compact(opcodes);
+    let (opcodes, dce_count)      = pass_dead_code_elim(opcodes);
+    let opcodes                    = pass_nop_compact(opcodes);
 
     let final_len = opcodes.len();
 
@@ -44,8 +44,21 @@ pub fn optimize(opcodes: Vec<OpCode>) -> (Vec<OpCode>, OptStats) {
         instruction_fusions:   fuse_count,
         strength_reductions:   strength_count,
         dead_code_removed:     dce_count,
+        specializations:       0,
         type_map:              None,
     })
+}
+
+/// Run all optimization passes PLUS type specialization.
+/// This pass rewrites generic opcodes to typed variants when type inference
+/// proves the operand types.
+pub fn optimize_with_types(opcodes: Vec<OpCode>) -> (Vec<OpCode>, OptStats, TypeMap) {
+    let type_map = pass_type_inference(&opcodes);
+    let (opcodes, specializations) = pass_type_specialize(opcodes, &type_map);
+    let (opcodes, mut stats) = optimize(opcodes);
+    stats.type_map = Some(type_map.clone());
+    stats.specializations = specializations;
+    (opcodes, stats, type_map)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -547,6 +560,32 @@ impl TypeState {
                 new.stack.push(Type::Top);
             }
             OpCode::Nop => {}
+
+            // Phase 4.1: typed opcodes have same type behavior as generics
+            OpCode::AddInt | OpCode::AddFloat
+            | OpCode::SubInt | OpCode::SubFloat
+            | OpCode::MulInt | OpCode::MulFloat
+            | OpCode::ModInt | OpCode::ModFloat => {
+                let b = new.stack.pop().unwrap_or(Type::Top);
+                let a = new.stack.pop().unwrap_or(Type::Top);
+                let result = match (a, b) {
+                    (Type::Int, Type::Int) => Type::Int,
+                    (Type::Float, _) | (_, Type::Float) => Type::Float,
+                    _ => Type::Top,
+                };
+                new.stack.push(result);
+            }
+            OpCode::DivFloat => {
+                new.stack.pop();
+                new.stack.pop();
+                new.stack.push(Type::Float);
+            }
+            OpCode::EqualInt | OpCode::EqualFloat
+            | OpCode::LessThanInt | OpCode::LessThanFloat => {
+                new.stack.pop();
+                new.stack.pop();
+                new.stack.push(Type::Bool);
+            }
         }
         new
     }
@@ -626,13 +665,107 @@ pub fn pass_type_inference(ops: &[OpCode]) -> TypeMap {
     map
 }
 
-/// Run all optimization passes AND type inference.
-/// Returns optimized opcodes, stats (with type map), and the type map.
-pub fn optimize_with_types(opcodes: Vec<OpCode>) -> (Vec<OpCode>, OptStats, TypeMap) {
-    let type_map = pass_type_inference(&opcodes);
-    let (optimized, mut stats) = optimize(opcodes);
-    stats.type_map = Some(type_map.clone());
-    (optimized, stats, type_map)
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 4.1: Type Specialization Pass
+//
+// Rewrites generic opcodes to typed variants using the type inference map.
+// When the type state proves both operands are Int or Float, the generic
+// opcode is replaced with the monomorphized version, eliminating Value
+// boxing/unboxing overhead at runtime.
+//
+// Patterns:
+//   Add  → AddInt   (when both operands are known Int)
+//   Add  → AddFloat (when at least one operand is known Float)
+//   Sub  → SubInt   (when both operands are known Int)
+//   Sub  → SubFloat (when at least one operand is known Float)
+//   ... etc for Mul, Mod, Negate, comparisons
+// ─────────────────────────────────────────────────────────────────────────────
+
+fn pass_type_specialize(ops: Vec<OpCode>, type_map: &TypeMap) -> (Vec<OpCode>, usize) {
+    let mut result = ops;
+    let mut count = 0;
+
+    // For each opcode, look at the stack types *before* it executes.
+    // We need at least the top 1-2 types to decide.
+    for i in 0..result.len() {
+        let stack_types = match type_map.get(&i) {
+            Some(s) => s,
+            None => continue,
+        };
+
+        result[i] = match &result[i] {
+            // ── Binary arithmetic ─────────────────────────────────
+            OpCode::Add => {
+                if stack_types.len() >= 2 {
+                    match (stack_types[stack_types.len() - 2], stack_types[stack_types.len() - 1]) {
+                        (Type::Int, Type::Int) => { count += 1; OpCode::AddInt }
+                        (Type::Float, _) | (_, Type::Float) => { count += 1; OpCode::AddFloat }
+                        _ => continue,
+                    }
+                } else { continue; }
+            }
+            OpCode::Sub => {
+                if stack_types.len() >= 2 {
+                    match (stack_types[stack_types.len() - 2], stack_types[stack_types.len() - 1]) {
+                        (Type::Int, Type::Int) => { count += 1; OpCode::SubInt }
+                        (Type::Float, _) | (_, Type::Float) => { count += 1; OpCode::SubFloat }
+                        _ => continue,
+                    }
+                } else { continue; }
+            }
+            OpCode::Mul => {
+                if stack_types.len() >= 2 {
+                    match (stack_types[stack_types.len() - 2], stack_types[stack_types.len() - 1]) {
+                        (Type::Int, Type::Int) => { count += 1; OpCode::MulInt }
+                        (Type::Float, _) | (_, Type::Float) => { count += 1; OpCode::MulFloat }
+                        _ => continue,
+                    }
+                } else { continue; }
+            }
+            OpCode::Div => {
+                // Division always returns Float — only specialize to Float variants
+                if stack_types.len() >= 2 {
+                    match (stack_types[stack_types.len() - 2], stack_types[stack_types.len() - 1]) {
+                        (Type::Float, _) | (_, Type::Float) => { count += 1; OpCode::DivFloat }
+                        (Type::Int, Type::Int) => { count += 1; OpCode::DivFloat }
+                        _ => continue,
+                    }
+                } else { continue; }
+            }
+            OpCode::Mod => {
+                if stack_types.len() >= 2 {
+                    match (stack_types[stack_types.len() - 2], stack_types[stack_types.len() - 1]) {
+                        (Type::Int, Type::Int) => { count += 1; OpCode::ModInt }
+                        (Type::Float, _) | (_, Type::Float) => { count += 1; OpCode::ModFloat }
+                        _ => continue,
+                    }
+                } else { continue; }
+            }
+            // ── Comparisons ─────────────────────────────────────
+            OpCode::Equal => {
+                if stack_types.len() >= 2 {
+                    match (stack_types[stack_types.len() - 2], stack_types[stack_types.len() - 1]) {
+                        (Type::Int, Type::Int) => { count += 1; OpCode::EqualInt }
+                        (Type::Float, _) | (_, Type::Float) => { count += 1; OpCode::EqualFloat }
+                        _ => continue,
+                    }
+                } else { continue; }
+            }
+            OpCode::LessThan => {
+                if stack_types.len() >= 2 {
+                    match (stack_types[stack_types.len() - 2], stack_types[stack_types.len() - 1]) {
+                        (Type::Int, Type::Int) => { count += 1; OpCode::LessThanInt }
+                        (Type::Float, _) | (_, Type::Float) => { count += 1; OpCode::LessThanFloat }
+                        _ => continue,
+                    }
+                } else { continue; }
+            }
+            // Others are not specialized yet
+            _ => continue,
+        };
+    }
+
+    (result, count)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -648,6 +781,7 @@ pub struct OptStats {
     pub instruction_fusions:   usize,
     pub strength_reductions:   usize,
     pub dead_code_removed:     usize,
+    pub specializations:       usize,
     pub type_map: Option<TypeMap>,
 }
 
@@ -661,7 +795,7 @@ impl OptStats {
 impl std::fmt::Display for OptStats {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f,
-            "OptStats {{ {}/{} instructions ({:.1}% reduction) | folds={} fusions={} strength={} dce={} type_map={} }}",
+            "OptStats {{ {}/{} instructions ({:.1}% reduction) | folds={} fusions={} strength={} dce={} specializations={} type_map={} }}",
             self.final_instructions,
             self.original_instructions,
             self.reduction_pct(),
@@ -669,6 +803,7 @@ impl std::fmt::Display for OptStats {
             self.instruction_fusions,
             self.strength_reductions,
             self.dead_code_removed,
+            self.specializations,
             if self.type_map.is_some() { "yes" } else { "no" },
         )
     }
@@ -1006,5 +1141,110 @@ mod tests {
         let (_optimized, stats, type_map) = optimize_with_types(ops);
         assert!(stats.type_map.is_some());
         assert!(!type_map.is_empty());
+    }
+
+    // ── Type specialization ─────────────────────────────────────────────────────
+
+    #[test]
+    fn specialize_add_int() {
+        let ops = vec![OpCode::Push(1), OpCode::Push(2), OpCode::Add, OpCode::Halt];
+        let type_map = pass_type_inference(&ops);
+        let (out, count) = pass_type_specialize(ops, &type_map);
+        assert_eq!(count, 1, "Expected Add → AddInt");
+        assert!(matches!(out[2], OpCode::AddInt), "Expected AddInt, got {:?}", out[2]);
+    }
+
+    #[test]
+    fn specialize_sub_int() {
+        let ops = vec![OpCode::Push(5), OpCode::Push(3), OpCode::Sub, OpCode::Halt];
+        let type_map = pass_type_inference(&ops);
+        let (out, count) = pass_type_specialize(ops, &type_map);
+        assert_eq!(count, 1);
+        assert!(matches!(out[2], OpCode::SubInt));
+    }
+
+    #[test]
+    fn specialize_mul_int() {
+        let ops = vec![OpCode::Push(2), OpCode::Push(3), OpCode::Mul, OpCode::Halt];
+        let type_map = pass_type_inference(&ops);
+        let (out, count) = pass_type_specialize(ops, &type_map);
+        assert_eq!(count, 1);
+        assert!(matches!(out[2], OpCode::MulInt));
+    }
+
+    #[test]
+    fn specialize_div_float_int() {
+        // Division always returns Float → both Int paths specialize to DivFloat
+        let ops = vec![OpCode::Push(5), OpCode::Push(2), OpCode::Div, OpCode::Halt];
+        let type_map = pass_type_inference(&ops);
+        let (out, count) = pass_type_specialize(ops, &type_map);
+        assert_eq!(count, 1);
+        assert!(matches!(out[2], OpCode::DivFloat));
+    }
+
+    #[test]
+    fn specialize_mod_int() {
+        let ops = vec![OpCode::Push(10), OpCode::Push(3), OpCode::Mod, OpCode::Halt];
+        let type_map = pass_type_inference(&ops);
+        let (out, count) = pass_type_specialize(ops, &type_map);
+        assert_eq!(count, 1);
+        assert!(matches!(out[2], OpCode::ModInt));
+    }
+
+    #[test]
+    fn specialize_equal_int() {
+        let ops = vec![OpCode::Push(1), OpCode::Push(2), OpCode::Equal, OpCode::Halt];
+        let type_map = pass_type_inference(&ops);
+        let (out, count) = pass_type_specialize(ops, &type_map);
+        assert_eq!(count, 1);
+        assert!(matches!(out[2], OpCode::EqualInt));
+    }
+
+    #[test]
+    fn specialize_lessthan_int() {
+        let ops = vec![OpCode::Push(1), OpCode::Push(2), OpCode::LessThan, OpCode::Halt];
+        let type_map = pass_type_inference(&ops);
+        let (out, count) = pass_type_specialize(ops, &type_map);
+        assert_eq!(count, 1);
+        assert!(matches!(out[2], OpCode::LessThanInt));
+    }
+
+    #[test]
+    fn specialize_add_float() {
+        // Push(1) → Int, Push(2) → Int, but Div → Float. Then Add should be AddFloat.
+        let ops = vec![
+            OpCode::Push(1), OpCode::Push(2), OpCode::Div,    // stack: [Float]
+            OpCode::Push(3), OpCode::Push(4), OpCode::Div,    // stack: [Float, Float]
+            OpCode::Add,
+            OpCode::Halt,
+        ];
+        let type_map = pass_type_inference(&ops);
+        let (out, count) = pass_type_specialize(ops, &type_map);
+        // Both Divs are specialized (Int+Int→DivFloat) AND Add is specialized (Float+Float→AddFloat)
+        assert_eq!(count, 3, "Expected 3 specializations (2 DivFloat + 1 AddFloat)");
+        assert!(matches!(out[6], OpCode::AddFloat), "Expected AddFloat at index 6, got {:?}", out[6]);
+    }
+
+    #[test]
+    fn specialize_no_change_on_unknown_types() {
+        // LoadGlobal leaves Type::Top on stack — no specialization possible
+        let ops = vec![OpCode::LoadGlobal(0), OpCode::LoadGlobal(1), OpCode::Add, OpCode::Halt];
+        let type_map = pass_type_inference(&ops);
+        let (out, count) = pass_type_specialize(ops, &type_map);
+        assert_eq!(count, 0, "Expected no specialization for Top operands");
+        assert!(matches!(out[2], OpCode::Add), "Expected Add unchanged");
+    }
+
+    #[test]
+    fn specialize_pipeline_integration() {
+        // Full pipeline with type specialization should produce typed opcodes
+        let ops = vec![OpCode::Push(5), OpCode::Push(3), OpCode::Add, OpCode::Halt];
+        let (out, stats, _) = optimize_with_types(ops);
+        assert!(stats.specializations >= 1, "Expected at least 1 specialization");
+        // The pipeline may fold it to Push(8) — that's fine too
+        assert!(
+            out.iter().any(|o| matches!(o, OpCode::AddInt)) || stats.constant_folds >= 1,
+            "Expected either AddInt or constant fold, got: {:?}", out
+        );
     }
 }

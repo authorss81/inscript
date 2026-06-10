@@ -275,6 +275,62 @@ class Compiler:
         self._eliminate_dead_code(self._proto)
         return self._proto
 
+    def compile_body(self, body_nodes, params=None, hook_name="<hook>"):
+        """Compile a list of AST statement nodes (e.g. hook body) into an FnProto.
+
+        Unlike compile() which takes a Program AST, this takes raw statement nodes.
+        This is used by pygame_backend.py to compile scene hooks to bytecode once,
+        then execute them via vm.VM.run() on every frame.
+
+        Args:
+            body_nodes: list of AST statement nodes, or a BlockStmt (which will be
+                        unwrapped to its .stmts list)
+            params: optional list of parameter names (e.g. ['dt'] for on_update)
+            hook_name: name for the compiled function (for debugging)
+
+        Returns:
+            FnProto ready to be passed to vm.VM.run()
+        """
+        # Unwrap BlockStmt if needed
+        if hasattr(body_nodes, 'body') and not isinstance(body_nodes, (list, tuple)):
+            body_nodes = body_nodes.body
+        saved_proto = self._proto
+        saved_scope = self._scope
+        saved_loop_starts = self._loop_starts
+        saved_break_patches = self._break_patches
+        saved_cont_patches = self._cont_patches
+
+        # Create a fresh function scope whose parent is the outer saved scope,
+        # so that VarDecl/let creates LOCAL registers instead of STORE_GLOBAL.
+        # This mirrors what _fn_decl / _compile_fn do (line 639).
+        self._proto = FnProto(hook_name, source_name=self._src)
+        self._scope = _Scope(self._proto, parent=saved_scope)
+        self._loop_starts = []
+        self._break_patches = []
+        self._cont_patches = []
+
+        # Add parameters as locals
+        if params:
+            for p in params:
+                self._scope.add_local(p)
+
+        # Compile body statements
+        for node in body_nodes:
+            self._stmt(node)
+
+        self._e(Op.RETURN, NIL_REG)
+        self._eliminate_dead_code(self._proto)
+        result = self._proto
+
+        # Restore
+        self._proto = saved_proto
+        self._scope = saved_scope
+        self._loop_starts = saved_loop_starts
+        self._break_patches = saved_break_patches
+        self._cont_patches = saved_cont_patches
+
+        return result
+
     def _eliminate_dead_code(self, proto):
         """v1.3.0: remove unreachable instructions after unconditional JUMP/RETURN."""
         code = proto.code
@@ -1358,3 +1414,14 @@ def compile_source(source, filename="<script>"):
     toks = Lexer(source, filename).tokenize()
     prog = Parser(toks, source).parse()
     return Compiler(filename).compile(prog)
+
+
+def compile_body(body_nodes, params=None, hook_name="<hook>", source_name="<script>"):
+    """Convenience: compile a list of AST statement nodes to FnProto.
+
+    Usage:
+        from compiler import compile_body
+        proto = compile_body(hook.body, params=['dt'], hook_name='on_update')
+        vm.run(proto)
+    """
+    return Compiler(source_name).compile_body(body_nodes, params, hook_name)

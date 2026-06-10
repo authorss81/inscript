@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name            = "inscript-lang"
-version         = "3.9.3"
+dynamic         = ["version"]
 description     = "InScript — a modern scripting language for game development"
 readme          = "README.md"
 license         = { text = "MIT" }
@@ -29,6 +29,10 @@ inscript = "inscript_package.inscript:main"
 [project.urls]
 Homepage   = "https://github.com/authorss81/inscript"
 Repository = "https://github.com/authorss81/inscript"
+
+# ── Dynamic version: reads VERSION = "x.y.z" from inscript_package/inscript.py ──
+[tool.setuptools.dynamic]
+version = {attr = "inscript_package.inscript.VERSION"}
 
 [tool.setuptools.packages.find]
 where = ["."]
