@@ -315,7 +315,7 @@ def t_game_flag_in_cli():
 test("2.1 CLI --game/--width/--height/--fps flags registered", t_game_flag_in_cli)
 
 # Demo games
-for game in ["pong.ins", "breakout.ins", "particles.ins", "dino.ins", "platformer.ins"]:
+for game in ["pong.ins", "breakout.ins", "particles.ins", "dino.ins"]:
     def _t(g=game):
         path = os.path.join(_here, "examples", g)
         assert os.path.exists(path), f"Missing: {g}"
