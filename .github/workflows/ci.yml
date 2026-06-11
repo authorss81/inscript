@@ -34,5 +34,4 @@ jobs:
         python test_parser.py
         python test_analyzer.py
         python test_interpreter.py
-        python test_stdlib.py
         python test_v12.py

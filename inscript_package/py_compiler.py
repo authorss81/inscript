@@ -121,10 +121,17 @@ _GLOBAL_NAMES = frozenset({
     "Vec2","Vec3","Vec4","Rect",
 })
 
-# ── PyCompiler ───────────────────────────────────────────────────────────────
+# ── CompileError ──────────────────────────────────────────────────────────────
 
 class CompileError(Exception):
     """Raised when hook compilation fails — caller should fall back to AST walker."""
+
+
+# ── name collection cache ─────────────────────────────────────────────────────
+_names_cache: T.Dict[int, tuple] = {}  # id(node) -> (names_seen, names_assigned)
+
+
+# ── HookCode ──────────────────────────────────────────────────────────────────
 
 class HookCode:
     """Compiled hook ready for execution.
@@ -236,9 +243,17 @@ class PyCompiler:
 
     def _collect_names(self, node):
         """Collect all IdentExpr names used in the AST (for scoping decisions)."""
+        key = id(node)
+        cached = _names_cache.get(key)
+        if cached is not None:
+            self._names_seen, self._names_assigned = cached
+            return
         self._names_seen: set = set()
         self._names_assigned: set = set()
         self._walk(node)
+        # Cache the exact set objects — they're only read after this point,
+        # and each compile_hook call creates a fresh PyCompiler instance.
+        _names_cache[key] = (self._names_seen, self._names_assigned)
 
     def _walk(self, node):
         """Walk AST and collect identifier names."""

@@ -731,6 +731,8 @@ class StudioApp:
             # Inject project dir for context-sensitive methods
             if method in ("inspect", "scene_list") and "dir" not in params:
                 params["dir"] = self._project_dir
+            if method == "start_game" and "file" in params:
+                params["file"] = os.path.join(self._project_dir, params["file"])
             result = self._bridge._dispatch(method, params)
             return json.dumps({"result": result, "id": req_id},
                               default=str).encode()

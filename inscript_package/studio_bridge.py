@@ -265,7 +265,7 @@ class _GameProcess:
             return False  # already running
         inscript_path = os.path.join(os.path.dirname(__file__), "inscript.py")
         self._proc = _subprocess.Popen(
-            [self._python, inscript_path, self.file_path],
+            [self._python, inscript_path, "--game", self.file_path],
             stdout=_subprocess.PIPE,
             stderr=_subprocess.STDOUT,
             text=True,

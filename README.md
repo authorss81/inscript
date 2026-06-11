@@ -51,9 +51,8 @@ fn apply(p: Pickup, ship: Ship) {
 # No install needed — just Python 3.10+
 git clone https://github.com/YOUR_USERNAME/inscript.git
 cd inscript/inscript_package
-python inscript.py examples/asteroid_blaster.ins
 
-# Or launch a game
+# Launch a game
 python inscript.py --game examples/pong.ins
 
 # Or the REPL
@@ -377,7 +376,7 @@ inscript_package/               ← All real source code
 │   ├── pong.ins                ← Pong game (W/S + UP/DOWN)
 │   ├── breakout.ins            ← Breakout clone
 │   ├── dino.ins                ← Dino runner
-│   └── platformer.ins          ← Platformer demo
+│   └── particles.ins           ← Particle system demo
 └── studio_electron/            ← Electron desktop app for Studio IDE
 ```
 

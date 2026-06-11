@@ -3,7 +3,7 @@
 # Run: python inscript.py --game examples/pong.ins
 #
 # Controls:
-#   Left paddle  : W / S
+#   Left paddle  : W / S / LEFT / RIGHT
 #   Right paddle : UP / DOWN
 #   Restart      : R  (after game over)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -56,8 +56,8 @@ scene Pong {
         }
 
         # Paddle movement
-        if input.key_down("w") { ly = ly - PAD_SPEED * dt }
-        if input.key_down("s") { ly = ly + PAD_SPEED * dt }
+        if input.key_down("w") || input.key_down("left") { ly = ly - PAD_SPEED * dt }
+        if input.key_down("s") || input.key_down("right") { ly = ly + PAD_SPEED * dt }
         if input.key_down("up")   { ry = ry - PAD_SPEED * dt }
         if input.key_down("down") { ry = ry + PAD_SPEED * dt }
         ly = clamp(ly, 0.0, H - PAD_H)

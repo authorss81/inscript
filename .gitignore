@@ -23,6 +23,12 @@ AGENTS.md
 # Rust build artifacts
 target/
 
+# Build artifacts
+test_env/
+dist/
+build/
+*.egg-info/
+
 # Legacy v0.2.0 — use inscript_package/ instead
 inscript/
 inscript.py
