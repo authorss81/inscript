@@ -27,10 +27,16 @@
 - [x] Verify with test suite (14/14 tests pass)
 
 ### v3.9.6.3 — py_compiler feature parity: Lambdas + closures
-- [ ] `|x| x * 2` → Python lambda
-- [ ] Closure capture of outer scope variables
-- [ ] Multi-parameter and zero-parameter lambdas
-- [ ] Lambda in function call args `map(arr, |x| x * 2)`
+- [x] `|x| x * 2` → Python lambda
+- [x] Closure capture of outer scope variables
+- [x] Multi-parameter and zero-parameter lambdas
+- [x] Lambda in function call args `map(arr, |x| x * 2)`
+- [x] Type-annotated lambda params `|x: int, y: int| x + y`
+- [x] Block body lambda `|x| { return x * 2 }`
+- [x] Lambda returns lambda (curried calls)
+- [x] Scene variable name resolution (state["x"] vs Python builtins)
+- [x] Parser: `_suppress_union_type` flag for lambda param type annotations
+- [x] _GLOBAL_NAMES extended with InScript stdlib functions
 
 ### v3.9.6.4 — py_compiler feature parity: Comprehensions + nested fns
 - [ ] List comprehensions `[x*x for x in arr]`

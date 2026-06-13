@@ -119,6 +119,9 @@ _GLOBAL_NAMES = frozenset({
     "ORANGE","GRAY","DARK_GRAY","LIGHT_GRAY","PURPLE","PINK",
     "TEAL","NAVY","LIME","BROWN","SKY","GOLD","TRANSPARENT",
     "Vec2","Vec3","Vec4","Rect",
+    # InScript standard library functions (injected into globals by game engine)
+    "clamp", "sin", "cos", "sqrt", "abs", "floor", "ceil", "round", "random",
+    "lerp", "min", "max",
 })
 
 # ── CompileError ──────────────────────────────────────────────────────────────
@@ -176,6 +179,7 @@ class PyCompiler:
     def __init__(self):
         self._func_params: T.Set[str] = set()  # hook parameter names (Python locals)
         self._match_bindings: T.Set[str] = set()  # match-introduced variable names
+        self._lambda_params: T.Set[str] = set()  # lambda parameter names
 
     def compile_hook(self, node, params: T.List[str] = None,
                      hook_name: str = "") -> T.Optional[HookCode]:
@@ -334,6 +338,9 @@ class PyCompiler:
             pass  # type_name and var_name are metadata, not sub-nodes
         elif isinstance(node, NamespaceAccessExpr):
             self._names_seen.add(node.namespace)
+        elif isinstance(node, LambdaExpr):
+            # Lambda params are NOT added to _names_assigned (lambda-local)
+            self._walk(node.body)
         elif hasattr(node, 'body') and isinstance(node.body, list):
             for s in node.body:
                 self._walk(s)
@@ -457,11 +464,26 @@ class PyCompiler:
         # Match arm bindings are Python locals (introduced by match/case patterns)
         if name in self._match_bindings:
             return _name(name)
-        # Builtins and game namespaces: Python global/builtin lookup
-        if name in _GLOBAL_NAMES or name in _BUILTIN_MAP:
-            py_name = _BUILTIN_MAP.get(name, name)
-            return _name(py_name)
+        # Lambda parameters are Python locals
+        if name in self._lambda_params:
+            return _name(name)
+        # Game namespaces and remapped builtins: Python global/builtin lookup
+        if name in _GLOBAL_NAMES:
+            return _name(name)
+        if name in _BUILTIN_MAP:
+            return _name(_BUILTIN_MAP[name])
+        # Scene variables (explicitly assigned via let or =): state["name"]
+        if name in self._names_assigned:
+            return ast.Subscript(
+                value=_name("state"),
+                slice=_const(name),
+                ctx=ast.Load(),
+            )
+        # Python builtins (like map, filter, range, sum) — check dynamically
+        if hasattr(builtins, name):
+            return _name(name)
         # Everything else is scene state → read from state dict
+        # (covers pre-populated scene vars that weren't assigned in this hook)
         return ast.Subscript(
             value=_name("state"),
             slice=_const(name),
@@ -603,11 +625,9 @@ class PyCompiler:
             callee = _attr(obj, node.callee.attr)
         elif isinstance(node.callee, IdentExpr):
             # Direct function call: foo(...)
-            name = node.callee.name
-            if name in _BUILTIN_MAP:
-                callee = _name(_BUILTIN_MAP[name])
-            else:
-                callee = _name(name)
+            # Use _visit_IdentExpr so scene vars (lambda closures) resolve
+            # to state["name"] rather than Python globals.
+            callee = self._visit_IdentExpr(node.callee)
         else:
             callee = self._convert(node.callee)
 
@@ -748,6 +768,49 @@ class PyCompiler:
             ))
 
         return ast.JoinedStr(values=values)
+
+    def _visit_LambdaExpr(self, node):
+        """|x, y| x + y  →  Python lambda.
+
+        The body may be a single expression (|x| x * 2) or a BlockStmt
+        (|x| { return x * 2 }). Only single-expression bodies map directly
+        to Python's ast.Lambda; block bodies must contain exactly one
+        ReturnStmt with a value.
+        """
+        # Build Python function arguments from lambda params
+        py_args = [ast.arg(arg=p.name) for p in node.params]
+
+        # Register lambda parameter names so _visit_IdentExpr resolves them
+        # as Python locals, not state dict lookups.
+        prev_lambda = self._lambda_params.copy()
+        for p in node.params:
+            self._lambda_params.add(p.name)
+
+        # Convert body
+        if isinstance(node.body, BlockStmt):
+            # Block body — extract single return expression or fail
+            stmts = node.body.body
+            if len(stmts) == 1 and isinstance(stmts[0], ReturnStmt) and stmts[0].value is not None:
+                body = self._convert(stmts[0].value)
+            else:
+                self._lambda_params = prev_lambda
+                raise CompileError("Lambda with multi-statement block body not supported")
+        else:
+            # Single expression body: |x| x * 2
+            body = self._convert(node.body)
+
+        self._lambda_params = prev_lambda
+
+        return ast.Lambda(
+            args=ast.arguments(
+                posonlyargs=[],
+                args=py_args,
+                kwonlyargs=[],
+                kw_defaults=[],
+                defaults=[],
+            ),
+            body=body,
+        )
 
     # ── unsupported — fallback will be used ──────────────────────────────────
 

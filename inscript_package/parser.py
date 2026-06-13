@@ -481,7 +481,7 @@ class Parser:
                     self.advance()
                     ann = TypeAnnotation(name="Optional", is_nullable=True,
                                         generics=[ann], line=line, col=col)
-                if self.current.type == TT.BIT_OR:
+                if self.current.type == TT.BIT_OR and not getattr(self, '_suppress_union_type', False):
                     union_types = [ann]
                     while self.current.type == TT.BIT_OR:
                         self.advance()
@@ -547,8 +547,8 @@ class Parser:
             ann = TypeAnnotation(name="Optional", is_nullable=True,
                                  generics=[ann], line=line, col=col)
 
-        # Union type: `int|string`
-        if self.current.type == TT.BIT_OR:
+        # Union type: `int|string`  (skip if inside lambda param — | is close delimiter)
+        if self.current.type == TT.BIT_OR and not getattr(self, '_suppress_union_type', False):
             union_types = [ann]
             while self.current.type == TT.BIT_OR:
                 self.advance()  # consume '|'
@@ -2528,7 +2528,12 @@ class Parser:
         name     = self.expect_ident("Expected parameter name in lambda")
         type_ann = None
         if self.match(TT.COLON):
+            # Suppress union type parsing — the BIT_OR after the type is
+            # the closing | of the lambda parameter list, not a union operator.
+            saved = getattr(self, '_suppress_union_type', False)
+            self._suppress_union_type = True
             type_ann = self.parse_type_annotation()
+            self._suppress_union_type = saved
         p = Param(name=name, type_ann=type_ann, line=line, col=col)
         if variadic:
             p.variadic = True
