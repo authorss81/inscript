@@ -67,11 +67,6 @@ def main():
         re.compile(r'version-[\d.]+\w*'),
         lambda m, v: f'version-{v}',
     )
-    sync_file(
-        re.compile(r'version [\d.]+\w*'),
-        os.path.join(REPO, "README.md"),
-        lambda m, v: None,  # skip — handled above
-    )
 
     print(f"\nDone. All files synced to v{ver}.")
 

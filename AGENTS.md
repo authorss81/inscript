@@ -7,7 +7,8 @@ The root-level `inscript/` dir and root `inscript.py` are a legacy v0.2.0 packag
 
 ## Entry point
 
-- **CLI entry**: `inscript_package/inscript.py:main()` — VERSION = `"3.0.0"`
+- **CLI entry**: `inscript_package/inscript.py:main()` — VERSION = `"3.9.6"`
+- **Version source**: `inscript.py` line 27 is the single source; `_version.py` reads it dynamically. All Python modules import VERSION from `_version.py`.
 - **Package install**: `pip install inscript-lang` → console script `inscript`
 - **Direct run**: `python inscript_package/inscript.py file.ins`
 
@@ -29,11 +30,14 @@ python inscript.py --fmt file.ins
 # Format check (CI)
 python inscript.py --fmt-check file.ins
 
-# Built-in test runner
+# Built-in test runner (for .ins files with #[test])
 python inscript.py --test file.ins
 
 # Watch + hot reload
 python inscript.py --watch --hot game.ins
+
+# Game mode (bypasses Rust VM fast path, required for scene files)
+python inscript.py --game examples/pong.ins
 ```
 
 ## Testing
@@ -41,49 +45,56 @@ python inscript.py --watch --hot game.ins
 **Tests are self-registering Python scripts** (not pytest) with `✅`/`❌` output. Run from `inscript_package/`:
 
 ```bash
-python test_lexer.py        # 25 tests — tokenization
-python test_parser.py       # 49 tests — parsing + AST
-python test_analyzer.py     # 35 tests — semantic analysis
-python test_interpreter.py  # 122 tests — runtime behavior
-python test_stdlib.py       # 45 tests — standard library
-python test_v12.py          # 55 tests — stdlib + LSP + channels
-python test_py_compiler.py  # Compile + execute all pong.ins hooks via Phase 7
-```
+# Core tests (run in CI)
+python test_lexer.py
+python test_parser.py
+python test_analyzer.py
+python test_interpreter.py
+python test_v12.py
 
-CI also runs: `test_phase6.py`, `test_phase7.py`, `test_audit.py`, `test_comprehensive.py`, `test_v120.py`–`test_v300.py` (447+ total).
+# Extended test suite (run in CI as separate job)
+python test_phase6.py
+python test_phase7.py
+python test_audit.py
+python test_comprehensive.py
+python test_v120.py
+
+# Phase 7 py_compiler tests
+python test_py_compiler.py
+
+# Rust bridge tests
+python test_compiler.py
+python test_fstring.py
+python test_rust_parser.py
+python test_rust_pipeline.py
+```
 
 Benchmarks:
 ```bash
 python bench_phase7.py      # Phase 7 vs AST walker vs bytecode VM (pong.ins)
-python bench_phase6.py      # Legacy Phase 6 benchmarks (compile_body, state sync, draw batch)
+python bench_phase6.py      # Legacy Phase 6 benchmarks
+python bench_lexers.py      # Python lexer vs Rust lexer throughput
+python bench_pipeline.py    # End-to-end pipeline throughput
 ```
 
-## Architecture (five execution paths)
+## Execution paths
 
-Paths A & B share the front-end (Python lexer → parser → AST). Path C is the new Rust pipeline. Path D is the Phase 5 game engine path (deprecated by Path E since Phase 7).
+### Path A (tree-walk interpreter) — REPL, most tests, fallback
+`analyzer.py` → `interpreter.py`
 
-- **Path A** (tree-walk): `analyzer.py` → `interpreter.py` — powers REPL and most tests
-- **Path B** (bytecode VM): `compiler.py` → `vm.py` — production engine; invoked via `.ibc` files or `--compile`
-- **Path C** (Rust compiler + VM): `inscript_rust_parser/` (lexer, parser, compiler) → `rust_vm_engine/` (VM). Exposed via PyO3 as `inscript_parser` Python module. Functions: `lex(source)`, `compile(source)`, `compile_and_run(source)`.
-- **Path D** (bytecode VM in game loop, Phase 5/6): `compiler.py:compile_body()` compiles scene hooks to `FnProto` → `vm.py:VM.run()`. **Deprecated** — 0.5x slower than AST walker on real hooks.
-- **Path E** (Python AST transpilation, Phase 7): `py_compiler.py:PyCompiler` converts InScript hook AST → Python `ast.*` → `compile()` → native code object. Runs hooks at CPython native speed. **Default game engine path.**
+### Path B (Python bytecode VM) — `.ibc` files, `--compile`
+`compiler.py` → `vm.py`. Not used in game loop (see Path E).
 
-## Phase 7: Python AST transpilation (Path E)
+### Path C (Rust compiler + VM via PyO3) — standalone `.ins` scripts
+`inscript_rust_parser/` (lexer, parser, compiler) → `rust_vm_engine/` (VM).  
+Default for `python inscript.py file.ins`. Exposed as `inscript_parser` Python module with functions `lex(source)`, `compile(source)`, `compile_and_run(source)`.
 
-InScript game hooks are transpiled to Python ASTs, compiled to Python code objects via `compile()`, and executed directly. This eliminates all interpreter/VM dispatch overhead — hooks run at CPython native speed.
+### Path E (Phase 7: Python AST transpilation) — **DEFAULT game engine path**
+`py_compiler.py:PyCompiler` converts InScript hook AST → Python `ast.*` → `compile()` → native code object. Runs hooks at CPython native speed. **67× faster than AST walker** on pong.ins.
 
-### Benchmark results (pong.ins, N=5000/1000):
+`--rust-vm` flag exists but is **dead code** — game hooks always use Phase 7 regardless.
 
-| Path | on_update | on_draw | 1000 frames | vs AST |
-|------|-----------|---------|-------------|--------|
-| AST walker | 37.3 µs | 1061 µs | 980 ms | 1× |
-| Bytecode VM | 56.0 µs | 2175 µs | 1772 ms | 0.5× |
-| **Py compiled (P7)** | **2.3 µs** | **23.6 µs** | **14.5 ms** | **67×** |
-
-### Key files
-- `py_compiler.py` — `PyCompiler` class + `compile_hook()` convenience API. Converts InScript AST nodes to Python `ast.*` counterparts. All errors return `None` (caller falls back).
-- `pygame_backend.py:run_hook_phase7()` — Three-path router: py_compiler → AST walker fallback.
-- `pygame_backend.py:BatchedDrawNamespace` — P7.3: sprite calls batched via `Surface.blits()`, non-sprite calls pass through directly.
+## Phase 7: Python AST transpilation
 
 ### Scene state model
 All scene variables (`let` declarations) are stored in a shared `state` dict. The compiled function signature is `__hook(state, dt=None)`:
@@ -92,80 +103,53 @@ All scene variables (`let` declarations) are stored in a shared `state` dict. Th
 - Game namespaces (`draw`, `screen`, etc.) are Python globals (LOAD_GLOBAL)
 - Hook params (`dt`) are Python locals (LOAD_FAST)
 
-State is synced back to the interpreter environment after each hook execution for compatibility with SceneManager and other env-dependent subsystems.
+### Key files
+- `py_compiler.py` — `PyCompiler` class + `compile_hook()`. Converts InScript AST to Python `ast.*`. Returns `None` on failure (caller falls back to AST walker).
+- `pygame_backend.py:run_hook_phase7()` — Three-path router: py_compiler → AST walker fallback. State sync via `_sync_state_to_env()`.
+- `pygame_backend.py:BatchedDrawNamespace` — Sprite calls batched via `Surface.blits()`, non-sprite calls pass through directly.
+
+### Benchmark results (pong.ins, N=5000/1000)
+
+| Path | on_update | on_draw | 1000 frames | vs AST |
+|------|-----------|---------|-------------|--------|
+| AST walker | 37.3 µs | 1061 µs | 980 ms | 1× |
+| Bytecode VM | 56.0 µs | 2175 µs | 1772 ms | 0.5× |
+| **Py compiled (P7)** | **2.3 µs** | **23.6 µs** | **14.5 ms** | **67×** |
 
 ### Compilation fallback
-If `py_compiler.compile_hook()` returns `None` (unsupported node type, SyntaxError, etc.), `run_hook_phase7` falls back to the AST tree-walk interpreter. A compiled hook never silently returns wrong results — it either compiles correctly or doesn't run.
+If `compile_hook()` returns `None` (unsupported node type, SyntaxError, etc.), `run_hook_phase7` falls back to the AST tree-walk interpreter. A compiled hook never silently returns wrong results.
 
-Full architecture: `inscript_package/ARCHITECTURE.md`
+### Known compilation gaps (fallback triggers)
+- MatchStmt, ForExpr (comprehensions), FunctionDecl, StructDecl, ClassDecl → raise CompileError, fallback used
+- F-strings, lambdas → planned for v3.9.6.x microversions
 
-## Rust compiler (Path C)
+## Rust compiler details (Path C)
 
-- **Lexer**: `inscript_rust_parser/src/lexer.rs` — full character-by-character state machine, 85+ token variants
-- **Parser**: `inscript_rust_parser/src/parser.rs` — AST building, includes `parse_fstring_content`
-- **Compiler**: `inscript_rust_parser/src/compiler.rs` — AST-to-bytecode, produces `Vec<OpCode>` + `Vec<Value>`
-- **VM**: `rust_vm_engine/src/vm.rs` — `VMEngine::from_opcodes` and `from_opcodes_with_funcs`
-- **Function defs**: `rust_vm_engine/src/lib.rs` — `FuncDef` struct stores opcodes, constants, param count
-- **Bytecode optimizer**: `rust_vm_engine/src/compiler.rs` — 5 passes (constant fold, instruction fuse, strength reduce, DCE, nop compact) + type inference analysis
-- **JIT engine**: `rust_vm_engine/src/jit.rs` — hot trace detection (backward jumps), execution counting, IR generation on threshold
-- **LLVM IR emitter**: `rust_vm_engine/src/ir.rs` — converts opcodes to LLVM 17 IR text (.ll), all 37 opcodes supported
-- **Native compilation**: `rust_vm_engine/src/compile.rs` — writes IR to temp file, runs opt+llc+cc pipeline, loads shared library via libloading
+- **Lexer**: `inscript_rust_parser/src/lexer.rs` — character-by-character state machine, 85+ token variants
+- **Parser**: `inscript_rust_parser/src/parser.rs` — AST building, `parse_fstring_content`
+- **Compiler**: `inscript_rust_parser/src/compiler.rs` — AST-to-bytecode, `Vec<OpCode>` + `Vec<Value>`
+- **VM**: `rust_vm_engine/src/vm.rs` — `VMEngine::from_opcodes` / `from_opcodes_with_funcs`
+- **Optimizer**: `rust_vm_engine/src/compiler.rs` — 5 passes (constant fold, instruction fuse, strength reduce, DCE, nop compact)
+- **JIT**: `rust_vm_engine/src/jit.rs` — trace-detection stub (backward jumps → execution counting → IR generation). **Never swapped into execution loop** — effectively a no-op.
+- **LLVM IR**: `rust_vm_engine/src/ir.rs` — all 37 opcodes supported. Uses **tagged `i64`** (16-bit type tag), not native types.
+- **Native compilation**: `rust_vm_engine/src/compile.rs` — writes .ll → opt + llc + cc → libloading. Requires `llc` + `opt` (LLVM 17) + `cc` in PATH.
 
-### F-string encoding
-The lexer encodes f-string brace escapes with null-byte markers:
-- `{{` → `\x00{` (literal open brace)
-- `}}` → `}\x00` (literal close brace)
-- Regular `{expr}` is left as-is in the FString token value
-The parser's `parse_fstring_content` decodes these markers back to literal braces while recognizing `{expr}` for interpolation.
-
-### Known issues
-- `OpCode::from_byte()` cannot decode parameterized opcodes — `from_opcodes` bypasses this
-- `Value::String`'s `Display` impl wraps in quotes (`"hello"`); use `to_display_string()` for raw string output
-- `to_byte()` maps all parameterized opcodes to `0xFE` — serialization via `from_opcodes` only
-- Class methods are automatically bound to instances via `BoundMethod` value type
-- For loops compile to indexed while-loops (no iterator protocol, but works for arrays/strings/objects)
+### Rust known issues
+- `OpCode::from_byte()` cannot decode parameterized opcodes; `from_opcodes` bypasses this
+- `Value::String`'s `Display` impl wraps in quotes; use `to_display_string()` for raw output
+- `to_byte()` maps all parameterized opcodes to `0xFE`; serialization via `from_opcodes` only
 - `compile.rs` native compilation requires `llc` + `opt` (LLVM 17) + `cc` in PATH
 
-## Phase 5: Game loop optimization
-
-Scene hooks are compiled from AST to `FnProto` bytecode **once** at load time (via `compiler.py:compile_body()`), then executed by the Python bytecode VM (`vm.py:VM`) during the game loop instead of the AST tree-walk interpreter. This provides 10-50x speedup for per-frame hooks.
-
-### Key files
-- `compiler.py:compile_body()` (line 290) — compiles raw AST statement nodes to `FnProto`
-- `pygame_backend.py:run_hook_compiled()` (line 780) — VM-based hook execution with env state sync
-- `vm.py:VM` — register-based bytecode VM (Path B)
-
-### State synchronization
-The interpreter's `Environment` chain and the VM's `_globals` dict are kept in sync via two-way copy before/after each compiled hook execution. Scene variables (e.g. `ball_x`) are shared between the two systems.
-
-### Profiling
-`--profile` flag adds per-frame timing for `on_update` and `on_draw` hooks using `time.perf_counter()`. Summary printed on exit: avg/min/max per-hook ms + call count.
-
-### Build & test
+### Build Rust extension
 ```bash
 cd inscript_package
-
-# Build Rust DLL
 cargo build --release -p inscript-parser
-
-# Copy to .pyd for Python import
 Copy-Item target/release/inscript_parser.dll target/release/inscript_parser.pyd -Force
-
-# Test (Python tests calling Rust)
-python test_compiler.py       # 16 tests — compiler output
-python test_fstring.py        # f-string interpolation tests
-
-# Test (Rust native)
-cargo test --release -p inscript-parser
-cargo test --release -p rust-vm-engine
-
-# Use Rust VM (now the default — --python to opt out)
-python inscript.py file.ins
 ```
 
-## Phase 7: Python AST transpilation
+## Profiling
 
-See "Architecture → Path E" above. Phase 7 replaces the Phase 5/6 game loop paths (`VMClosure`, `run_hook_compiled`, `_sync_env_to_vm`) with Python AST compilation. The bytecode VM files are preserved for non-game use (`.ibc` serialization, `--compile`).
+`--profile` flag adds per-frame timing for `on_update` and `on_draw` hooks using `time.perf_counter()`. Summary printed on exit: avg/min/max per-hook ms + call count.
 
 ## Language conventions
 
@@ -174,12 +158,18 @@ See "Architecture → Path E" above. Phase 7 replaces the Phase 5/6 game loop pa
 - Null: `nil` (not `null`; `null` raises E0055 since v1.7.4)
 - CLI flags use `--` (e.g. `--repl`, `--check`, `--fmt`)
 
+## Version bump procedure
+
+1. Edit VERSION in `inscript_package/inscript.py` (line 27, `VERSION = "x.y.z"`)
+2. Run `python tools/sync_versions.py` to patch Cargo.toml, package.json, README badges
+3. Update ROADME.md (version badge, current version)
+
 ## Publishing to PyPI
 
 ```bash
 # Tag and push to trigger publish workflow
-git tag -a v3.9.4 -m "InScript v3.9.4"
-git push origin v3.9.4
+git tag -a v3.9.6 -m "InScript v3.9.6"
+git push origin v3.9.6
 ```
 
 The workflow at `.github/workflows/publish.yml`:
@@ -194,7 +184,8 @@ The workflow at `.github/workflows/publish.yml`:
 ## Important notes
 
 - Tests **must be run from `inscript_package/`** — they use `sys.path.insert(0, os.path.dirname(__file__))`
-- Optional deps: `pygame` (game features), `pygls` (LSP server)
+- Optional deps: `pygame` (game features), `pygls` (LSP server, pin to 1.x: `pip install "pygls<2"`)
 - Legacy root-level files (`inscript.py`, `inscript/`, `tests/test_interpreter.py`) are the old v0.2.0 interpreter and shouldn't be modified
 - No Python linter/formatter config — just Python 3.10+ is required
-- Built-in `inscript_test.py` enables writing tests in `.ins` files themselves (run via `--test`)
+- Full architecture: `inscript_package/ARCHITECTURE.md`
+- Production roadmap: `ROADMAP.md` (v3.9.6.x microversion plan through v3.10.0)

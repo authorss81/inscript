@@ -1834,6 +1834,10 @@ class Analyzer(Visitor):
         self.visit(node.body)
         return T_VOID
 
+    def visit_TypePattern(self, node: TypePattern) -> InScriptType:
+        self._define(Symbol(node.var_name, T_ANY, kind="var", line=node.line))
+        return T_ANY
+
     def generic_visit(self, node: Node) -> InScriptType:
         # Silently pass through nodes we haven't handled yet
         return T_ANY

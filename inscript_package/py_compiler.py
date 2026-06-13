@@ -175,6 +175,7 @@ class PyCompiler:
 
     def __init__(self):
         self._func_params: T.Set[str] = set()  # hook parameter names (Python locals)
+        self._match_bindings: T.Set[str] = set()  # match-introduced variable names
 
     def compile_hook(self, node, params: T.List[str] = None,
                      hook_name: str = "") -> T.Optional[HookCode]:
@@ -318,6 +319,19 @@ class PyCompiler:
         elif isinstance(node, RangeExpr):
             self._walk(node.start)
             self._walk(node.end)
+        elif isinstance(node, MatchStmt):
+            self._walk(node.subject)
+            for arm in node.arms:
+                self._walk(arm)
+        elif isinstance(node, MatchArm):
+            if node.pattern is not None:
+                self._walk(node.pattern)
+            if node.guard is not None:
+                self._walk(node.guard)
+            if node.body is not None:
+                self._walk(node.body)
+        elif isinstance(node, TypePattern):
+            pass  # type_name and var_name are metadata, not sub-nodes
         elif hasattr(node, 'body') and isinstance(node.body, list):
             for s in node.body:
                 self._walk(s)
@@ -437,6 +451,9 @@ class PyCompiler:
             return _const(False)
         # Function parameters are Python locals (LOAD_FAST)
         if name in self._func_params:
+            return _name(name)
+        # Match arm bindings are Python locals (introduced by match/case patterns)
+        if name in self._match_bindings:
             return _name(name)
         # Builtins and game namespaces: Python global/builtin lookup
         if name in _GLOBAL_NAMES or name in _BUILTIN_MAP:
@@ -631,8 +648,67 @@ class PyCompiler:
     def _visit_ForExpr(self, node):
         raise CompileError("List comprehensions not supported in hooks")
 
+    def _convert_pattern(self, node, binding=None):
+        """Convert InScript match pattern to Python ast.Match pattern node.
+
+        InScript supports five pattern forms in match arms:
+          - Wildcard: pattern=None, binding=None       → MatchAs()
+          - Binding:  pattern=None, binding="h"         → MatchAs(name="h")
+          - Type:     TypePattern(type_name, var_name)  → MatchClass(cls, [MatchAs(var)])
+          - Literal:  ExprNode (int, string, etc.)      → MatchValue(value)
+        """
+        if node is None and binding is None:
+            # Wildcard: `case _ { }`
+            return ast.MatchAs()
+        if node is None and binding is not None:
+            # Binding only: `case h if guard { }`
+            return ast.MatchAs(name=binding)
+        if isinstance(node, TypePattern):
+            # Type-narrowing: `case int x { }` or `case Vec2 v { }`
+            cls_name = _name(node.type_name)
+            var_pattern = ast.MatchAs(name=node.var_name)
+            return ast.MatchClass(
+                cls=cls_name,
+                patterns=[var_pattern],
+                kwd_attrs=[],
+                kwd_patterns=[],
+            )
+        # Expression / literal pattern: `case 1 { }` or `case x + 1 { }`
+        value = self._convert(node)
+        return ast.MatchValue(value=value)
+
     def _visit_MatchStmt(self, node):
-        raise CompileError("Match statements not supported in hooks")
+        subject = self._convert(node.subject)
+        cases = []
+        for arm in node.arms:
+            pattern = self._convert_pattern(arm.pattern, arm.binding)
+
+            # Collect bindings introduced by this arm's pattern BEFORE
+            # converting guard/body so match-introduced names resolve as
+            # Python locals (not state dict lookups).
+            prev_bindings = self._match_bindings.copy()
+            if arm.binding is not None:
+                self._match_bindings.add(arm.binding)
+            if isinstance(arm.pattern, TypePattern):
+                self._match_bindings.add(arm.pattern.var_name)
+
+            guard = None
+            if arm.guard is not None:
+                guard = self._convert(arm.guard)
+
+            body = self._visit_BlockStmt(arm.body) if arm.body else []
+            if isinstance(body, ast.AST):
+                body = [body]
+            if not body:
+                body = [_pass()]
+
+            # Restore bindings
+            self._match_bindings = prev_bindings
+
+            cases.append(
+                ast.match_case(pattern=pattern, guard=guard, body=body)
+            )
+        return ast.Match(subject=subject, cases=cases)
 
 
 # ── convenience API ──────────────────────────────────────────────────────────

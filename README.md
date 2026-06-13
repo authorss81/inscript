@@ -7,7 +7,7 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-287%20passing-brightgreen.svg)](#testing)
-[![Version](https://img.shields.io/badge/version-3.9.4-blue.svg)](#)
+[![Version](https://img.shields.io/badge/version-3.9.6.1-blue.svg)](#)
 
 </div>
 
@@ -132,24 +132,24 @@ inscript --repl
 ### Standard Library (18 Modules)
 
 ```inscript
-import "math"    // floor, ceil, sin, cos, clamp, lerp, map_range …
-import "string"  // format, pad_left, reverse, words, truncate …
-import "array"   // binary_search, shuffle, group_by, zip_with …
-import "json"    // parse, stringify
-import "io"      // read_file, write_file, read_lines, append_file
-import "random"  // int, float, choice, shuffle, normal, seed
-import "time"    // now, fps, delta, format_duration
-import "color"   // Color, lerp, from_hex, blend, hsl, to_hex
-import "tween"   // linear, ease_in, ease_out, bounce, spring …
-import "grid"    // Grid, get, set, neighbors, pathfind, flood_fill
-import "events"  // EventBus, on, emit, off, once
-import "debug"   // assert, assert_eq, log, warn, inspect, trace
-import "http"    // get, post
-import "path"    // join, basename, stem, ext, exists, glob, mkdir
-import "regex"   // test, match, find_all, sub, split, escape
-import "csv"     // parse, parse_file, to_string, from_dicts
-import "uuid"    // v4, v1, nil, short, is_valid
-import "crypto"  // sha256, md5, hmac_sign, hmac_verify, b64_encode …
+import "math"    # floor, ceil, sin, cos, clamp, lerp, map_range ...
+import "string"  # format, pad_left, reverse, words, truncate ...
+import "array"   # binary_search, shuffle, group_by, zip_with ...
+import "json"    # parse, stringify
+import "io"      # read_file, write_file, read_lines, append_file
+import "random"  # int, float, choice, shuffle, normal, seed
+import "time"    # now, fps, delta, format_duration
+import "color"   # Color, lerp, from_hex, blend, hsl, to_hex
+import "tween"   # linear, ease_in, ease_out, bounce, spring ...
+import "grid"    # Grid, get, set, neighbors, pathfind, flood_fill
+import "events"  # EventBus, on, emit, off, once
+import "debug"   # assert, assert_eq, log, warn, inspect, trace
+import "http"    # get, post
+import "path"    # join, basename, stem, ext, exists, glob, mkdir
+import "regex"   # test, match, find_all, sub, split, escape
+import "csv"     # parse, parse_file, to_string, from_dicts
+import "uuid"    # v4, v1, nil, short, is_valid
+import "crypto"  # sha256, md5, hmac_sign, hmac_verify, b64_encode ...
 ```
 
 ### Built-in Game Types
@@ -169,8 +169,8 @@ let box = Rect(0.0, 0.0, 800.0, 600.0)
 
 ```inscript
 let x: int = 42
-let name = "Ada"                       // inferred: str
-const MAX = comptime { 1024 * 4 }      // = 4096 at compile time
+let name = "Ada"                       # inferred: str
+const MAX = comptime { 1024 * 4 }      # = 4096 at compile time
 
 let scores: [int]       = [95, 87, 72]
 let config: {str: int}  = {"lives": 3, "level": 1}
@@ -183,20 +183,20 @@ fn lerp(a: float, b: float, t: float) -> float {
     return a + (b - a) * t
 }
 
-// Generic function
+# Generic function
 fn first<T>(arr: [T]) -> T { return arr[0] }
-print(first([10, 20, 30]))             // 10
-print(first(["a", "b", "c"]))         // a
+print(first([10, 20, 30]))             # 10
+print(first(["a", "b", "c"]))         # a
 
-// Closure / lambda
+# Closure / lambda
 let double = |x| x * 2
 
-// Default parameters
+# Default parameters
 fn spawn(x: float, y: float = 0.0, hp: int = 100) -> Ship {
     return Ship { pos: Vec2(x, y), hp: hp }
 }
 
-// Multiple return values
+# Multiple return values
 fn minmax(arr: [float]) -> (float, float) {
     return (min(arr), max(arr))
 }
@@ -250,7 +250,7 @@ fn handle(event: GameEvent) {
 
 ```inscript
 fn load_level(path: string) -> Result {
-    let raw  = read_file(path)?        // propagates Err automatically
+    let raw  = read_file(path)?        # propagates Err automatically
     let data = json.parse(raw)?
     return Ok(data)
 }
@@ -306,7 +306,7 @@ fn* wave_spawner(count: int) {
 let spawner = wave_spawner(5)
 while !spawner.done {
     let enemy = spawner.next()
-    // add enemy to scene
+    # add enemy to scene
 }
 ```
 
@@ -373,7 +373,7 @@ inscript_package/               ← All real source code
 │   ├── diagnostics.py          ← Real-time error reporting
 │   └── completions.py          ← Keyword, builtin, symbol completions
 ├── examples/
-│   ├── pong.ins                ← Pong game (W/S + UP/DOWN)
+│   ├── pong.ins                ← Pong game (W/S/LEFT/RIGHT + UP/DOWN)
 │   ├── breakout.ins            ← Breakout clone
 │   ├── dino.ins                ← Dino runner
 │   └── particles.ins           ← Particle system demo
@@ -425,7 +425,7 @@ MIT — see [LICENSE](LICENSE)
 
 <div align="center">
 
-**InScript v3.9.4** · Built with Python 3.10+
+**InScript v3.9.6** · Built with Python 3.10+
 
 [Documentation](https://inscript-lang.dev) · [Package Registry](https://github.com/YOUR_USERNAME/inscript-packages) · [VS Code Extension](https://marketplace.visualstudio.com/items?itemName=inscript.inscript-lang)
 

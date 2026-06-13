@@ -1,54 +1,542 @@
-# InScript Roadmap — Microversion Plan
+# InScript Roadmap — Production-Grade Microversion Plan
 
-> **Current:** v3.9.4 — Phase 7 (Python AST transpilation) shipped. 67× game hook speedup.
-
----
-
-## v3.9.5 — Resolve loose files
-
-- [ ] Review + commit or delete untracked files: `bench_phase4.py`, `test_native_bindings.py`, `test_native_bindings2.py`
-- [ ] Clean up stale build artifacts in `test_env/`, `dist/`, `__pycache__/`
-- [ ] Remove dead Rust VM integration code from `pygame_backend.py` (`--rust-vm` flag, trial compilation)
-
-## v3.9.6 — py_compiler compilation speed
-
-- [ ] Profile `py_compiler.compile_hook()` — currently 2.4ms vs `compile_body` 0.7ms (3.4× slower)
-- [ ] Cache `ast.fix_missing_locations()` tree reuse
-- [ ] Lazy `_collect_names()` — only walk if names haven't changed
-- [ ] Reduce `isinstance` dispatches in `_convert` (pre-compute method table)
-
-## v3.9.7 — py_compiler feature parity
-
-- [ ] `MatchStmt` → Python `match`/`case` (3.10+)
-- [ ] F-string support (`"hello {name}"`)
-- [ ] Lambda/closure expressions
-- [ ] `ForExpr` (list comprehensions)
-- [ ] `FunctionDecl` inside hooks (nested functions)
-- [ ] Class method calls (`obj.method(args)` with named args)
-
-## v3.9.8 — Sprite-heavy benchmark & blits validation
-
-- [ ] Find or create a sprite-heavy `.ins` game (platformer, breakout, etc.)
-- [ ] Validate `BatchedDrawNamespace.sprite()` → `Surface.blits()` works correctly
-- [ ] Benchmark Phase 7 on sprite-heavy workload vs AST walker
-- [ ] Fix any sprite transform bugs (alpha, rotation pivot, scale)
-
-## v3.9.9 — Rust VM assessment
-
-- [ ] Benchmark Rust VM (`--rust-vm`) vs Phase 7 on pong.ins hooks
-- [ ] If Rust VM is slower: deprecate, remove from game path, keep for `.ibc`/`--compile`
-- [ ] If Rust VM is faster: document when to use each path
-- [ ] Remove `_ast_to_source` and trial compilation (already dead code)
-
-## v3.10.0 — Phase 8: Studio integration
-
-- [ ] Wire Phase 7 compilation into Studio's live-preview / hot-reload
-- [ ] Show "compiled" badge per hook in Studio scene inspector
-- [ ] Expose `--profile` hook-level timing in Studio debug panel
+> **Current:** v3.9.6.1 — MatchStmt compilation implemented. All 5 pattern types compile and execute correctly.
+>
+> **Version scheme:** MAJOR.MINOR.PATCH.MICRO — each micro targets a discrete production feature.
+> After v3.9.6.99, roll to v3.9.7.0 for the next feature cluster.
 
 ---
 
-**Longer-term (post-v3.10.0):**
-- InScript→Python transpilation of entire scripts (not just game hooks)
-- WASM target for web deployment
-- TypeScript type definitions for `.ins` files
+## Phase 8 — py_compiler Stability (v3.9.6.1–v3.9.6.9)
+
+### v3.9.6.1 — py_compiler feature parity: MatchStmt ✅
+- [x] `MatchStmt` → Python `match`/`case` (3.10+)
+- [x] Match arm guards compile correctly
+- [x] Wildcard `_` and binding patterns work
+- [x] Type-narrowing patterns (`int x`, `string s`, struct patterns)
+- [x] Verify with test suite (14/14 tests pass)
+
+### v3.9.6.2 — py_compiler feature parity: F-strings
+- [ ] F-string `"hello {name}"` → Python f-string
+- [ ] F-string expression substitution (nested exprs)
+- [ ] F-string brace escapes `{{` `}}`
+- [ ] Raw f-strings `rf"..."` support
+
+### v3.9.6.3 — py_compiler feature parity: Lambdas + closures
+- [ ] `|x| x * 2` → Python lambda
+- [ ] Closure capture of outer scope variables
+- [ ] Multi-parameter and zero-parameter lambdas
+- [ ] Lambda in function call args `map(arr, |x| x * 2)`
+
+### v3.9.6.4 — py_compiler feature parity: Comprehensions + nested fns
+- [ ] List comprehensions `[x*x for x in arr]`
+- [ ] Dict comprehensions `{k: v for k,v in items}`
+- [ ] Nested `FunctionDecl` inside hooks
+- [ ] Generator expressions `(x for x in items)`
+
+### v3.9.6.5 — py_compiler feature parity: Class methods + named args
+- [ ] `obj.method(args)` with positional args
+- [ ] Named/keyword arguments `obj.method(x=1, y=2)`
+- [ ] Chained method calls `obj.foo().bar().baz()`
+- [ ] Static method calls `Type.method()`
+
+### v3.9.6.6 — py_compiler compilation speed optimization
+- [ ] Profile and reduce `compile_hook()` call overhead (currently ~1.6ms)
+- [ ] AST node cache for repeated hooks (avoid re-walk)
+- [ ] Pre-compile all scene hooks at load time (not per-frame)
+- [ ] Parallel compilation of independent hooks
+
+### v3.9.6.7 — Sprite & draw batching validation
+- [ ] Sprite-heavy benchmark game (~1000 sprites)
+- [ ] Validate `BatchedDrawNamespace.blits()` correctness
+- [ ] Fix sprite transform bugs (alpha, rotation pivot, scale)
+- [ ] Benchmark Phase 7 on sprite-heavy vs AST walker
+
+### v3.9.6.8 — Rust VM final assessment
+- [ ] Build `.pyd` and benchmark Rust VM `compile_and_run` vs Phase 7
+- [ ] Benchmark Rust VM hook execution (with PyO3 FFI) vs Phase 7
+- [ ] If Rust VM is slower for hooks: formally deprecate `--rust-vm` in game path
+- [ ] Remove dead `--rust-vm` code from `pygame_backend.py`
+
+### v3.9.6.9 — Studio live-preview + hot-reload
+- [ ] Wire Phase 7 compilation into Studio's live-preview
+- [ ] Show "compiled" / "interpreted" badge per hook in scene inspector
+- [ ] Expose `--profile` hook timing in Studio debug panel
+- [ ] Fix Electron Studio packaging for production
+
+---
+
+## Phase 9 — Debugger (v3.9.6.10–v3.9.6.19)
+
+**P0 gap:** No step debugger is the single biggest blocker for production game dev.
+
+### v3.9.6.10 — Debugger: breakpoint infrastructure
+- [ ] `dbg` built-in function (`dbg(expr)` prints value + location)
+- [ ] Breakpoint class: file, line, condition, enabled flag
+- [ ] Breakpoint manager (add, remove, list, clear)
+- [ ] `--debug` CLI flag to enter debug mode
+
+### v3.9.6.11 — Debugger: step-over + step-into
+- [ ] Execution pause at breakpoints
+- [ ] Step-over (next statement, skip into calls)
+- [ ] Step-into (enter function calls)
+- [ ] Step-out (return to caller)
+- [ ] Continue (resume until next breakpoint)
+
+### v3.9.6.12 — Debugger: variable inspection
+- [ ] `.locals` — list all variables in current scope
+- [ ] `.watch <expr>` — evaluate expression at breakpoint
+- [ ] `.stack` — print call stack with line numbers
+- [ ] Variable modification at breakpoint
+
+### v3.9.6.13 — Debugger: DAP protocol for VS Code
+- [ ] Debug Adapter Protocol (DAP) server
+- [ ] VS Code launch config integration
+- [ ] Hit-count breakpoints
+- [ ] Conditional breakpoints (break when `x > 5`)
+
+### v3.9.6.14 — Debugger: game loop debugging
+- [ ] Break in `on_update` / `on_draw` / `on_start`
+- [ ] Frame advance (step one game frame)
+- [ ] Pause game loop at specific frame count
+- [ ] Inspect scene state mid-frame
+
+### v3.9.6.15 — Debugger: watch window + REPL integration
+- [ ] Expression evaluation in debug REPL
+- [ ] Persistent watch list across steps
+- [ ] Type display for all values
+- [ ] Pretty-print for structs, arrays, enums
+
+---
+
+## Phase 10 — Physics Engine (v3.9.6.20–v3.9.6.29)
+
+**P0 gap:** No physics engine — only primitive AABB/circle overlap.
+
+### v3.9.6.20 — Physics: Box2D binding (native extension)
+- [ ] Create `physics` namespace module
+- [ ] `PhysicsWorld` — world creation, step, gravity
+- [ ] `Body` types: static, dynamic, kinematic
+- [ ] Shape types: rectangle, circle, polygon
+
+### v3.9.6.21 — Physics: collision events + callbacks
+- [ ] `on_begin_contact(a, b)` — collision start callback
+- [ ] `on_end_contact(a, b)` — collision separation
+- [ ] `on_pre_solve(a, b)` — allow/disallow collision
+- [ ] Contact info: point, normal, impulse
+
+### v3.9.6.22 — Physics: joints + constraints
+- [ ] Distance joint (spring)
+- [ ] Revolute joint (hinge/pivot)
+- [ ] Prismatic joint (sliding)
+- [ ] Weld joint (rigid connection)
+- [ ] Mouse joint (click-drag bodies)
+
+### v3.9.6.23 — Physics: triggers + sensors
+- [ ] Sensor bodies (detect overlap without collision response)
+- [ ] `on_trigger_enter(other)`, `on_trigger_exit(other)`
+- [ ] Area detection queries
+- [ ] Ray-cast and shape-cast queries
+
+### v3.9.6.24 — Physics: scene integration
+- [ ] `on_physics_update(dt)` lifecycle hook (fixed timestep)
+- [ ] Physics debug draw (show shapes, contacts, joints)
+- [ ] Body + shape serialization to `.inscene` files
+- [ ] Restitution, friction, density parameters
+
+### v3.9.6.25 — Physics: character controller
+- [ ] `CharacterBody` — move_and_slide, move_and_collide
+- [ ] Slope handling, stair stepping
+- [ ] Platform collision (one-way platforms)
+- [ ] Knockback / impulse API
+
+---
+
+## Phase 11 — GUI System (v3.9.6.30–v3.9.6.39)
+
+**P0 gap:** No GUI system — every game must hand-code UI rendering from scratch.
+
+### v3.9.6.30 — GUI: core widget types
+- [ ] `gui` namespace module
+- [ ] `Button` — text, icon, click handler, states (normal/hover/pressed/disabled)
+- [ ] `Label` — text, font, color, alignment, wrapping
+- [ ] `Panel` — container with background, border, padding
+- [ ] `Image` — sprite widget with stretch/fit/tile modes
+
+### v3.9.6.31 — GUI: layout system
+- [ ] `HBox` — horizontal box layout
+- [ ] `VBox` — vertical box layout
+- [ ] `Grid` — row/column grid layout
+- [ ] Size policies: fixed, fill, expand, shrink
+- [ ] Anchors and margins (screen-relative positioning)
+
+### v3.9.6.32 — GUI: input widgets
+- [ ] `TextInput` — single-line text entry with cursor, selection
+- [ ] `TextArea` — multi-line text input
+- [ ] `Slider` — horizontal/vertical value slider
+- [ ] `Checkbox` — toggle with label
+- [ ] `Dropdown` — selection menu
+
+### v3.9.6.33 — GUI: containers + navigation
+- [ ] `ScrollView` — scrollable content area
+- [ ] `TabContainer` — tabbed panels
+- [ ] `Splitter` — resizable split panes
+- [ ] `Menu` / `MenuBar` — dropdown menus
+- [ ] Keyboard focus navigation (Tab, arrows, Enter)
+
+### v3.9.6.34 — GUI: styling + theming
+- [ ] Theme system: colors, fonts, sizes, margins
+- [ ] Style property inheritance (parent → child)
+- [ ] Hover, pressed, disabled, focused visual states
+- [ ] Custom stylesheets per widget type
+- [ ] Rounded corners, drop shadows, gradients
+
+### v3.9.6.35 — GUI: data binding + MVC
+- [ ] Model-View pattern: widget ↔ variable binding
+- [ ] Observable variables (auto-redraw on change)
+- [ ] List model for dropdowns, grids
+- [ ] Form validation (required, min, max, pattern)
+- [ ] Dialog system (message boxes, file picker, color picker)
+
+---
+
+## Phase 12 — Particle & Animation Systems (v3.9.6.40–v3.9.6.49)
+
+**P1 gap:** Particle system is demo-only, animation system is a standalone script.
+
+### v3.9.6.40 — Particles: built-in particle API
+- [ ] `particles` namespace module
+- [ ] `ParticleEmitter` — position, rate, lifetime, max particles
+- [ ] Particle properties: position, velocity, color, size, rotation, alpha
+- [ ] Emission shapes: point, circle, rectangle, cone
+- [ ] GPU acceleration (pre-compute batch for sprite drawing)
+
+### v3.9.6.41 — Particles: curve-based property modulation
+- [ ] Size-over-lifetime curve
+- [ ] Color-over-lifetime gradient
+- [ ] Velocity-over-lifetime (wind, gravity wells)
+- [ ] Alpha/fade-over-lifetime
+- [ ] Rotation-over-lifetime
+
+### v3.9.6.42 — Particles: advanced features
+- [ ] Sub-emitters (emit on death, on collision)
+- [ ] Attractor / repeller zones
+- [ ] Particle trails / ribbons
+- [ ] Particle collision with scene bodies
+- [ ] Pre-warm (simulate N seconds at spawn)
+
+### v3.9.6.43 — Animation: animation player
+- [ ] `AnimationPlayer` namespace
+- [ ] Property keyframing: position, rotation, scale, color, etc.
+- [ ] Interpolation modes: linear, ease, cubic, bounce, elastic
+- [ ] Animation tracks: parallel, sequential
+- [ ] Play, pause, stop, seek, speed control
+
+### v3.9.6.44 — Animation: state machine
+- [ ] `AnimationStateMachine` — states + transitions
+- [ ] Transition conditions: time, variable threshold, event
+- [ ] Blend trees (cross-fade between animations)
+- [ ] Animation events (callbacks at specific frames)
+- [ ] Blend spaces (2D parameter-driven animation mixing)
+
+### v3.9.6.45 — Animation: tween system
+- [ ] Built-in `tween` namespace (not just a package)
+- [ ] `Tween.to(obj, "property", target, duration)`
+- [ ] Easing presets: 30+ functions
+- [ ] Sequence / parallel tween groups
+- [ ] Ping-pong, loop, delay, on_complete callback
+
+---
+
+## Phase 13 — Visual Editor (v3.9.6.50–v3.9.6.59)
+
+**P0 gap:** No visual editor — everything is code-only.
+
+### v3.9.6.50 — Editor: scene viewport
+- [ ] Electron Studio: replace text editor with hybrid scene view
+- [ ] 2D viewport with pan/zoom/grid
+- [ ] Node tree panel (list all nodes in current scene)
+- [ ] Click-to-select nodes in viewport
+- [ ] Property inspector panel (read/write node properties)
+
+### v3.9.6.51 — Editor: drag-drop placement
+- [ ] Drag sprites/shapes from asset panel into viewport
+- [ ] Snap-to-grid placement
+- [ ] Transform handles (move, rotate, scale)
+- [ ] Multi-select + group move
+- [ ] Undo/redo for all editor actions
+
+### v3.9.6.52 — Editor: scene file round-trip
+- [ ] `.inscene` visual format → `SceneTree` deserialization
+- [ ] Editor modifications saved back to `.inscene` files
+- [ ] Node component system (attach scripts to nodes)
+- [ ] Script-to-node binding (edit `.ins` from node inspector)
+- [ ] Hot-reload scene changes without restart
+
+### v3.9.6.53 — Editor: tilemap editor
+- [ ] Tile palette panel
+- [ ] Brush tools: paint, fill, erase, pick
+- [ ] Layer management (multiple tile layers with z-order)
+- [ ] Auto-tiling (rule-based tile placement)
+- [ ] Collision layer visualization
+
+### v3.9.6.54 — Editor: animation editor
+- [ ] Timeline panel with keyframe tracks
+- [ ] Keyframe insertion/deletion/moving
+- [ ] Animation curve editor (Bezier handles)
+- [ ] Onion skinning (previous frame ghost)
+- [ ] Skeleton animation support (bone hierarchy)
+
+### v3.9.6.55 — Editor: audio + asset management
+- [ ] Asset browser (sprites, sounds, fonts, scenes)
+- [ ] Drag-drop asset reference into code editor
+- [ ] Audio preview (play sounds in editor)
+- [ ] Sprite-sheet slicing tool
+- [ ] Texture atlas packing
+
+---
+
+## Phase 14 — Platform Export & Deployment (v3.9.6.60–v3.9.6.69)
+
+**P1 gap:** No mobile/web export, desktop build is manual.
+
+### v3.9.6.60 — Export: WASM web target
+- [ ] InScript → Python → Pyodide/WASM compilation pipeline
+- [ ] WebGL rendering backend (replay SDL2 calls via WebGL)
+- [ ] Touch input mapping (touch → mouse/keyboard events)
+- [ ] Asset bundling for web (embed assets in WASM)
+- [ ] Audio: WebAudio API integration
+
+### v3.9.6.61 — Export: mobile target (Android)
+- [ ] Android APK build pipeline (python-for-android or chaquopy)
+- [ ] Touch input: multi-touch, gestures (swipe, pinch, tap)
+- [ ] Screen resolution scaling
+- [ ] Back button, lifecycle management (pause/resume)
+- [ ] Performance profile: 60fps on mid-range devices
+
+### v3.9.6.62 — Export: mobile target (iOS)
+- [ ] iOS IPA build pipeline
+- [ ] Metal rendering backend for iOS
+- [ ] iOS-specific input (haptic feedback, tilt sensor)
+- [ ] App icon, splash screen, orientation config
+- [ ] App Store compliance checklist
+
+### v3.9.6.63 — Export: desktop installer
+- [ ] `--build` flag produces standalone executable (PyInstaller/Nuitka)
+- [ ] Asset bundling (single `.insgame` file)
+- [ ] Auto-update mechanism
+- [ ] Steam SDK integration (achievements, leaderboards, cloud saves)
+- [ ] Windows installer (.msi), macOS (.dmg), Linux (.AppImage)
+
+### v3.9.6.64 — Export: asset pipeline
+- [ ] Texture compression (PVRTC, ETC2, ASTC for mobile)
+- [ ] Audio compression (Vorbis → MP3/OGG per platform)
+- [ ] Font subsetting (include only used characters)
+- [ ] Asset hot-reload toggle for development builds
+- [ ] Content manifest + integrity checks
+
+---
+
+## Phase 15 — Networking & Multiplayer (v3.9.6.70–v3.9.6.79)
+
+**P2 gap:** No real networking — only local single-player.
+
+### v3.9.6.70 — Networking: WebSocket client
+- [ ] `net` namespace module
+- [ ] `WebSocket.connect(url)` — client connection
+- [ ] `send(data)`, `on_message`, `on_open`, `on_close`
+- [ ] Text and binary message support
+- [ ] Auto-reconnect with backoff
+
+### v3.9.6.71 — Networking: WebSocket server
+- [ ] Built-in WebSocket server (embedded in game process)
+- [ ] Client management (connect, disconnect, list)
+- [ ] Broadcast, send_to, send_except
+- [ ] Room/lobby management
+- [ ] Server-authoritative game loop skeleton
+
+### v3.9.6.72 — Networking: UDP transport
+- [ ] Low-latency UDP transport
+- [ ] Packet serialization (binary protocol)
+- [ ] Sequence numbers and ACK
+- [ ] Reliability layer (selective retransmit)
+- [ ] Connection state machine (handshake, heartbeat, timeout)
+
+### v3.9.6.73 — Networking: state synchronization
+- [ ] Authoritative server state broadcasting
+- [ ] Client-side prediction + reconciliation
+- [ ] Entity interpolation (smooth remote movement)
+- [ ] Delta compression (send only changed state)
+- [ ] Lag compensation (rollback + resimulate)
+
+### v3.9.6.74 — Networking: matchmaking + lobbies
+- [ ] Lobby discovery (LAN broadcast)
+- [ ] Join-by-code (peer-to-peer)
+- [ ] Simple matchmaking (Elosystem)
+- [ ] Player profiles + authentication
+- [ ] NAT punch-through for peer-to-peer
+
+---
+
+## Phase 16 — 3D Rendering & Graphics (v3.9.6.80–v3.9.6.89)
+
+**P3 gap:** 2D-only via pygame. No 3D, no shader execution.
+
+### v3.9.6.80 — 3D: rendering backend
+- [ ] OpenGL 3.3+ core rendering backend
+- [ ] Camera system (perspective/orthographic)
+- [ ] 3D mesh loading (.obj, .glTF)
+- [ ] Material system (diffuse, normal, specular, emission maps)
+- [ ] Lighting: directional, point, spot lights
+
+### v3.9.6.81 — 3D: scene graph
+- [ ] 3D scene node hierarchy
+- [ ] Transform: position, rotation (quaternion), scale
+- [ ] MeshInstance, Light, Camera node types
+- [ ] Frustum culling
+- [ ] Level-of-detail (LOD) system
+
+### v3.9.6.82 — 3D: skeletal animation
+- [ ] Skeleton + bone hierarchy
+- [ ] Skinned mesh rendering (GPU skinning)
+- [ ] Animation retargeting
+- [ ] Blend shapes / morph targets
+- [ ] Ragdoll physics integration
+
+### v3.9.6.83 — Shader: runtime execution
+- [ ] InScript shader AST → GLSL compilation
+- [ ] Shader uniform binding from InScript code
+- [ ] Post-processing pipeline (bloom, DOF, SSAO)
+- [ ] Compute shaders for particle simulation
+- [ ] Shader hot-reload (edit shader → see result live)
+
+### v3.9.6.84 — 3D: post-processing + effects
+- [ ] HDR rendering + tone mapping
+- [ ] Shadow mapping (directional/spot)
+- [ ] Reflections (SSR, reflection probes)
+- [ ] Skybox system
+- [ ] Fog (distance, height, volumetric)
+
+---
+
+## Phase 17 — Rust VM Production (v3.9.6.90–v3.9.6.99)
+
+**P3 gap:** Rust VM is incomplete — JIT not wired, LLVM IR uses tagged ints.
+
+### v3.9.6.90 — Rust: wire JIT into execution loop
+- [ ] After hot trace detected + native code compiled, swap VM dispatch to native fn
+- [ ] Native function cache with LRU eviction
+- [ ] Deoptimization (guard failure → fall back to interpreted)
+- [ ] OSR (on-stack replacement) for long-running loops
+- [ ] Benchmark JIT speed vs non-JIT, publish results
+
+### v3.9.6.91 — Rust: LLVM IR native types
+- [ ] Replace tagged `i64` scheme with native LLVM types (`i32`, `double`, `i1`)
+- [ ] Type-inference-guided IR generation (use specialized types when known)
+- [ ] Auto-vectorization hints (`llvm.memcpy`, `llvm.assume`)
+- [ ] Function inlining across InScript call boundaries
+- [ ] Tail-call optimization for recursive functions
+
+### v3.9.6.92 — Rust: exception handling + Try/Throw
+- [ ] Rust-side unwind/panic handling for InScript try/catch
+- [ ] `Throw` opcode implementation in Rust VM
+- [ ] `Try` opcode with catch block dispatch
+- [ ] Stack unwinding with frame cleanup (`defer`)
+- [ ] Cross-FFI exception propagation (Rust → Python)
+
+### v3.9.6.93 — Rust: async/coroutine support
+- [ ] Generator frame allocation in Rust VM
+- [ ] `yield` opcode: suspend/resume execution
+- [ ] `await` opcode: suspend until future resolves
+- [ ] Channel operations in Rust VM (recv/send/select)
+- [ ] Event loop integration (wake on IO)
+
+### v3.9.6.94 — Rust: full standalone runtime
+- [ ] Separate `inscript` binary (no Python dependency)
+- [ ] SDL2/GLFW-based game loop in Rust
+- [ ] InScript bytecode → native executable pipeline
+- [ ] Zero-copy FFI between runtime and compiled hooks
+- [ ] Benchmark: standalone Rust runtime vs Phase 7 + CPython
+
+### v3.9.6.95 — Rust: build + CI pipeline
+- [ ] Pre-built wheels for all platforms (macOS ARM/x64, Windows, Linux)
+- [ ] CI publishes `.pyd` / `.so` / `.dylib` on every tag
+- [ ] Criterion benchmarks in CI (track perf regressions)
+- [ ] Fuzz testing for Rust lexer/parser/compiler
+- [ ] Property-based testing for VM opcodes
+
+---
+
+## Phase 18 — Ecosystem & Community (v3.9.6.96–v3.9.6.99)
+
+**P2 gap:** Tiny ecosystem, no community, no tutorials.
+
+### v3.9.6.96 — Documentation site
+- [ ] Full documentation website (VitePress / Docusaurus)
+- [ ] Language reference: every construct with examples
+- [ ] Standard library reference: every function with signatures
+- [ ] Tutorial: "Your first InScript game" (step-by-step)
+- [ ] API docs auto-generated from source
+
+### v3.9.6.97 — Tutorial games + cookbook
+- [ ] 5 tutorial games: Pong, Breakout, Platformer, Top-down RPG, Puzzle
+- [ ] Cookbook: 50+ common patterns (movement, shooting, state machines, etc.)
+- [ ] Video series: "InScript in 30 minutes"
+- [ ] Migration guide: Lua/Unity/GDScript → InScript
+- [ ] Best practices guide: project structure, performance, debugging
+
+### v3.9.6.98 — Package ecosystem growth
+- [ ] Standard package templates (scaffold with `inscript --new`)
+- [ ] Package submission CI (auto-test + publish on PR merge)
+- [ ] Featured packages program
+- [ ] Package quality badges (tested, documented, maintained)
+- [ ] Community registry moderation tools
+
+### v3.9.6.99 — Community infrastructure
+- [ ] Discord server (chat, help, showcase)
+- [ ] GitHub issue templates + triage workflow
+- [ ] Community showcase page (games made with InScript)
+- [ ] Monthly release cadence (predictable schedule)
+- [ ] Security vulnerability reporting process (HackerOne / self-hosted)
+
+---
+
+## v3.10.0 — Production 1.0 Release Candidate
+
+- [ ] All P0 gaps closed: debugger ✓, physics ✓, GUI ✓, visual editor ✓, ECS ✓
+- [ ] All P1 gaps closed: particles ✓, animation ✓, mobile/web export ✓, docs ✓
+- [ ] All P2 gaps substantially addressed
+- [ ] Performance targets met:
+  - [ ] 60fps minimum on 5-year-old hardware with 2D scenes
+  - [ ] 30fps minimum on mid-range mobile
+  - [ ] 1000+ sprites at 60fps with batching
+  - [ ] <1ms per frame for physics + game logic (non-rendering)
+- [ ] Production game shipped (reference title demonstrating all features)
+- [ ] 100+ community packages
+- [ ] 50+ stars on GitHub
+- [ ] 10+ active contributors
+
+---
+
+## Post-v3.10.0 — Platform Expansion
+
+### v3.10.1 — Console support
+- [ ] Nintendo Switch SDK integration
+- [ ] PlayStation (PS4/PS5) SDK integration
+- [ ] Xbox SDK integration
+- [ ] Console-specific input (controllers, vibration, lightbar)
+- [ ] Certification checklist compliance
+
+### v3.10.2 — Cloud + backend services
+- [ ] InScript Cloud: hosted multiplayer relay
+- [ ] Leaderboard service (REST API)
+- [ ] Player authentication (OAuth, Steam, Epic, Apple, Google)
+- [ ] Cloud save synchronization
+- [ ] Analytics / telemetry SDK
+
+### v3.10.3 — AI + machine learning
+- [ ] `ai` namespace: neural network inference
+- [ ] ONNX model import (trained in PyTorch/TF → run in InScript)
+- [ ] Behavior tree editor (visual AI state machine)
+- [ ] Pathfinding: A*, navmesh, flow fields
+- [ ] ML-agent integration (training → exported policy)
