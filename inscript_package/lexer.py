@@ -330,9 +330,19 @@ class Lexer:
         if ch.isdigit():
             self._scan_number(ch, sl, sc); return
         if ch.isalpha() or ch == "_":
-            # Check for f"..." string prefix BEFORE general identifier scan
+            # Check for f"..." / rf"..." / fr"..." string prefix
             if ch in ("f", "F") and self.current in ('"', "'"):
-                self._scan_fstring(self.advance(), sl, sc)
+                self._scan_fstring(self.advance(), sl, sc, raw=False)
+                return
+            if ch in ("f", "F") and self.current in ("r", "R") and self.peek in ('"', "'"):
+                # fr"..." — raw f-string (no backslash escapes)
+                self.advance()
+                self._scan_fstring(self.advance(), sl, sc, raw=True)
+                return
+            if ch in ("r", "R") and self.current in ("f", "F") and self.peek in ('"', "'"):
+                # rf"..." — raw f-string (no backslash escapes)
+                self.advance()
+                self._scan_fstring(self.advance(), sl, sc, raw=True)
                 return
             # Check for r"..." raw string prefix
             if ch in ("r", "R") and self.current in ('"', "'"):
@@ -375,17 +385,19 @@ class Lexer:
                 chars.append(ch)
         self._error("Unterminated triple-quoted string", sl, sc)
 
-    def _scan_fstring(self, quote: str, sl: int, sc: int):
-        """Scan f"...{expr}..." or $"...{expr}..." — store the raw template as FSTRING token. v1.9.15: $"..." is the new preferred syntax; both prefixes share this scanner.
+    def _scan_fstring(self, quote: str, sl: int, sc: int, raw: bool = False):
+        """Scan f"...{expr}..." or $"...{expr}..." — store the raw template as FSTRING token.
+        v1.9.15: $"..." is the new preferred syntax; both prefixes share this scanner.
         {{ and }} are literal brace escapes.
-        Inside {}, quote characters are allowed (e.g. d["key"])."""
+        Inside {}, quote characters are allowed (e.g. d["key"]).
+        If raw=True, backslash escapes are NOT processed (rf"..." / fr"...")."""
         chars = []
         brace_depth = 0
         while self.current is not None:
             if self.current == quote and brace_depth == 0:
                 break
             ch = self.advance()
-            if ch == "\n":
+            if ch == "\n" and not raw:
                 self._error("Unterminated f-string — newline inside string", sl, sc)
             elif ch == "{" and self.current == "{" and brace_depth == 0:
                 self.advance()
@@ -399,7 +411,7 @@ class Lexer:
             elif ch == "}":
                 brace_depth = max(0, brace_depth - 1)
                 chars.append(ch)
-            elif ch == "\\" and self.current is not None and brace_depth == 0:
+            elif not raw and ch == "\\" and self.current is not None and brace_depth == 0:
                 esc = self.advance()
                 _ESC = {"n":"\n","t":"\t","r":"\r","\\":"\\",'"':'"',"\'":"\'"}
                 chars.append(_ESC.get(esc, esc))

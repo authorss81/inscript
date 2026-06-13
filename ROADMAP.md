@@ -1,6 +1,6 @@
 # InScript Roadmap — Production-Grade Microversion Plan
 
-> **Current:** v3.9.6.1 — MatchStmt compilation implemented. All 5 pattern types compile and execute correctly.
+> **Current:** v3.9.6.2 — F-string compilation implemented. All f-string features compile and execute correctly.
 >
 > **Version scheme:** MAJOR.MINOR.PATCH.MICRO — each micro targets a discrete production feature.
 > After v3.9.6.99, roll to v3.9.7.0 for the next feature cluster.
@@ -16,11 +16,15 @@
 - [x] Type-narrowing patterns (`int x`, `string s`, struct patterns)
 - [x] Verify with test suite (14/14 tests pass)
 
-### v3.9.6.2 — py_compiler feature parity: F-strings
-- [ ] F-string `"hello {name}"` → Python f-string
-- [ ] F-string expression substitution (nested exprs)
-- [ ] F-string brace escapes `{{` `}}`
-- [ ] Raw f-strings `rf"..."` support
+### v3.9.6.2 — py_compiler feature parity: F-strings ✅
+- [x] F-string `"hello {name}"` → Python f-string
+- [x] F-string expression substitution (nested exprs)
+- [x] F-string brace escapes `{{` `}}`
+- [x] Raw f-strings `rf"..."` support
+- [x] Format specifiers `{x:.2f}` work correctly
+- [x] Namespace access `::` inside f-string expressions
+- [x] `_visit_NamespaceAccessExpr` handler added (Color::RED → Color.RED)
+- [x] Verify with test suite (14/14 tests pass)
 
 ### v3.9.6.3 — py_compiler feature parity: Lambdas + closures
 - [ ] `|x| x * 2` → Python lambda

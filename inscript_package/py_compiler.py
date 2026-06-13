@@ -332,6 +332,8 @@ class PyCompiler:
                 self._walk(node.body)
         elif isinstance(node, TypePattern):
             pass  # type_name and var_name are metadata, not sub-nodes
+        elif isinstance(node, NamespaceAccessExpr):
+            self._names_seen.add(node.namespace)
         elif hasattr(node, 'body') and isinstance(node.body, list):
             for s in node.body:
                 self._walk(s)
@@ -633,6 +635,119 @@ class PyCompiler:
             # 0..=10 → range(0, 11)
             end = _binop(end, ast.Add(), _const(1))
         return _call(_name("range"), [start, end])
+
+    def _visit_NamespaceAccessExpr(self, node):
+        """Color::RED → Color.RED (Python attribute access)."""
+        return _attr(_name(node.namespace), node.member)
+
+    def _fstring_segments(self, template: str):
+        """Split f-string template into (kind, text) pairs — "lit" or "expr".
+        Handles sentinel-escaped braces \x00{ and }\x00 (from {{ and }} in source),
+        nested brace depth, and inline strings inside expressions.
+        """
+        segments = []
+        i = 0
+        n = len(template)
+        lit_buf = []
+        while i < n:
+            ch = template[i]
+            if ch == "\x00" and i + 1 < n and template[i + 1] == "{":
+                lit_buf.append("{"); i += 2
+            elif ch == "}" and i + 1 < n and template[i + 1] == "\x00":
+                lit_buf.append("}"); i += 2
+            elif ch == "{":
+                if lit_buf:
+                    segments.append(("lit", "".join(lit_buf))); lit_buf = []
+                depth = 1; j = i + 1; in_str = None
+                while j < n and depth > 0:
+                    c2 = template[j]
+                    if in_str:
+                        if c2 == "\\" and j + 1 < n: j += 2; continue
+                        if c2 == in_str: in_str = None
+                    elif c2 in ('"', "'"):
+                        in_str = c2
+                    elif c2 == "{":
+                        depth += 1
+                    elif c2 == "}":
+                        depth -= 1
+                        if depth == 0: break
+                    j += 1
+                segments.append(("expr", template[i + 1:j]))
+                i = j + 1
+            else:
+                lit_buf.append(ch); i += 1
+        if lit_buf:
+            segments.append(("lit", "".join(lit_buf)))
+        return segments
+
+    def _visit_FStringExpr(self, node):
+        """f"Hello {name}, score={score:.1f}" → Python JoinedStr.
+
+        Splits the template into literal/expr segments, converts each expr
+        through _convert so scene vars become state["name"] lookups, and
+        builds a Python ast.JoinedStr with FormattedValue entries.
+        """
+        from parser import Parser as _Parser
+        from lexer import tokenize as _tokenize
+
+        values = []
+        for kind, text in self._fstring_segments(node.template):
+            if kind == "lit":
+                values.append(_const(text))
+                continue
+            # Expression segment: split off optional format spec {expr:spec}
+            # Must handle :: (namespace access) correctly — detect double colon
+            inner = text.strip()
+            fmt_spec = None
+            depth = 0; ternary_depth = 0; split_at = -1
+            i = 0
+            n = len(inner)
+            while i < n:
+                ch = inner[i]
+                if ch in "([{": depth += 1
+                elif ch in ")]}": depth -= 1
+                elif ch == "?" and depth == 0: ternary_depth += 1
+                elif ch == ":" and depth == 0:
+                    if ternary_depth > 0:
+                        ternary_depth -= 1
+                    elif i + 1 < n and inner[i + 1] == ":":
+                        # :: — namespace access, skip both colons
+                        i += 1
+                    else:
+                        split_at = i
+                        break
+                i += 1
+            if split_at > 0:
+                expr_src = inner[:split_at].strip()
+                fmt_spec = inner[split_at + 1:].strip()
+            else:
+                expr_src = inner
+
+            # Parse the InScript expression source and convert it
+            try:
+                toks = _tokenize(expr_src, "<fstring>")
+                p = _Parser(toks)
+                prog = p.parse()
+                # Extract the expression from the parsed program
+                converted = None
+                for stmt in prog.body:
+                    if hasattr(stmt, 'expr'):
+                        converted = self._convert(stmt.expr)
+                    elif isinstance(stmt, ExprStmt):
+                        converted = self._convert(stmt.expr)
+                if converted is None:
+                    raise CompileError(f"Empty f-string expression: {expr_src}")
+            except Exception:
+                raise CompileError(f"Cannot compile f-string expression: {expr_src}")
+
+            fmt_spec_ast = _const(fmt_spec) if fmt_spec else None
+            values.append(ast.FormattedValue(
+                value=converted,
+                conversion=-1,
+                format_spec=fmt_spec_ast,
+            ))
+
+        return ast.JoinedStr(values=values)
 
     # ── unsupported — fallback will be used ──────────────────────────────────
 
