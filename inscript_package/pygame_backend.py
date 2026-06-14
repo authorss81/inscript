@@ -16,7 +16,7 @@ Or directly:
 Install pygame first:  pip install pygame
 """
 
-import sys, os, math, time as _time
+import sys, os, math, json, time as _time
 
 # Suppress "Hello from the pygame community" banner
 os.environ.setdefault('PYGAME_HIDE_SUPPORT_PROMPT', '1')
@@ -36,6 +36,10 @@ for _c in [_here,
     if os.path.isdir(_c) and os.path.exists(os.path.join(_c, "interpreter.py")):
         sys.path.insert(0, _c)
         break
+
+# IPC state file used by Studio to read live game data
+_IPC_STATE_FILE = os.path.join(os.environ.get("TEMP", "/tmp"),
+                               "inscript_studio_ipc.json")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -923,6 +927,26 @@ def run_scene(ins_file: str, width=800, height=600, fps=60, title=None, profile=
             _t2 = _time.perf_counter()
             _profile_times["on_update"].append((_t1 - _t0) * 1000)
             _profile_times["on_draw"].append((_t2 - _t1) * 1000)
+            # Write latest profile summary to IPC file for Studio
+            if len(_profile_times["on_update"]) > 0:
+                _ipc_data = {"profile": {}}
+                for _hk, _ht in _profile_times.items():
+                    if _ht:
+                        _ipc_data["profile"][_hk] = {
+                            "avg": sum(_ht) / len(_ht),
+                            "min": min(_ht),
+                            "max": max(_ht),
+                            "calls": len(_ht),
+                        }
+                _ipc_data["frame_count"] = len(_profile_times["on_update"])
+                _ipc_data["type"] = "profile"
+                try:
+                    _tmp = _IPC_STATE_FILE + ".tmp"
+                    with open(_tmp, "w") as _f:
+                        json.dump(_ipc_data, _f)
+                    os.replace(_tmp, _IPC_STATE_FILE)
+                except Exception:
+                    pass
         else:
             _run_hook("on_update", dt)
             _run_hook("on_draw")

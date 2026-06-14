@@ -127,6 +127,8 @@ class StudioBridge:
             "scene_list":  self._rpc_scene_list,
             "inspect":     self._rpc_inspect,
             "eval":        self._rpc_eval,
+            "compile_hooks": self._rpc_compile_hooks,
+            "profile_data": self._rpc_profile_data,
         }
         handler = handlers.get(method)
         if handler is None:
@@ -222,6 +224,74 @@ class StudioBridge:
         project_dir = params.get("dir", ".")
         from inscript_studio_api import project_inspect
         return project_inspect(project_dir)
+
+    def _rpc_compile_hooks(self, params: dict) -> dict:
+        """Compile hooks in a .ins file via Phase 7 and return per-hook status.
+
+        Returns:
+          {"file": str, "hooks": [{"type": str, "params": [...],
+                                    "compiled": bool, "error": str|null}]
+        """
+        file_path = params.get("file", "")
+        if not file_path or not os.path.isfile(file_path):
+            return {"file": file_path, "error": "File not found", "hooks": []}
+        try:
+            from lexer import Lexer
+            from parser import Parser
+            from analyzer import Analyzer, Symbol, T_ANY
+            from py_compiler import compile_hook
+            from errors import MultiError
+            with open(file_path, encoding="utf-8") as f:
+                src = f.read()
+            toks = Lexer(src).tokenize()
+            ast = Parser(toks).parse()
+            analyzer = Analyzer()
+            for n in ["print","string","int","float","bool","len",
+                       "screen","draw","input","audio","font","math2d",
+                       "Color","clock","Vec2","Rect",
+                       "WHITE","BLACK","RED","GREEN","BLUE","YELLOW",
+                       "CYAN","MAGENTA","ORANGE","GRAY","DARK_GRAY",
+                       "LIGHT_GRAY","PURPLE","PINK","TEAL","NAVY",
+                       "LIME","BROWN","SKY","GOLD","TRANSPARENT","nil"]:
+                analyzer._scope.symbols[n] = Symbol(n, T_ANY, kind="var")
+            try:
+                analyzer.analyze(ast)
+            except MultiError:
+                pass
+            scene_nodes = [n for n in ast.body if hasattr(n, 'name')]
+            results = []
+            for scene in scene_nodes:
+                for hook in getattr(scene, 'hooks', []):
+                    params_list = [p.name for p in hook.params]
+                    try:
+                        hc = compile_hook(hook.body, params_list, hook.hook_type)
+                        results.append({
+                            "type": hook.hook_type,
+                            "params": params_list,
+                            "compiled": hc is not None,
+                            "error": None,
+                        })
+                    except Exception as e:
+                        results.append({
+                            "type": hook.hook_type,
+                            "params": params_list,
+                            "compiled": False,
+                            "error": str(e),
+                        })
+            return {"file": file_path, "hooks": results, "error": None}
+        except Exception as e:
+            return {"file": file_path, "error": str(e), "hooks": []}
+
+    def _rpc_profile_data(self, params: dict) -> dict:
+        """Read latest profile timing from the IPC file (if available)."""
+        ipc_file = _IPC_STATE_FILE
+        try:
+            with open(ipc_file) as f:
+                data = json.load(f)
+            profile = data.get("profile", {})
+            return {"available": bool(profile), "profile": profile}
+        except Exception:
+            return {"available": False, "profile": {}}
 
     def _rpc_eval(self, params: dict) -> dict:
         """Evaluate an InScript expression in the live interpreter environment."""

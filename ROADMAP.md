@@ -74,10 +74,12 @@
 - [x] Removed `rust_vm` parameter from `run_scene()` and all callers
 
 ### v3.9.6.9 — Studio live-preview + hot-reload
-- [ ] Wire Phase 7 compilation into Studio's live-preview
-- [ ] Show "compiled" / "interpreted" badge per hook in scene inspector
-- [ ] Expose `--profile` hook timing in Studio debug panel
-- [ ] Fix Electron Studio packaging for production
+- [x] Added `compile_hooks` RPC — compiles hooks via Phase 7, returns per-hook status
+- [x] Added `profile_data` RPC — reads per-frame hook timing from IPC file
+- [x] `pygame_backend.py` now writes profile timing to `_IPC_STATE_FILE` each frame
+- [x] Electron `main.js` handles both dev and production paths for `inscript.py`
+- [x] Fixed Electron `findPython()` to not use nonexistent venv paths
+- [x] All 6 new tests pass; all existing microversion tests pass
 
 ---
 

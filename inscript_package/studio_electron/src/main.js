@@ -25,21 +25,19 @@ let pythonProc  = null;
 // ── Python server ──────────────────────────────────────────────────────────
 
 function findPython() {
-  // Try system python first (dev mode), then resourcesPath (production build)
-  const candidates = [
-    'python3',
-    'python',
-    path.join(process.resourcesPath, 'inscript_runtime', '.venv', 'bin', 'python'),
-    path.join(process.resourcesPath, 'inscript_runtime', '.venv', 'Scripts', 'python.exe'),
-  ];
+  const candidates = ['python3', 'python'];
   return candidates.find(c => { try { require('child_process').execSync(c + ' --version', {stdio:'ignore'}); return true; } catch { return false; } }) || 'python';
 }
 
 function startPythonServer(projectDir) {
   const python = findPython();
-  const inscript = path.join(
-    __dirname, '..', '..', 'inscript.py'  // dev: ../.. is inscript_package/
-  );
+
+  // In dev (unpackaged): __dirname = studio_electron/src/, ../../inscript_package/inscript.py
+  // In production (packaged): process.resourcesPath/inscript_runtime/inscript.py
+  const devPath = path.join(__dirname, '..', '..', 'inscript.py');
+  const prodPath = path.join(process.resourcesPath, 'inscript_runtime', 'inscript.py');
+  const fs = require('fs');
+  const inscript = fs.existsSync(devPath) ? devPath : prodPath;
 
   pythonProc = spawn(python, [
     inscript,
