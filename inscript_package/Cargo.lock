@@ -387,7 +387,7 @@ dependencies = [
 
 [[package]]
 name = "inscript-parser"
-version = "3.9.4"
+version = "3.9.6"
 dependencies = [
  "inscript-vm-engine",
  "pyo3",
@@ -396,7 +396,7 @@ dependencies = [
 
 [[package]]
 name = "inscript-vm-engine"
-version = "3.9.4"
+version = "3.9.6"
 dependencies = [
  "ahash",
  "criterion",

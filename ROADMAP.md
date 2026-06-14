@@ -67,10 +67,11 @@
 - [x] Benchmark: basic sprite batching ~1.0x, transformed ~0.9x (transforms dominate)
 
 ### v3.9.6.8 — Rust VM final assessment
-- [ ] Build `.pyd` and benchmark Rust VM `compile_and_run` vs Phase 7
-- [ ] Benchmark Rust VM hook execution (with PyO3 FFI) vs Phase 7
-- [ ] If Rust VM is slower for hooks: formally deprecate `--rust-vm` in game path
-- [ ] Remove dead `--rust-vm` code from `pygame_backend.py`
+- [x] Build `.pyd` and benchmark Rust VM `compile_and_run` vs Phase 7
+- [x] Rust VM is **36.7x faster** for standalone scripts (native compilation)
+- [x] Phase 7 per-hook execution: **1.47µs** — Rust extension lacks `run()` API for per-hook use
+- [x] Formally deprecated `--rust-vm` flag in game path (dead code, removed)
+- [x] Removed `rust_vm` parameter from `run_scene()` and all callers
 
 ### v3.9.6.9 — Studio live-preview + hot-reload
 - [ ] Wire Phase 7 compilation into Studio's live-preview

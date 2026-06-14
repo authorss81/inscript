@@ -37,19 +37,25 @@ def sync_file(path, pattern, replace_with=lambda m, v: m.string[:m.start()] + v 
     print(f"  - {os.path.relpath(path, REPO)}  (already up to date)")
     return False
 
+def cargo_version(v):
+    """Cargo only supports MAJOR.MINOR.PATCH (3-part semver). Truncate if longer."""
+    parts = v.split(".")
+    return ".".join(parts[:3]) if len(parts) > 3 else v
+
 def main():
     ver = read_version()
-    print(f"Syncing all files to v{ver}\n")
+    cargo_ver = cargo_version(ver)
+    print(f"Syncing all files to v{ver} (Cargo: v{cargo_ver})\n")
 
     sync_file(
         os.path.join(PKG, "inscript_rust_parser", "Cargo.toml"),
         re.compile(r'^version = "[\d.]+"', re.M),
-        lambda m, v: f'version = "{v}"',
+        lambda m, v: f'version = "{cargo_version(v)}"',
     )
     sync_file(
         os.path.join(PKG, "rust_vm_engine", "Cargo.toml"),
         re.compile(r'^version = "[\d.]+"', re.M),
-        lambda m, v: f'version = "{v}"',
+        lambda m, v: f'version = "{cargo_version(v)}"',
     )
     sync_file(
         os.path.join(PKG, "inscript.toml"),

@@ -705,7 +705,7 @@ class ColorHelper(_NS):
 # ─────────────────────────────────────────────────────────────────────────────
 # run_scene — main entry point
 # ─────────────────────────────────────────────────────────────────────────────
-def run_scene(ins_file: str, width=800, height=600, fps=60, title=None, profile=False, rust_vm=False, batch_draw=False):
+def run_scene(ins_file: str, width=800, height=600, fps=60, title=None, profile=False, batch_draw=False):
     """
     Load an InScript .ins file and run it in a real-time pygame window.
 
@@ -968,7 +968,6 @@ if __name__ == "__main__":
     p.add_argument("--title",  default=None)
     p.add_argument("--profile",   action="store_true", help="per-hook timing")
     p.add_argument("--batch-draw", action="store_true", help="batch draw ops, flush once per frame")
-    p.add_argument("--rust-vm",   action="store_true", help="trial-compile hooks via Rust VM")
     a = p.parse_args()
 
     if not HAS_PYGAME:
@@ -976,11 +975,11 @@ if __name__ == "__main__":
 
     if a.file:
         run_scene(a.file, a.width, a.height, a.fps, a.title,
-                  profile=a.profile, rust_vm=a.rust_vm, batch_draw=a.batch_draw)
+                  profile=a.profile, batch_draw=a.batch_draw)
     else:
         _ex = os.path.join(os.path.dirname(__file__), "..", "examples", "pong.ins")
         if os.path.exists(_ex):
             run_scene(_ex, 800, 600, 60, "Pong — InScript",
-                      profile=a.profile, rust_vm=a.rust_vm, batch_draw=a.batch_draw)
+                      profile=a.profile, batch_draw=a.batch_draw)
         else:
             print("Usage: python pygame_backend.py game.ins")

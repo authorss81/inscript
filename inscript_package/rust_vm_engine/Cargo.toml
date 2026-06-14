@@ -1,6 +1,6 @@
 [package]
 name = "inscript-vm-engine"
-version = "3.9.6.7"
+version = "3.9.6"
 edition = "2021"
 authors = ["Shreyasi Sarkar"]
 license = "MIT"

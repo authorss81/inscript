@@ -7,7 +7,7 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-287%20passing-brightgreen.svg)](#testing)
-[![Version](https://img.shields.io/badge/version-3.9.6.7-blue.svg)](#)
+[![Version](https://img.shields.io/badge/version-3.9.6.8-blue.svg)](#)
 
 </div>
 
