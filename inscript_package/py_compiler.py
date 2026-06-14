@@ -7,6 +7,7 @@ import ast
 import builtins
 import typing as T
 from ast_nodes import *
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -131,7 +132,8 @@ class CompileError(Exception):
 
 
 # ── name collection cache ─────────────────────────────────────────────────────
-_names_cache: T.Dict[int, tuple] = {}  # id(node) -> (names_seen, names_assigned)
+_names_cache: T.Dict[int, tuple] = {}
+_names_cache_counter = 0  # monotonically increasing key to avoid id() reuse  # id(node) -> (names_seen, names_assigned)
 
 
 # ── HookCode ──────────────────────────────────────────────────────────────────
@@ -250,17 +252,18 @@ class PyCompiler:
         return HookCode(fn, len(params) if params else 0, hook_name)
 
     def _collect_names(self, node):
-        """Collect all IdentExpr names used in the AST (for scoping decisions)."""
-        key = id(node)
-        cached = _names_cache.get(key)
-        if cached is not None:
-            self._names_seen, self._names_assigned = cached
-            return
+        """Collect all IdentExpr names used in the AST (for scoping decisions).
+
+        Uses a monotonically increasing counter (not id(node)) as cache key
+        to avoid stale hits from recycled object ids.
+        """
+        global _names_cache_counter
+        key = _names_cache_counter
+        _names_cache_counter += 1
+        # First pass: always walk (discard any previous cache for this key)
         self._names_seen: set = set()
         self._names_assigned: set = set()
         self._walk(node)
-        # Cache the exact set objects — they're only read after this point,
-        # and each compile_hook call creates a fresh PyCompiler instance.
         _names_cache[key] = (self._names_seen, self._names_assigned)
 
     def _walk(self, node):
@@ -1010,6 +1013,35 @@ def compile_hook(hook_node, params: T.List[str] = None,
     """Compile a scene hook body to a Python callable.  Returns None on failure."""
     compiler = PyCompiler()
     return compiler.compile_hook(hook_node, params, hook_name)
+
+
+def compile_scene_hooks(scene_node, max_workers: int = None) -> T.List[T.Tuple[str, T.Optional[HookCode]]]:
+    """Compile all hooks in a scene, optionally in parallel.
+
+    Returns a list of (hook_type, HookCode|None) tuples in declaration order.
+    Each hook is compiled independently via ThreadPoolExecutor when
+    max_workers > 1 (or left unset for automatic sizing).
+    """
+    results: T.List[T.Tuple[str, T.Optional[HookCode]]] = []
+    if not scene_node or not hasattr(scene_node, 'hooks'):
+        return results
+
+    def _compile_one(hook):
+        params = [p.name for p in hook.params]
+        hc = compile_hook(hook.body, params, hook.hook_type)
+        return (hook.hook_type, hc)
+
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        futures = []
+        for hook in scene_node.hooks:
+            futures.append(pool.submit(_compile_one, hook))
+        for f in as_completed(futures):
+            results.append(f.result())
+
+    # Reorder to match original declaration order
+    order = {h.hook_type: i for i, h in enumerate(scene_node.hooks)}
+    results.sort(key=lambda r: order.get(r[0], 999))
+    return results
 
 
 # ── test ─────────────────────────────────────────────────────────────────────
