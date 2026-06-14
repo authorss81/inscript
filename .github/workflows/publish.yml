@@ -42,8 +42,8 @@ jobs:
         working-directory: ${{ env.PACKAGE_DIR }}
         run: |
           VER="$(python -c "
-import re; print(re.search(r'^VERSION\s*=\s*\"([^\"]+)\"', open('inscript.py').read(), re.M).group(1))
-")"
+          import re; print(re.search(r'^VERSION\s*=\s*\"([^\"]+)\"', open('inscript.py').read(), re.M).group(1))
+          ")"
           echo "version=${VER}" >> "$GITHUB_OUTPUT"
           echo "Source VERSION = ${VER}, Tag = ${GITHUB_REF_NAME}"
           if [ "v${VER}" != "${GITHUB_REF_NAME}" ]; then
@@ -139,7 +139,7 @@ import re; print(re.search(r'^VERSION\s*=\s*\"([^\"]+)\"', open('inscript.py').r
       - uses: actions/setup-python@v5
         with: { python-version: '3.11' }
       - uses: actions-rust-lang/setup-rust-toolchain@v1
-        with: { target: ${{ matrix.target }} }
+        with: { target: "${{ matrix.target }}" }
       - run: pip install cibuildwheel
       - working-directory: ${{ env.PACKAGE_DIR }}
         env:
@@ -147,7 +147,7 @@ import re; print(re.search(r'^VERSION\s*=\s*\"([^\"]+)\"', open('inscript.py').r
           CIBW_SKIP: "*-musllinux_* *i686*"
           CIBW_ARCHS_LINUX: "x86_64 aarch64"
           CIBW_BEFORE_BUILD: "pip install setuptools-rust"
-          CIBW_ENVIRONMENT: CARGO_BUILD_TARGET=${{ matrix.target }}
+          CIBW_ENVIRONMENT: "CARGO_BUILD_TARGET=${{ matrix.target }}"
         run: python -m cibuildwheel --output-dir dist
       - uses: actions/upload-artifact@v4
         with:
