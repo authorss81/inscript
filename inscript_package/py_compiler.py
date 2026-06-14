@@ -180,6 +180,9 @@ class PyCompiler:
         self._func_params: T.Set[str] = set()  # hook parameter names (Python locals)
         self._match_bindings: T.Set[str] = set()  # match-introduced variable names
         self._lambda_params: T.Set[str] = set()  # lambda parameter names
+        self._nested_func_params: T.Set[str] = set()  # nested fn param names
+        self._nested_func_names: T.Set[str] = set()  # nested fn names (Python locals)
+        self._comp_vars: T.Set[str] = set()  # comprehension iteration vars
 
     def compile_hook(self, node, params: T.List[str] = None,
                      hook_name: str = "") -> T.Optional[HookCode]:
@@ -341,6 +344,25 @@ class PyCompiler:
         elif isinstance(node, LambdaExpr):
             # Lambda params are NOT added to _names_assigned (lambda-local)
             self._walk(node.body)
+        elif isinstance(node, FunctionDecl):
+            # Nested function — walk body; params not added to names_assigned
+            self._names_seen.add(node.name)
+            self._walk(node.body)
+        elif isinstance(node, ListComprehensionExpr):
+            self._walk(node.expr)
+            self._walk(node.iterable)
+            if node.condition:
+                self._walk(node.condition)
+            for clause in node.extra_clauses:
+                self._walk(clause["iterable"])
+                if clause["condition"]:
+                    self._walk(clause["condition"])
+        elif isinstance(node, DictComprehensionExpr):
+            self._walk(node.key_expr)
+            self._walk(node.val_expr)
+            self._walk(node.iterable)
+            if node.condition:
+                self._walk(node.condition)
         elif hasattr(node, 'body') and isinstance(node.body, list):
             for s in node.body:
                 self._walk(s)
@@ -466,6 +488,15 @@ class PyCompiler:
             return _name(name)
         # Lambda parameters are Python locals
         if name in self._lambda_params:
+            return _name(name)
+        # Nested function parameters are Python locals
+        if name in self._nested_func_params:
+            return _name(name)
+        # Nested function names are Python locals (created by def)
+        if name in self._nested_func_names:
+            return _name(name)
+        # Comprehension iteration variables are Python locals
+        if name in self._comp_vars:
             return _name(name)
         # Game namespaces and remapped builtins: Python global/builtin lookup
         if name in _GLOBAL_NAMES:
@@ -815,16 +846,99 @@ class PyCompiler:
     # ── unsupported — fallback will be used ──────────────────────────────────
 
     def _visit_FunctionDecl(self, node):
-        raise CompileError("Function declarations not supported in hooks")
+        """Nested fn inside hook → Python FunctionDef.
 
-    def _visit_StructDecl(self, node):
-        raise CompileError("Struct declarations not supported in hooks")
+        Compiles to a Python local function definition.  The function params
+        register as Python locals (LOAD_FAST) so they don't alias scene state.
+        Scene variables accessed inside the function body resolve through the
+        `state` dict closure.
 
-    def _visit_ClassDecl(self, node):
-        raise CompileError("Class declarations not supported in hooks")
+        InScript implicitly returns the last expression in a function body,
+        so we wrap the final expression statement in a Python Return.
+        """
+        prev_locals = self._nested_func_params.copy()
+        self._nested_func_names.add(node.name)
+        for p in node.params:
+            self._nested_func_params.add(p.name)
 
-    def _visit_ForExpr(self, node):
-        raise CompileError("List comprehensions not supported in hooks")
+        body = self._convert(node.body)
+        if isinstance(body, ast.AST):
+            body = [body]
+        # Wrap trailing expression in Return (InScript implicit return)
+        if body and isinstance(body[-1], ast.Expr):
+            body[-1] = _return(body[-1].value)
+        if not body:
+            body = [_pass()]
+
+        self._nested_func_params = prev_locals
+
+        py_args = [ast.arg(arg=p.name) for p in node.params]
+        func_def = ast.FunctionDef(
+            name=node.name,
+            args=ast.arguments(
+                posonlyargs=[],
+                args=py_args,
+                kwonlyargs=[],
+                kw_defaults=[],
+                defaults=[],
+            ),
+            body=body,
+            decorator_list=[],
+            returns=None,
+        )
+        return func_def
+
+    def _visit_ListComprehensionExpr(self, node):
+        """[x*x for x in arr] → Python ListComp."""
+        prev = self._comp_vars.copy()
+        self._comp_vars.add(node.var)
+        for clause in node.extra_clauses:
+            self._comp_vars.add(clause["var"])
+        elt = self._convert(node.expr)
+        generators = [self._build_comprehension_gen(node.var, node.iterable, node.condition)]
+        for clause in node.extra_clauses:
+            generators.append(
+                self._build_comprehension_gen(clause["var"], clause["iterable"], clause["condition"])
+            )
+        self._comp_vars = prev
+        return ast.ListComp(elt=elt, generators=generators)
+
+    def _visit_DictComprehensionExpr(self, node):
+        """{k: v for k,v in items} → Python DictComp.
+
+        Handles multi-var destructure (k,v) by building a Tuple target.
+        """
+        prev = self._comp_vars.copy()
+        self._comp_vars.add(node.var)
+        extra_vars = getattr(node, '_extra_vars', None) or []
+        for ev in extra_vars:
+            self._comp_vars.add(ev)
+        key = self._convert(node.key_expr)
+        value = self._convert(node.val_expr)
+        if extra_vars:
+            all_vars = [node.var] + extra_vars
+            target = ast.Tuple(
+                elts=[_name(v, ast.Store()) for v in all_vars],
+                ctx=ast.Store(),
+            )
+        else:
+            target = _name(node.var, ast.Store())
+        iter_expr = self._convert(node.iterable)
+        ifs = []
+        if node.condition is not None:
+            ifs.append(self._convert(node.condition))
+        generators = [ast.comprehension(target=target, iter=iter_expr, ifs=ifs, is_async=0)]
+        self._comp_vars = prev
+        return ast.DictComp(key=key, value=value, generators=generators)
+
+    def _build_comprehension_gen(self, var: str, iterable, condition):
+        """Build an ast.comprehension node for a single for-clause."""
+        target = _name(var, ast.Store())
+        iter_expr = self._convert(iterable)
+        ifs = []
+        if condition is not None:
+            ifs.append(self._convert(condition))
+        return ast.comprehension(target=target, iter=iter_expr, ifs=ifs, is_async=0)
 
     def _convert_pattern(self, node, binding=None):
         """Convert InScript match pattern to Python ast.Match pattern node.

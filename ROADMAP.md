@@ -39,10 +39,10 @@
 - [x] _GLOBAL_NAMES extended with InScript stdlib functions
 
 ### v3.9.6.4 — py_compiler feature parity: Comprehensions + nested fns
-- [ ] List comprehensions `[x*x for x in arr]`
-- [ ] Dict comprehensions `{k: v for k,v in items}`
-- [ ] Nested `FunctionDecl` inside hooks
-- [ ] Generator expressions `(x for x in items)`
+- [x] List comprehensions `[x*x for x in arr]`
+- [x] Dict comprehensions `{k: v for k,v in items}`
+- [x] Nested `FunctionDecl` inside hooks
+- [ ] ~~Generator expressions `(x for x in items)`~~ — not supported by InScript grammar
 
 ### v3.9.6.5 — py_compiler feature parity: Class methods + named args
 - [ ] `obj.method(args)` with positional args
