@@ -8,7 +8,7 @@ The root-level `inscript/` dir and root `inscript.py` are a legacy v0.2.0 packag
 ## Entry point
 
 - **CLI entry**: `inscript_package/inscript.py:main()` — VERSION = `"3.9.6"`
-- **Version source**: `inscript.py` line 27 is the single source; `_version.py` reads it dynamically. All Python modules import VERSION from `_version.py`. Current: 3.9.6.4.
+- **Version source**: `inscript.py` line 27 is the single source; `_version.py` reads it dynamically. All Python modules import VERSION from `_version.py`. Current: 3.9.6.5.
 - **Package install**: `pip install inscript-lang` → console script `inscript`
 - **Direct run**: `python inscript_package/inscript.py file.ins`
 

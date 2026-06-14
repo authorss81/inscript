@@ -45,10 +45,13 @@
 - [ ] ~~Generator expressions `(x for x in items)`~~ — not supported by InScript grammar
 
 ### v3.9.6.5 — py_compiler feature parity: Class methods + named args
-- [ ] `obj.method(args)` with positional args
-- [ ] Named/keyword arguments `obj.method(x=1, y=2)`
-- [ ] Chained method calls `obj.foo().bar().baz()`
-- [ ] Static method calls `Type.method()`
+- [x] `obj.method(args)` with positional args
+- [x] Named/keyword arguments `obj.method(a: 1, b: 2)` (uses `:` not `=`)
+- [x] Chained method calls `obj.foo().bar().baz()`
+- [x] Static method calls `Type.method()`
+- [x] Named args with scene variable values
+- [x] Method returns callable (higher-order)
+- [x] Method with side effects (mutates object state)
 
 ### v3.9.6.6 — py_compiler compilation speed optimization
 - [ ] Profile and reduce `compile_hook()` call overhead (currently ~1.6ms)
