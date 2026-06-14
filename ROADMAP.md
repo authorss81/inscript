@@ -60,10 +60,11 @@
 - [x] No regressions: all 69 microversion tests + 335 comprehensive pass
 
 ### v3.9.6.7 — Sprite & draw batching validation
-- [ ] Sprite-heavy benchmark game (~1000 sprites)
-- [ ] Validate `BatchedDrawNamespace.blits()` correctness
-- [ ] Fix sprite transform bugs (alpha, rotation pivot, scale)
-- [ ] Benchmark Phase 7 on sprite-heavy vs AST walker
+- [x] Sprite-heavy benchmark game (~1000 sprites)
+- [x] Validate `BatchedDrawNamespace.blits()` correctness (pixel-identical output)
+- [x] Fix `set_alpha()` on per-pixel-alpha surfaces (use `BLEND_RGBA_MULT` instead)
+- [x] Fix `BatchedDrawNamespace.sprite_ex` centering offset (was missing `-iw//2, -ih//2`)
+- [x] Benchmark: basic sprite batching ~1.0x, transformed ~0.9x (transforms dominate)
 
 ### v3.9.6.8 — Rust VM final assessment
 - [ ] Build `.pyd` and benchmark Rust VM `compile_and_run` vs Phase 7

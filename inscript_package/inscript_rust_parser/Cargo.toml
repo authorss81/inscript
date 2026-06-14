@@ -1,6 +1,6 @@
 [package]
 name = "inscript-parser"
-version = "3.9.6.6"
+version = "3.9.6.7"
 edition = "2021"
 authors = ["Shreyasi Sarkar"]
 license = "MIT"

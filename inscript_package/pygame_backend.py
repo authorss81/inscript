@@ -149,6 +149,21 @@ class DrawNamespace(_NS):
             self._image_cache[path] = surf
         return self._image_cache[path]
 
+    @staticmethod
+    def _apply_alpha(surf, alpha):
+        """Apply per-surface alpha to a per-pixel-alpha surface (pygame 2.x).
+
+        pygame.Surface.set_alpha() is silently ignored on per-pixel-alpha
+        surfaces in pygame 2.x, so we use BLEND_RGBA_MULT to scale the
+        existing per-pixel alpha channel instead.
+        """
+        a = max(0, min(255, int(alpha)))
+        if a == 255:
+            return surf
+        surf = surf.copy()
+        surf.fill((255, 255, 255, a), special_flags=pygame.BLEND_RGBA_MULT)
+        return surf
+
     # ── primitives ────────────────────────────────────────────────────────────
     def rect(self, x, y, w, h, color, filled=True, thickness=1):
         c = _color(color)
@@ -219,9 +234,7 @@ class DrawNamespace(_NS):
     # ── sprites ───────────────────────────────────────────────────────────────
     def sprite(self, x, y, path, alpha=255):
         """Draw image at (x,y). Loaded and cached on first call."""
-        img = self._img(path)
-        if int(alpha) != 255:
-            img = img.copy(); img.set_alpha(max(0, min(255, int(alpha))))
+        img = self._apply_alpha(self._img(path), alpha)
         self._surf.blit(img, (int(x), int(y)))
 
     def sprite_ex(self, x, y, path, angle=0.0, scale=1.0,
@@ -238,8 +251,7 @@ class DrawNamespace(_NS):
         a = float(angle)
         if abs(a) > 0.001:
             img = pygame.transform.rotate(img, -a)   # pygame is CCW
-        if int(alpha) != 255:
-            img = img.copy(); img.set_alpha(max(0, min(255, int(alpha))))
+        img = self._apply_alpha(img, alpha)
         iw, ih = img.get_size()
         self._surf.blit(img, (int(x) - iw//2, int(y) - ih//2))
 
@@ -297,16 +309,13 @@ class BatchedDrawNamespace(_NS):
         self._real.set_font(name, size)
     def set_font_size(self, size):
         self._real.set_font_size(size)
-
     # ── Sprite ops: batch for blits() ────────────────────────────────────
     def sprite(self, x, y, path, alpha=255):
-        surf = self._real._img(path)
-        if int(alpha) != 255:
-            surf = surf.copy()
-            surf.set_alpha(max(0, min(255, int(alpha))))
+        surf = DrawNamespace._apply_alpha(self._real._img(path), alpha)
         self._sprite_batch.append((surf, (int(x), int(y))))
 
-    def sprite_ex(self, x, y, path, angle=0.0, scale=1.0, flip_x=False, flip_y=False, alpha=255):
+    def sprite_ex(self, x, y, path, angle=0.0, scale=1.0,
+                  flip_x=False, flip_y=False, alpha=255):
         img = self._real._img(path)
         if flip_x or flip_y:
             img = pygame.transform.flip(img, bool(flip_x), bool(flip_y))
@@ -318,10 +327,9 @@ class BatchedDrawNamespace(_NS):
         a = float(angle)
         if abs(a) > 0.001:
             img = pygame.transform.rotate(img, -a)
-        if int(alpha) != 255:
-            img = img.copy()
-            img.set_alpha(max(0, min(255, int(alpha))))
-        self._sprite_batch.append((img, (int(x), int(y))))
+        img = DrawNamespace._apply_alpha(img, alpha)
+        iw, ih = img.get_size()
+        self._sprite_batch.append((img, (int(x) - iw//2, int(y) - ih//2)))
 
     def sprite_size(self, path):
         return self._real.sprite_size(path)
