@@ -24,7 +24,7 @@ from errors   import (InScriptError, LexerError, ParseError,
                        SemanticError, InScriptRuntimeError,
                        MultiError, InScriptWarning)
 
-VERSION = "3.9.6.13.1"
+VERSION = "3.9.6.14"
 
 MANIFEST_FILENAME = "inscript.toml"
 LOCK_FILENAME     = "inscript.lock"
@@ -2692,6 +2692,8 @@ Examples:
                          help="Print per-function call count and timing after execution")
     parser.add_argument("--debug", action="store_true",
                          help="v3.9.6.10: Run in debug mode with breakpoint support")
+    parser.add_argument("--dap", action="store_true",
+                         help="v3.9.6.13: Start DAP server for VS Code debugging (uses --debug)")
     parser.add_argument("--fmt",     action="store_true",
                         help="Format .ins files: inscript --fmt file.ins")
     parser.add_argument("--fmt-all", metavar="DIR",
@@ -2782,6 +2784,10 @@ Examples:
                         help="Target FPS for --game mode   (default: 60)")
     parser.add_argument("--batch-draw", action="store_true",
                         help="Batch draw ops (--game mode only)")
+    parser.add_argument("--frame-break", type=int, default=-1,
+                        help="v3.9.6.14: Break at specific frame (--game mode only)")
+    parser.add_argument("--frame-advance", action="store_true",
+                        help="v3.9.6.14: Step one frame at a time (--game mode only)")
     # ── v2.4.0: compilation flags ────────────────────────────────────────────
     parser.add_argument("--compile", metavar="FILE",
                         help="v2.4.0: AOT-compile FILE.ins → FILE.ibc bytecode")
@@ -2952,7 +2958,9 @@ Examples:
                       title=os.path.basename(args.file),
                       profile=getattr(args, 'profile', False),
                       batch_draw=getattr(args, 'batch_draw', False),
-                      debug=getattr(args, 'debug', False))
+                      debug=getattr(args, 'debug', False),
+                      frame_break=getattr(args, 'frame_break', -1),
+                      frame_advance=getattr(args, 'frame_advance', False))
             return 0
         except ImportError:
             print("[InScript] pygame_backend not found next to inscript.py", file=sys.stderr)
@@ -3239,6 +3247,19 @@ Examples:
     warn_as_error = getattr(args, "warn_as_error", False) or strict
     profile       = getattr(args, "profile", False)
     debug_mode    = getattr(args, "debug", False)
+    dap_mode      = getattr(args, "dap", False)
+
+    if dap_mode:
+        _here = os.path.dirname(os.path.abspath(__file__))
+        sys.path.insert(0, _here)
+        from interpreter import Interpreter
+        from debugger import Debugger
+        from dap_server import DAPServer
+        interp = Interpreter(source_lines=[], debug=True)
+        dbger = Debugger(interp, filename=args.file)
+        dap = DAPServer(interp, dbger, args.file)
+        dap.run()
+        return 0
 
     with open(args.file, "r", encoding="utf-8") as _f:
         _source = _f.read()

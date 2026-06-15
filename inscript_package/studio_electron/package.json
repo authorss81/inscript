@@ -1,6 +1,6 @@
 {
   "name": "inscript-studio",
-  "version": "3.9.6.13.1",
+  "version": "3.9.6.14",
   "description": "InScript Studio — Electron-based IDE for InScript game development",
   "main": "src/main.js",
   "homepage": "https://github.com/authorss81/inscript",

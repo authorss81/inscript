@@ -709,7 +709,7 @@ class ColorHelper(_NS):
 # ─────────────────────────────────────────────────────────────────────────────
 # run_scene — main entry point
 # ─────────────────────────────────────────────────────────────────────────────
-def run_scene(ins_file: str, width=800, height=600, fps=60, title=None, profile=False, batch_draw=False, debug=False):
+def run_scene(ins_file: str, width=800, height=600, fps=60, title=None, profile=False, batch_draw=False, debug=False, frame_break=-1, frame_advance=False):
     """
     Load an InScript .ins file and run it in a real-time pygame window.
 
@@ -750,8 +750,9 @@ def run_scene(ins_file: str, width=800, height=600, fps=60, title=None, profile=
     game_clk  = GameClock(fps)
 
     # ── interpreter ───────────────────────────────────────────────────────
-    interp = Interpreter(source.splitlines(), debug=debug)
+    interp = Interpreter(source.splitlines(), filename=ins_file, debug=debug)
     env    = interp._env
+    dbgr   = interp._debugger if debug else None  # may be None
 
     # Bind namespaces
     env.define("screen", screen_ns)
@@ -866,7 +867,101 @@ def run_scene(ins_file: str, width=800, height=600, fps=60, title=None, profile=
                     break
                 _e = _e.parent
 
+    def _check_hook_breakpoint(hook_type):
+        """If debugger active and breakpoints set, pause at this hook."""
+        if dbgr is None or not dbgr.bp_manager.list():
+            return False
+        # Check any breakpoint set for the scene file
+        for bp in dbgr.bp_manager.list():
+            if bp.filename == dbgr.filename or bp.filename == ins_file:
+                return True
+        return False
+
+    def _game_debug_repl(reason: str, hook_type: str = ""):
+        """Enter debug REPL during game loop (non-interactive input loop)."""
+        nonlocal running_flag, _frame_advance
+        print(f"\n[debug] {reason}  (type ? for help)")
+        if hook_type:
+            # Find the line number of this hook
+            hook_line = 0
+            for h in scene_node.hooks:
+                if h.hook_type == hook_type:
+                    hook_line = getattr(h, 'line', 0)
+                    break
+            line_info = f" (line {hook_line})" if hook_line else ""
+            print(f"  Hook: {hook_type}{line_info}")
+        while True:
+            try:
+                cmd = input("(game-debug) ").strip().lower()
+            except (EOFError, KeyboardInterrupt):
+                print(); return
+            if cmd in ("c", "continue"):
+                _frame_advance = False; return
+            elif cmd in ("n", "next", ""):
+                return
+            elif cmd in ("q", "quit"):
+                running_flag = False; return
+            elif cmd == ".locals":
+                dbgr._cmd_locals()
+            elif cmd == ".globals":
+                dbgr._cmd_globals()
+            elif cmd == ".stack":
+                dbgr._cmd_stack()
+            elif cmd == ".state":
+                print("  Scene state:")
+                for _k, _v in sorted(_state.items()):
+                    print(f"    {_k} = {_v}")
+            elif cmd.startswith(".watch"):
+                arg = cmd.split(None, 1)[1] if " " in cmd else ""
+                dbgr._cmd_watch(arg)
+            elif cmd.startswith("b "):
+                dbgr._cmd_break(cmd[2:])
+            elif cmd == "bl":
+                dbgr._cmd_break("")  # list breakpoints
+            elif cmd.startswith("bc "):
+                dbgr._cmd_delete(cmd[3:])
+            elif cmd.startswith(".set "):
+                dbgr._cmd_set(cmd[5:])
+            elif cmd in ("?", "help"):
+                print("  Game debug commands:")
+                print("    c, continue    — Resume normal execution")
+                print("    n, next        — Advance one frame")
+                print("    q, quit        — Quit game")
+                print("    .locals        — List local variables")
+                print("    .globals       — List global variables")
+                print("    .stack         — Print call stack")
+                print("    .state         — List scene state dict")
+                print("    .watch <expr>  — Evaluate expression")
+                print("    .set <var>     — Set variable value")
+                print("    b <line>       — Set breakpoint at line")
+                print("    b <line> if <c>— Set conditional breakpoint")
+                print("    bl             — List breakpoints")
+                print("    bc <line>      — Clear breakpoint at line")
+            else:
+                try:
+                    dbgr._eval_expr(cmd)
+                except Exception as e:
+                    print(f"  Error: {e}")
+
+    def _dbgr_before_hook(hook_type):
+        """Check and enter debug REPL before a hook runs."""
+        if dbgr is None:
+            return
+        # Check for any breakpoint in the scene file
+        has_bps = _check_hook_breakpoint(hook_type)
+        if not has_bps:
+            # Also check line-level breakpoint at hook's start
+            for h in scene_node.hooks:
+                if h.hook_type == hook_type:
+                    line = getattr(h, 'line', 0)
+                    if line and dbgr.should_break(dbgr.filename, line):
+                        has_bps = True
+                    break
+        if has_bps:
+            _game_debug_repl(f"Breakpoint hit at {hook_type}", hook_type)
+
     def run_hook_phase7(hook_type, *args):
+        _dbgr_before_hook(hook_type)
         for hook in scene_node.hooks:
             if hook.hook_type == hook_type:
                 hc = getattr(hook, '_compiled_hook', None)
@@ -895,19 +990,39 @@ def run_scene(ins_file: str, width=800, height=600, fps=60, title=None, profile=
         _profile_times: dict = {"on_update": [], "on_draw": []}
         _profile_start_time = _time.perf_counter()
 
+    # Debug: frame-advance state
+    _frame_debug = dbgr is not None
+    _frame_advance = frame_advance  # if True, pause before each frame
+    _frame_break_frame = frame_break  # break at specific frame count
+
+    def _check_frame_debug():
+        if not _frame_debug:
+            return
+        if _frame_advance:
+            _game_debug_repl(f"Frame {game_clk._frames} — frame-advance mode")
+        if _frame_break_frame >= 0 and game_clk._frames >= _frame_break_frame:
+            print(f"[debug] Reached frame {_frame_break_frame}")
+            _frame_advance = True
+            _frame_break_frame = -1
+
     # ── on_start ──────────────────────────────────────────────────────────
     _run_hook("on_start")
 
     # ── game loop ─────────────────────────────────────────────────────────
-    running = True
-    while running:
+    running_flag = True
+    _frame_count = 0
+    while running_flag:
+        _frame_count += 1
+
         events = pygame.event.get()
         for ev in events:
-            if ev.type == pygame.QUIT:                       running = False
+            if ev.type == pygame.QUIT:                       running_flag = False
             elif ev.type == pygame.KEYDOWN:
-                if ev.key == pygame.K_ESCAPE:                running = False
+                if ev.key == pygame.K_ESCAPE:                running_flag = False
 
-        if not running: break
+        if not running_flag: break
+
+        _check_frame_debug()
 
         input_ns._update(events)
         raw_dt = pg_clock.tick(int(fps)) / 1000.0
@@ -927,7 +1042,6 @@ def run_scene(ins_file: str, width=800, height=600, fps=60, title=None, profile=
             _t2 = _time.perf_counter()
             _profile_times["on_update"].append((_t1 - _t0) * 1000)
             _profile_times["on_draw"].append((_t2 - _t1) * 1000)
-            # Write latest profile summary to IPC file for Studio
             if len(_profile_times["on_update"]) > 0:
                 _ipc_data = {"profile": {}}
                 for _hk, _ht in _profile_times.items():
@@ -992,6 +1106,8 @@ if __name__ == "__main__":
     p.add_argument("--title",  default=None)
     p.add_argument("--profile",   action="store_true", help="per-hook timing")
     p.add_argument("--batch-draw", action="store_true", help="batch draw ops, flush once per frame")
+    p.add_argument("--debug", action="store_true", help="v3.9.6.14: game loop debug mode")
+    p.add_argument("--frame-break", type=int, default=-1, help="v3.9.6.14: break at specific frame")
     a = p.parse_args()
 
     if not HAS_PYGAME:
@@ -999,11 +1115,13 @@ if __name__ == "__main__":
 
     if a.file:
         run_scene(a.file, a.width, a.height, a.fps, a.title,
-                  profile=a.profile, batch_draw=a.batch_draw)
+                  profile=a.profile, batch_draw=a.batch_draw,
+                  debug=a.debug)
     else:
         _ex = os.path.join(os.path.dirname(__file__), "..", "examples", "pong.ins")
         if os.path.exists(_ex):
             run_scene(_ex, 800, 600, 60, "Pong — InScript",
-                      profile=a.profile, batch_draw=a.batch_draw)
+                      profile=a.profile, batch_draw=a.batch_draw,
+                      debug=a.debug)
         else:
             print("Usage: python pygame_backend.py game.ins")

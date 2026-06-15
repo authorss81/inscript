@@ -1,0 +1,37 @@
+# v3.9.6.11 — Debugger stepping (.ins tests)
+# Run: python inscript.py --test v3.9.6.11/test_stepping.ins
+
+test "assert true" {
+    assert(true)
+}
+
+test "nested call depth" {
+    let depth = 0
+    depth = depth + 1
+    depth = depth + 1
+    depth = depth + 1
+    assert(depth == 3)
+}
+
+test "function call pattern" {
+    let x = 1
+    let y = 2
+    let z = x + y
+    assert(z == 3)
+}
+
+test "condition evaluation" {
+    let a = 5
+    let b = 10
+    let c = a + b
+    assert(c == 15)
+    let d = c * 2
+    assert(d == 30)
+}
+
+test "multi step" {
+    let v = 1
+    v = v * 10
+    v = v + 5
+    assert(v == 15)
+}

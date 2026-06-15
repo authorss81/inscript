@@ -1,13 +1,73 @@
 # InScript Roadmap — Production-Grade Microversion Plan
 
-> **Current:** v3.9.6.12 — Debugger: variable inspection. All 22 debugger tests pass.
->
+> **Current:** v3.9.6.14 — Debugger: game loop debugging complete. Frame advance, hook breakpoints, state inspection, DAP protocol, hit-condition/conditional breakpoints, Rust lexer sync — all done.
+> 
 > **Version scheme:** MAJOR.MINOR.PATCH.MICRO — each micro targets a discrete production feature.
 > After v3.9.6.99, roll to v3.9.7.0 for the next feature cluster.
 
 ---
 
-## Phase 8 — py_compiler Stability (v3.9.6.1–v3.9.6.9)
+## Testability: What .ins Tests Can and Cannot Cover
+
+Tests should be written as `.ins` files (`test "name" { assert(...) }`) **whenever possible**. The `.py` tests are reserved for infrastructure that InScript cannot reach.
+
+### Can test from `.ins`
+- Language features (math, strings, control flow, functions)
+- Standard library (math, json, io, collections)
+- `dbg()` function (doesn't crash, produces output)
+- Logic/algorithm validation (hit-count simulation, conditional evaluation)
+- State dict manipulation (scene variable model)
+
+### Cannot test from `.ins` (use `.py`)
+- **DAP protocol** — requires raw stdin/stdout bytes, Content-Length framing, JSON-RPC message cycle
+- **BreakpointManager internals** — `should_break()`, hit count tracking, condition evaluation — these are Python classes wrapping the interpreter
+- **Interactive debug REPL** — `.locals`, `.globals`, `.stack`, `.watch` — requires simulated stdin input
+- **CLI flags** — `--frame-break`, `--frame-advance`, `--debug`, `--dap` — require argparse in Python
+- **Python module imports** — importing `debugger`, `dap_server`, `pygame_backend` and asserting on their internals
+- **Compilation/pyc checks** — verifying Python source files compile without syntax errors
+
+### Test runner limitation
+`inscript_test.py` uses a non-greedy regex `(.*?)\}` to extract test bodies, which cannot handle nested braces. Tests cannot contain `if {}`, `for {}`, `let x = {}` inside `test "..." { ... }`. This is a known limitation — if it becomes a blocker for `.ins`-first testing, the regex should be replaced with a balanced-brace parser.
+
+---
+
+InScript is designed as a **game-scripting language** — scene lifecycle hooks, sprite/draw/input APIs, simple types running inside a host (pygame loop, browser, game engine). This is intentionally narrower than general-purpose languages.
+
+### What this means for tooling
+
+The debugger, DAP server, profiler, and formatter are all written in Python (the host), not InScript. This is the same pattern as:
+
+| Language | Debugger | Host language | Self-hosted? |
+|----------|----------|---------------|--------------|
+| Lua | `lua.c` debug hook | C | No |
+| Python | `pdb` | Python | Yes (has `sys.settrace`) |
+| JS/V8 | DevTools | C++ | No (but `ndb` exists using Node APIs) |
+| Ruby | `byebug` | C + Ruby | Partial |
+| **InScript** | Debugger | **Python** | **No** |
+
+### Roadmap to self-hosting
+
+**Phase A (now — v3.9.6.x): Python-hosted tooling**
+All debugger/DAP/profiler logic lives in Python. Zero language changes needed. Reusable protocol knowledge (Content-Length framing, JSON-RPC, breakpoint state machine) for later porting.
+
+**Phase B (v3.9.7+): Expose I/O and JSON as built-in functions**
+```inscript
+let line = io.stdin.read_line()
+let msg = json.parse(line)
+io.stdout.write("Content-Length: 128\r\n\r\n{data}")
+```
+This lets users write scripts that parse/produce JSON and handle raw I/O — enough for a DAP server or any line-oriented protocol.
+
+**Phase C (v3.10+): Expose debug hooks as callable functions**
+```inscript
+let bp = debug.breakpoint()    # file, line, condition of current hit
+let frame = debug.frame(0)     # {locals, globals, pc}
+```
+Longer-term: `net.listen()`, `net.accept()`, coroutines for async I/O.
+
+**Decision point:** If the community needs general-purpose scripting (file mgmt, web servers, automation), InScript would grow into that territory. For now, the focus stays on game development — but the infrastructure we build (DAP, profile IPC, py_compiler) is designed to be reusable regardless of which language hosts the tooling.
+
+---
 
 ### v3.9.6.1 — py_compiler feature parity: MatchStmt ✅
 - [x] `MatchStmt` → Python `match`/`case` (3.10+)
@@ -108,24 +168,33 @@
 - [x] `.set` — modify variable at breakpoint
 - [x] Expression evaluation in debug REPL
 
-### v3.9.6.13 — Debugger: DAP protocol for VS Code
-- [ ] Debug Adapter Protocol (DAP) server
-- [ ] VS Code launch config integration
-- [ ] Hit-count breakpoints
-- [ ] Conditional breakpoints (break when `x > 5`)
+### v3.9.6.13 — Debugger: DAP protocol for VS Code ✅
+- [x] Debug Adapter Protocol (DAP) server
+- [x] VS Code launch config integration
+- [x] Hit-count breakpoints (`b 10 hit >= 3`)
+- [x] Conditional breakpoints (`b 10 if x > 5`)
+- [x] DAP stdin/stdout Content-Length framing
+- [x] `--dap` CLI flag
+- [x] Tests: `.ins` (22 tests — dbg, hit/condition logic) + `.py` (22 tests — DAP framing, breakpoint internals)
 
-### v3.9.6.13.1 — Rust lexer synchronization
-Fixes 6 pre-existing Rust lexer tests by bringing the Rust lexer into parity with the Python lexer. Parallel microversion to v3.9.6.13.
-- [ ] `keyword_or_ident()` emits `OnStart`, `OnUpdate`, `OnDraw`, `OnExit`, `IntType`, `FloatType`, `BoolType`, `StringType`, `VoidType` token variants (not `Identifier`)
-- [ ] `scan_operator()` emits `PlusEq`, `MinusEq`, `StarEq`, `SlashEq` for compound assignment (not plain `Assign`)
-- [ ] PyO3 bridge wraps Rust lexer errors as `LexerError` (not `SyntaxError`)
-- [ ] Rebuild `inscript_parser.pyd` and verify `test_lexer.py` 25/25 pass
+### v3.9.6.13.1 — Rust lexer synchronization ✅
+Parallel microversion to v3.9.6.13. Fixes 6 pre-existing Rust lexer tests by bringing the Rust lexer into parity with the Python lexer.
+- [x] `keyword_or_ident()` emits `OnStart`, `OnUpdate`, `OnDraw`, `OnExit`, `IntType`, `FloatType`, `BoolType`, `StringType`, `VoidType` token variants (not `Identifier`)
+- [x] `scan_operator()` emits `PlusEq`, `MinusEq`, `StarEq`, `SlashEq` for compound assignment (not plain `Assign`)
+- [x] `scan_slash()` emits `SlashSlash`, `SlashEq` variants
+- [x] PyO3 bridge wraps Rust lexer errors as `LexerError` (not `SyntaxError`)
+- [x] `token_type_name()` in `lib.rs` returns correct string for every variant
+- [x] Rebuild `inscript_parser.pyd` and verify `test_lexer.py` 25/25 pass
 
-### v3.9.6.14 — Debugger: game loop debugging
-- [ ] Break in `on_update` / `on_draw` / `on_start`
-- [ ] Frame advance (step one game frame)
-- [ ] Pause game loop at specific frame count
-- [ ] Inspect scene state mid-frame
+### v3.9.6.14 — Debugger: game loop debugging ✅
+- [x] Frame advance (step one game frame)
+- [x] Pause game loop at specific frame count (`--frame-break N`)
+- [x] Frame-advance REPL with `.locals`, `.globals`, `.stack`, `.watch`, `.state`
+- [x] `--frame-advance` flag (step every frame)
+- [x] Break in `on_update` / `on_draw` / `on_start` (breakpoint integration with game loop)
+- [x] Inspect scene state mid-frame (state dict via `.state` command)
+- [x] Set/clear breakpoints from game debug REPL (`b`, `bl`, `bc` commands)
+- [x] Tests: `.ins` (20 tests — frame counting, state dict, profile structure) + `.py` (24 tests — CLI flags, game loop structure, compilation checks)
 
 ### v3.9.6.15 — Debugger: watch window + REPL integration
 - [ ] Expression evaluation in debug REPL

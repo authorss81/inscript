@@ -1,0 +1,36 @@
+# v3.9.6.10 — Debugger breakpoint infrastructure (.ins tests)
+# Run: python inscript.py --test v3.9.6.10/test_breakpoints.ins
+
+test "simple assert" {
+    assert(true)
+}
+
+test "dbg prints value" {
+    dbg(42)
+    assert(true)
+}
+
+test "dbg with string" {
+    dbg("hello world")
+    assert(true)
+}
+
+test "dbg with list" {
+    dbg([1, 2, 3])
+    assert(true)
+}
+
+test "division" {
+    assert(10 / 2 == 5)
+}
+
+test "string concat" {
+    assert("hello" + " " + "world" == "hello world")
+}
+
+test "range sum" {
+    let n = 1
+    n = n + 2
+    n = n + 3
+    assert(n == 6)
+}

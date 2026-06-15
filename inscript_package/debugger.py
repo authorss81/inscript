@@ -27,6 +27,7 @@ class Breakpoint:
     condition: Optional[str] = None   # e.g. "x > 5"
     enabled: bool = True
     hit_count: int = 0
+    hit_condition: Optional[str] = None  # e.g. ">= 5" (break every Nth hit)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -37,14 +38,15 @@ class BreakpointManager:
     def __init__(self):
         self._bps: Dict[Tuple[str, int], Breakpoint] = {}
 
-    def add(self, filename: str, line: int, condition: str = None) -> Breakpoint:
+    def add(self, filename: str, line: int, condition: str = None, hit_condition: str = None) -> Breakpoint:
         key = (filename, line)
         if key in self._bps:
             bp = self._bps[key]
             bp.condition = condition
+            bp.hit_condition = hit_condition
             bp.enabled = True
             return bp
-        bp = Breakpoint(filename=filename, line=line, condition=condition)
+        bp = Breakpoint(filename=filename, line=line, condition=condition, hit_condition=hit_condition)
         self._bps[key] = bp
         return bp
 
@@ -69,6 +71,25 @@ class BreakpointManager:
         if bp is None or not bp.enabled:
             return False
         bp.hit_count += 1
+        if bp.hit_condition:
+            try:
+                parts = bp.hit_condition.split(None, 1)
+                if len(parts) == 2:
+                    op, val_str = parts
+                    val = int(val_str)
+                    if op == "==": hit_ok = bp.hit_count == val
+                    elif op == ">=": hit_ok = bp.hit_count >= val
+                    elif op == "<=": hit_ok = bp.hit_count <= val
+                    elif op == ">": hit_ok = bp.hit_count > val
+                    elif op == "<": hit_ok = bp.hit_count < val
+                    elif op == "%": hit_ok = bp.hit_count % val == 0
+                    else: hit_ok = True
+                else:
+                    hit_ok = True
+            except (ValueError, IndexError):
+                hit_ok = True
+            if not hit_ok:
+                return False
         if bp.condition and env_get_fn:
             try:
                 from parser import parse
@@ -103,22 +124,24 @@ DEBUG_BANNER = """
 
 DEBUG_HELP = """
 Debugger commands:
-  c, continue     — Resume execution until next breakpoint
-  n, next         — Step over to next line (skip into calls)
-  s, step         — Step into function call
-  finish          — Step out of current function
-  b <line>        — Set breakpoint at current file, line N
-  b <file>:<line> — Set breakpoint at specific file:line
-  d <line>        — Delete breakpoint at current file, line N
-  bl              — List all breakpoints
-  bc              — Clear all breakpoints
-  .locals         — List all local variables in current scope
-  .stack          — Print call stack with line numbers
-  .watch <expr>   — Evaluate an expression in current context
-  .set <var>=<val>— Modify a variable in current scope
-  .globals        — List global variables
-  q, quit         — Quit debugger and terminate execution
-  ?               — Print this help
+  c, continue        — Resume execution until next breakpoint
+  n, next            — Step over to next line (skip into calls)
+  s, step            — Step into function call
+  finish             — Step out of current function
+  b <line>           — Set breakpoint at line N
+  b <line> if <expr> — Conditional breakpoint (e.g. b 10 if x > 5)
+  b <line> hit <op N>— Hit-count breakpoint (e.g. b 10 hit >= 5)
+  b <file>:<line>    — Set breakpoint at specific file:line
+  d <line>           — Delete breakpoint at current file, line N
+  bl                 — List all breakpoints
+  bc                 — Clear all breakpoints
+  .locals            — List all local variables in current scope
+  .stack             — Print call stack with line numbers
+  .watch <expr>      — Evaluate an expression in current context
+  .set <var>=<val>   — Modify a variable in current scope
+  .globals           — List global variables
+  q, quit            — Quit debugger and terminate execution
+  ?                  — Print this help
 """
 
 
@@ -132,6 +155,16 @@ class Debugger:
         self._step_cmd_depth: int = 0
         self._paused: bool = False
         self._watch_exprs: List[str] = []
+        self._dap_callback = None  # called instead of debug REPL on pause
+        self._dap_pause_info: dict = {}
+
+    def set_dap_callback(self, cb):
+        self._dap_callback = cb
+
+    def _dap_pause(self, reason: str, line: int, text: str = ""):
+        self._dap_pause_info = {"reason": reason, "line": line, "text": text}
+        if self._dap_callback:
+            self._dap_callback(self)
 
     # ── stepping ──────────────────────────────────────────────────────────
 
@@ -177,6 +210,10 @@ class Debugger:
         print(f"\n[debug] Break at {self.filename}:{line}")
         if src:
             print(f"  {src}")
+
+        if self._dap_callback:
+            self._dap_pause("breakpoint", line, src or "")
+            return
 
         while True:
             try:
@@ -256,8 +293,22 @@ class Debugger:
 
     def _cmd_break(self, arg: str):
         if not arg:
-            print("  Usage: b <line>  or  b <file>:<line>")
+            print("  Usage: b <line> [if <cond>] [hit <op> <n>]")
+            print("  Examples:")
+            print("    b 10              — break at line 10")
+            print("    b 10 if x > 5     — conditional break")
+            print("    b 10 hit >= 5     — break every 5th hit")
+            print("    b 10 hit % 3      — break every 3rd hit")
             return
+        condition = None
+        hit_condition = None
+        if " if " in arg:
+            arg, _, cond = arg.partition(" if ")
+            condition = cond.strip()
+        if " hit " in arg:
+            parts = arg.split(" hit ", 1)
+            arg = parts[0].strip()
+            hit_condition = parts[1].strip()
         if ":" in arg:
             fname, line_str = arg.rsplit(":", 1)
             try:
@@ -272,8 +323,13 @@ class Debugger:
             except ValueError:
                 print(f"  Invalid line: {arg}")
                 return
-        bp = self.bp_manager.add(fname, line)
-        print(f"  Breakpoint set at {fname}:{line}")
+        bp = self.bp_manager.add(fname, line, condition=condition, hit_condition=hit_condition)
+        extra = ""
+        if condition:
+            extra += f" if {condition}"
+        if hit_condition:
+            extra += f" (hit {hit_condition})"
+        print(f"  Breakpoint set at {fname}:{line}{extra}")
 
     def _cmd_delete(self, arg: str):
         if not arg:
@@ -297,8 +353,9 @@ class Debugger:
         print("  Breakpoints:")
         for bp in bps:
             cond = f" if {bp.condition}" if bp.condition else ""
+            hit = f" hit {bp.hit_condition}" if bp.hit_condition else ""
             status = "enabled" if bp.enabled else "disabled"
-            print(f"    {bp.filename}:{bp.line}{cond}  [{status}, hit {bp.hit_count}]")
+            print(f"    {bp.filename}:{bp.line}{cond}{hit}  [{status}, hit {bp.hit_count}]")
 
     def _cmd_locals(self):
         env = self.interp._env

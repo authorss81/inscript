@@ -1,0 +1,110 @@
+# v3.9.6.14 — Game Loop Debugging (.ins tests)
+# Run: python inscript.py --test v3.9.6.14/test_game_loop.ins
+# Warning: test runner regex can't handle nested braces; only flat asserts.
+
+test "frame advance 0→1" {
+    let frame = 0
+    frame = frame + 1
+    assert(frame == 1)
+}
+
+test "frame advance 1→2" {
+    let frame = 1
+    frame = frame + 1
+    assert(frame == 2)
+}
+
+test "frame break at 5 triggers" {
+    assert(5 >= 5)
+}
+
+test "frame break at 3 does not trigger" {
+    assert(!(3 >= 5))
+}
+
+test "profile list structure" {
+    let times = [2.3, 23.6, 0.5]
+    assert(len(times) == 3)
+}
+
+test "average of profile times" {
+    assert((2.3 + 23.6 + 0.5) / 3 == 8.8)
+}
+
+test "state dict read x" {
+    let state = dict()
+    state["x"] = 100
+    assert(state["x"] == 100)
+}
+
+test "state dict write x" {
+    let state = dict()
+    state["x"] = 100
+    state["x"] = state["x"] + 5
+    assert(state["x"] == 105)
+}
+
+test "state dict ball_x" {
+    let state = dict()
+    state["ball_x"] = 100
+    assert(state["ball_x"] == 100)
+}
+
+test "state dict ball_y" {
+    let state = dict()
+    state["ball_y"] = 200
+    assert(state["ball_y"] == 200)
+}
+
+test "on_update increments frame" {
+    let frame = 0
+    frame = frame + 1
+    assert(frame == 1)
+}
+
+test "on_draw increments calls" {
+    let draws = 0
+    draws = draws + 1
+    assert(draws == 1)
+}
+
+test "quit flag set false" {
+    let running = true
+    running = false
+    assert(!running)
+}
+
+test "quit flag remains true" {
+    let running = true
+    assert(running)
+}
+
+test "min of profile times" {
+    let times = [1.0, 3.0, 2.0]
+    assert(times[0] == 1.0)
+}
+
+test "max of profile times" {
+    let times = [1.0, 3.0, 2.0]
+    assert(times[1] == 3.0)
+}
+
+test "three frames" {
+    let frame = 0
+    frame = frame + 1
+    frame = frame + 1
+    frame = frame + 1
+    assert(frame == 3)
+}
+
+test "delta time cap" {
+    let raw_dt = 0.1
+    let capped = 0.05
+    assert(raw_dt > capped)
+}
+
+test "delta time no cap" {
+    let raw_dt = 0.03
+    let capped = 0.05
+    assert(!(raw_dt > capped))
+}

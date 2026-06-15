@@ -42,7 +42,15 @@ python inscript.py --game examples/pong.ins
 
 ## Testing
 
-**Tests are self-registering Python scripts** (not pytest) with `✅`/`❌` output. Run from `inscript_package/`:
+### Test file format
+
+Prefer `.ins` test files (with `test "name" { assert(...) }` syntax) over `.py` test files. Use `.py` test files **only** when the test requires Python-level access that InScript cannot provide (importing Python modules, protocol framing, CLI flag handling, interactive debug REPL).
+
+If you create a `.py` test, document why `.ins` was insufficient in the version's test directory README or in ROADMAP.md.
+
+> **Test runner limitation:** `inscript_test.py` uses a non-greedy regex `(.*?)\}` to extract test bodies, which cannot handle nested braces. This means `.ins` tests cannot contain `if {}`, `for {}`, `let x = {}`, or any `{}` inside `test "..." { ... }`. (If this becomes a blocker, fix the regex with a balanced-brace parser.)
+
+**Self-registering Python scripts** (not pytest) with `✅`/`❌` output. Run from `inscript_package/`:
 
 ```bash
 # Core tests (run in CI)

@@ -1,0 +1,90 @@
+# v3.9.6.13 — Debugger Features (.ins tests)
+# Run: python inscript.py --test v3.9.6.13/test_debugger_features.ins
+# Warning: test runner uses non-greedy regex; no nested braces allowed.
+
+test "dbg() does not crash" {
+    dbg(42)
+    assert(true)
+}
+
+test "dbg() with string" {
+    dbg("hello")
+    assert(true)
+}
+
+test "dbg() with expression" {
+    dbg(1 + 2 * 3)
+    assert(true)
+}
+
+test "hit % 3 at 3" {
+    assert(3 % 3 == 0)
+}
+
+test "hit % 3 at 6" {
+    assert(6 % 3 == 0)
+}
+
+test "hit % 3 not at 4" {
+    assert(!(4 % 3 == 0))
+}
+
+test "hit >= 3 triggers at 3" {
+    assert(3 >= 3)
+}
+
+test "hit >= 3 does not trigger at 2" {
+    assert(!(2 >= 3))
+}
+
+test "conditional x > 5 with 10" {
+    assert(10 > 5)
+}
+
+test "conditional x > 5 with 3" {
+    assert(!(3 > 5))
+}
+
+test "hit == 5" {
+    assert(5 == 5)
+}
+
+test "hit == 5 false at 4" {
+    assert(!(4 == 5))
+}
+
+test "hit < 3" {
+    assert(2 < 3)
+}
+
+test "hit <= 3 at 3" {
+    assert(3 <= 3)
+}
+
+test "hit <= 3 at 2" {
+    assert(2 <= 3)
+}
+
+test "hit > 3 at 4" {
+    assert(4 > 3)
+}
+
+test "combined and" {
+    assert(7 > 5 && 3 < 5)
+}
+
+test "combined and false" {
+    assert(!(7 > 5 && 10 < 5))
+}
+
+test "assert message" {
+    assert(1 + 1 == 2, "addition works")
+}
+
+test "assert math" {
+    assert(100 / 10 == 10)
+}
+
+test "string length" {
+    assert(len("hello") == 5)
+}

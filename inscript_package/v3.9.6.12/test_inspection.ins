@@ -1,0 +1,50 @@
+# v3.9.6.12 — Debugger variable inspection (.ins tests)
+# Run: python inscript.py --test v3.9.6.12/test_inspection.ins
+
+test "local vars" {
+    let x = 42
+    let y = "hello"
+    let z = [1, 2, 3]
+    assert(x == 42)
+    assert(y == "hello")
+    assert(len(z) == 3)
+}
+
+test "global access" {
+    let pi = 3.14159
+    assert(pi > 3.14)
+}
+
+test "expression eval" {
+    assert((1 + 2) * 3 == 9)
+}
+
+test "variable modification" {
+    let val = 10
+    val = 99
+    assert(val == 99)
+}
+
+test "watch value" {
+    let a = 5
+    let b = 10
+    let watched = a + b
+    assert(watched == 15)
+}
+
+test "stack depth" {
+    let d = 0
+    d = d + 1
+    d = d + 1
+    d = d + 1
+    assert(d == 3)
+}
+
+test "type checking" {
+    let num = 42
+    assert(num == 42)
+    let s = "str"
+    assert(s == "str")
+    let arr = [1, 2, 3]
+    assert(arr[0] == 1)
+}
