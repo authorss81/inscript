@@ -170,7 +170,7 @@ impl Lexer {
             // // floor division
             Some('/') => {
                 self.advance();
-                self.emit_with(Token::Slash, sl, sc);
+                self.emit_with(Token::SlashSlash, sl, sc);
                 Ok(())
             }
             // /* block comment
@@ -181,7 +181,7 @@ impl Lexer {
             // /= compound assign
             Some('=') => {
                 self.advance();
-                self.emit_with(Token::Assign, sl, sc);
+                self.emit_with(Token::SlashEq, sl, sc);
                 Ok(())
             }
             // / division
@@ -548,22 +548,22 @@ impl Lexer {
             "repeat" => Token::Identifier("repeat".to_string()),
             "until" => Token::Identifier("until".to_string()),
 
-            // Lifecycle keywords → Identifier
-            "on_start" => Token::Identifier("on_start".to_string()),
-            "on_update" => Token::Identifier("on_update".to_string()),
-            "on_draw" => Token::Identifier("on_draw".to_string()),
-            "on_exit" => Token::Identifier("on_exit".to_string()),
-            "node" => Token::Identifier("node".to_string()),
-            "_ready" => Token::Identifier("_ready".to_string()),
-            "_update" => Token::Identifier("_update".to_string()),
-            "_draw" => Token::Identifier("_draw".to_string()),
+            // Lifecycle keywords
+            "on_start" => Token::OnStart,
+            "on_update" => Token::OnUpdate,
+            "on_draw" => Token::OnDraw,
+            "on_exit" => Token::OnExit,
+            "node" => Token::Node,
+            "_ready" => Token::OnReady,
+            "_update" => Token::OnNodeUpdate,
+            "_draw" => Token::OnNodeDraw,
 
-            // Type names → Identifier
-            "int" => Token::Identifier("int".to_string()),
-            "float" => Token::Identifier("float".to_string()),
-            "bool" => Token::Identifier("bool".to_string()),
-            "string" => Token::Identifier("string".to_string()),
-            "void" => Token::Identifier("void".to_string()),
+            // Type names
+            "int" => Token::IntType,
+            "float" => Token::FloatType,
+            "bool" => Token::BoolType,
+            "string" => Token::StringType,
+            "void" => Token::VoidType,
 
             // Other soft keywords → Identifier
             "extends" => Token::Identifier("extends".to_string()),
@@ -589,29 +589,29 @@ impl Lexer {
     fn scan_operator(&mut self, ch: char, sl: usize, sc: usize) -> Result<(), String> {
         match ch {
             '+' => {
-                if self.match_char('=') { self.emit_with(Token::Assign, sl, sc); }
-                else if self.match_char('+') { self.emit_with(Token::Plus, sl, sc); }
+                if self.match_char('=') { self.emit_with(Token::PlusEq, sl, sc); }
+                else if self.match_char('+') { self.emit_with(Token::PlusPlus, sl, sc); }
                 else { self.emit_with(Token::Plus, sl, sc); }
             }
             '-' => {
                 if self.match_char('>') { self.emit_with(Token::Arrow, sl, sc); }
-                else if self.match_char('=') { self.emit_with(Token::Assign, sl, sc); }
+                else if self.match_char('=') { self.emit_with(Token::MinusEq, sl, sc); }
                 else { self.emit_with(Token::Minus, sl, sc); }
             }
             '*' => {
                 if self.match_char('*') {
-                    if self.match_char('=') { self.emit_with(Token::Assign, sl, sc); }
+                    if self.match_char('=') { self.emit_with(Token::PowerEq, sl, sc); }
                     else { self.emit_with(Token::Power, sl, sc); }
-                } else if self.match_char('=') { self.emit_with(Token::Assign, sl, sc); }
+                } else if self.match_char('=') { self.emit_with(Token::StarEq, sl, sc); }
                 else { self.emit_with(Token::Star, sl, sc); }
             }
             '/' => {
                 // Already handled in scan_slash — shouldn't reach here
-                if self.match_char('=') { self.emit_with(Token::Assign, sl, sc); }
+                if self.match_char('=') { self.emit_with(Token::SlashEq, sl, sc); }
                 else { self.emit_with(Token::Slash, sl, sc); }
             }
             '%' => {
-                if self.match_char('=') { self.emit_with(Token::Assign, sl, sc); }
+                if self.match_char('=') { self.emit_with(Token::PercentEq, sl, sc); }
                 else { self.emit_with(Token::Percent, sl, sc); }
             }
             '=' => {
@@ -625,31 +625,31 @@ impl Lexer {
             }
             '<' => {
                 if self.match_char('<') {
-                    if self.match_char('=') { self.emit_with(Token::Assign, sl, sc); }
+                    if self.match_char('=') { self.emit_with(Token::LShiftEq, sl, sc); }
                     else { self.emit_with(Token::LeftShift, sl, sc); }
                 } else if self.match_char('=') { self.emit_with(Token::Lte, sl, sc); }
                 else { self.emit_with(Token::Lt, sl, sc); }
             }
             '>' => {
                 if self.match_char('>') {
-                    if self.match_char('=') { self.emit_with(Token::Assign, sl, sc); }
+                    if self.match_char('=') { self.emit_with(Token::RShiftEq, sl, sc); }
                     else { self.emit_with(Token::RightShift, sl, sc); }
                 } else if self.match_char('=') { self.emit_with(Token::Gte, sl, sc); }
                 else { self.emit_with(Token::Gt, sl, sc); }
             }
             '&' => {
                 if self.match_char('&') { self.emit_with(Token::And, sl, sc); }
-                else if self.match_char('=') { self.emit_with(Token::Assign, sl, sc); }
+                else if self.match_char('=') { self.emit_with(Token::AmpEq, sl, sc); }
                 else { self.emit_with(Token::BitwiseAnd, sl, sc); }
             }
             '|' => {
                 if self.match_char('|') { self.emit_with(Token::Or, sl, sc); }
                 else if self.match_char('>') { self.emit_with(Token::PipeGt, sl, sc); }
-                else if self.match_char('=') { self.emit_with(Token::Assign, sl, sc); }
+                else if self.match_char('=') { self.emit_with(Token::PipeEq, sl, sc); }
                 else { self.emit_with(Token::BitwiseOr, sl, sc); }
             }
             '^' => {
-                if self.match_char('=') { self.emit_with(Token::Assign, sl, sc); }
+                if self.match_char('=') { self.emit_with(Token::CaretEq, sl, sc); }
                 else { self.emit_with(Token::BitwiseXor, sl, sc); }
             }
             '~' => {

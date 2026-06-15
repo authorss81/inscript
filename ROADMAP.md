@@ -1,6 +1,6 @@
 # InScript Roadmap — Production-Grade Microversion Plan
 
-> **Current:** v3.9.6.2 — F-string compilation implemented. All f-string features compile and execute correctly.
+> **Current:** v3.9.6.12 — Debugger: variable inspection. All 22 debugger tests pass.
 >
 > **Version scheme:** MAJOR.MINOR.PATCH.MICRO — each micro targets a discrete production feature.
 > After v3.9.6.99, roll to v3.9.7.0 for the next feature cluster.
@@ -83,34 +83,43 @@
 
 ---
 
-## Phase 9 — Debugger (v3.9.6.10–v3.9.6.19)
+## Phase 9 — Debugger (v3.9.6.10–v3.9.6.15)
 
 **P0 gap:** No step debugger is the single biggest blocker for production game dev.
 
-### v3.9.6.10 — Debugger: breakpoint infrastructure
-- [ ] `dbg` built-in function (`dbg(expr)` prints value + location)
-- [ ] Breakpoint class: file, line, condition, enabled flag
-- [ ] Breakpoint manager (add, remove, list, clear)
-- [ ] `--debug` CLI flag to enter debug mode
+### v3.9.6.10 — Debugger: breakpoint infrastructure ✅
+- [x] `dbg` built-in function (`dbg(expr)` prints value + location)
+- [x] Breakpoint class: file, line, condition, enabled flag
+- [x] Breakpoint manager (add, remove, list, clear)
+- [x] `--debug` CLI flag to enter debug mode
 
-### v3.9.6.11 — Debugger: step-over + step-into
-- [ ] Execution pause at breakpoints
-- [ ] Step-over (next statement, skip into calls)
-- [ ] Step-into (enter function calls)
-- [ ] Step-out (return to caller)
-- [ ] Continue (resume until next breakpoint)
+### v3.9.6.11 — Debugger: step-over + step-into ✅
+- [x] Execution pause at breakpoints
+- [x] Step-over (next statement, skip into calls)
+- [x] Step-into (enter function calls)
+- [x] Step-out (return to caller)
+- [x] Continue (resume until next breakpoint)
 
-### v3.9.6.12 — Debugger: variable inspection
-- [ ] `.locals` — list all variables in current scope
-- [ ] `.watch <expr>` — evaluate expression at breakpoint
-- [ ] `.stack` — print call stack with line numbers
-- [ ] Variable modification at breakpoint
+### v3.9.6.12 — Debugger: variable inspection ✅
+- [x] `.locals` — list all variables in current scope
+- [x] `.globals` — list global variables
+- [x] `.watch <expr>` — evaluate expression at breakpoint
+- [x] `.stack` — print call stack with line numbers
+- [x] `.set` — modify variable at breakpoint
+- [x] Expression evaluation in debug REPL
 
 ### v3.9.6.13 — Debugger: DAP protocol for VS Code
 - [ ] Debug Adapter Protocol (DAP) server
 - [ ] VS Code launch config integration
 - [ ] Hit-count breakpoints
 - [ ] Conditional breakpoints (break when `x > 5`)
+
+### v3.9.6.13.1 — Rust lexer synchronization
+Fixes 6 pre-existing Rust lexer tests by bringing the Rust lexer into parity with the Python lexer. Parallel microversion to v3.9.6.13.
+- [ ] `keyword_or_ident()` emits `OnStart`, `OnUpdate`, `OnDraw`, `OnExit`, `IntType`, `FloatType`, `BoolType`, `StringType`, `VoidType` token variants (not `Identifier`)
+- [ ] `scan_operator()` emits `PlusEq`, `MinusEq`, `StarEq`, `SlashEq` for compound assignment (not plain `Assign`)
+- [ ] PyO3 bridge wraps Rust lexer errors as `LexerError` (not `SyntaxError`)
+- [ ] Rebuild `inscript_parser.pyd` and verify `test_lexer.py` 25/25 pass
 
 ### v3.9.6.14 — Debugger: game loop debugging
 - [ ] Break in `on_update` / `on_draw` / `on_start`

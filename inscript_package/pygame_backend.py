@@ -709,7 +709,7 @@ class ColorHelper(_NS):
 # ─────────────────────────────────────────────────────────────────────────────
 # run_scene — main entry point
 # ─────────────────────────────────────────────────────────────────────────────
-def run_scene(ins_file: str, width=800, height=600, fps=60, title=None, profile=False, batch_draw=False):
+def run_scene(ins_file: str, width=800, height=600, fps=60, title=None, profile=False, batch_draw=False, debug=False):
     """
     Load an InScript .ins file and run it in a real-time pygame window.
 
@@ -750,7 +750,7 @@ def run_scene(ins_file: str, width=800, height=600, fps=60, title=None, profile=
     game_clk  = GameClock(fps)
 
     # ── interpreter ───────────────────────────────────────────────────────
-    interp = Interpreter(source.splitlines())
+    interp = Interpreter(source.splitlines(), debug=debug)
     env    = interp._env
 
     # Bind namespaces

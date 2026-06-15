@@ -54,10 +54,16 @@ class Interpreter(Visitor):
     Tree-walking interpreter.  Visits each AST node and returns a Python value.
     """
 
-    def __init__(self, source_lines: List[str] = None, filename: str = "<script>"):
+    def __init__(self, source_lines: List[str] = None, filename: str = "<script>",
+                 debug: bool = False):
         self._src   = source_lines or []
         self._filename = filename
         self._globals = Environment(name="global")
+        self._debug = debug
+        self._debugger = None
+        if debug:
+            from debugger import Debugger
+            self._debugger = Debugger(self, filename)
         self._env     = self._globals
         self._call_depth = 0
         self._MAX_CALL_DEPTH = 500
@@ -462,6 +468,8 @@ class Interpreter(Visitor):
             "assert_eq":   lambda a, b, msg="": (None if a == b else self._error(f"assert_eq failed: {a!r} != {b!r}" + (f" — {msg}" if msg else ""))),
             "assert_true": lambda v, msg="": (None if v else self._error(f"assert_true failed" + (f" — {msg}" if msg else ""))),
             "inspect":     lambda v: print(repr(v)),
+            # ── Debugger v3.9.6.10 ────────────────────────────────────────────
+            "dbg":         lambda v: interp._dbg_builtin(v),
             # ── Generator helpers ──────────────────────────────────────────────
             "next":        lambda g: (g.next() if isinstance(g, InScriptGenerator)
                                       else next(iter(g), None)),
@@ -586,11 +594,23 @@ class Interpreter(Visitor):
         env.define("network", _StubNamespace("network"))
         env.define("physics", _StubNamespace("physics"))
 
+    # ── Debugger builtin (v3.9.6.10) ─────────────────────────────────────────
+
+    def _dbg_builtin(self, v):
+        """dbg(value) — print value + location, return value."""
+        line = self._call_stack._frames[-1].line if self._call_stack._frames else 0
+        src = self._src_line(line)
+        ctx = src.strip() if src else ""
+        print(f"[dbg] {self._filename}:{line} {ctx} -> {_inscript_str(v)}")
+        return v
+
     # ── Program & declarations ────────────────────────────────────────────────
 
     def visit_Program(self, node: Program) -> Any:
         result = None
         for stmt in node.body:
+            if self._debugger and self._debugger.should_pause_at(stmt, self._call_depth):
+                self._debugger.enter_debug_repl(stmt)
             result = self.visit(stmt)
         return result
 
@@ -1118,6 +1138,8 @@ class Interpreter(Visitor):
         result = None
         try:
             for stmt in node.body:
+                if self._debugger and self._debugger.should_pause_at(stmt, self._call_depth):
+                    self._debugger.enter_debug_repl(stmt)
                 result = self.visit(stmt)
         finally:
             self._pop()
@@ -2586,6 +2608,16 @@ class Interpreter(Visitor):
                     self._call_stack.pop()
                 return result
             return InScriptCoroutine(_async_body(), fn_name=fn.name or "<async>")
+
+        # Check breakpoint at function entry
+        if self._debugger:
+            bp_line = getattr(fn.body.body[0], 'line', line) if fn.body.body else line
+            if self._debugger.should_pause_at(
+                type('_FuncEntryNode', (), {'line': bp_line, 'col': 0})(),
+                self._call_depth
+            ):
+                fake_node = type('_FuncEntryNode', (), {'line': bp_line, 'col': 0})()
+                self._debugger.enter_debug_repl(fake_node)
 
         # v1.3.0: TCO trampoline — self-recursive tail calls loop instead of recurse
         result = None

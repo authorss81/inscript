@@ -24,7 +24,7 @@ from errors   import (InScriptError, LexerError, ParseError,
                        SemanticError, InScriptRuntimeError,
                        MultiError, InScriptWarning)
 
-VERSION = "3.9.6.9"
+VERSION = "3.9.6.13.1"
 
 MANIFEST_FILENAME = "inscript.toml"
 LOCK_FILENAME     = "inscript.lock"
@@ -2386,7 +2386,8 @@ def run_source(source: str, filename: str = "<stdin>",
                warn_as_error: bool = False,
                strict: bool = False,
                profile: bool = False,
-               json_errors: bool = False) -> int:
+               json_errors: bool = False,
+               debug: bool = False) -> int:
     """Lex, parse, analyze, and interpret InScript source code."""
 
     def _emit_error(e):
@@ -2443,7 +2444,7 @@ def run_source(source: str, filename: str = "<stdin>",
 
     # ── 4. Interpret — Phase 3: Python-leak guard ─────────────────────────
     try:
-        interp = Interpreter(source.splitlines(), filename=filename)
+        interp = Interpreter(source.splitlines(), filename=filename, debug=debug)
         if profile:
             import cProfile, pstats, io as _io
             pr = cProfile.Profile()
@@ -2688,7 +2689,9 @@ Examples:
     parser.add_argument("--warn-as-error", action="store_true",
                         help="Treat any warning as an error (CI strictness)")
     parser.add_argument("--profile", action="store_true",
-                        help="Print per-function call count and timing after execution")
+                         help="Print per-function call count and timing after execution")
+    parser.add_argument("--debug", action="store_true",
+                         help="v3.9.6.10: Run in debug mode with breakpoint support")
     parser.add_argument("--fmt",     action="store_true",
                         help="Format .ins files: inscript --fmt file.ins")
     parser.add_argument("--fmt-all", metavar="DIR",
@@ -2948,7 +2951,8 @@ Examples:
                       width=args.width, height=args.height, fps=args.fps,
                       title=os.path.basename(args.file),
                       profile=getattr(args, 'profile', False),
-                      batch_draw=getattr(args, 'batch_draw', False))
+                      batch_draw=getattr(args, 'batch_draw', False),
+                      debug=getattr(args, 'debug', False))
             return 0
         except ImportError:
             print("[InScript] pygame_backend not found next to inscript.py", file=sys.stderr)
@@ -3234,13 +3238,14 @@ Examples:
     strict        = getattr(args, "strict", False)
     warn_as_error = getattr(args, "warn_as_error", False) or strict
     profile       = getattr(args, "profile", False)
+    debug_mode    = getattr(args, "debug", False)
 
     with open(args.file, "r", encoding="utf-8") as _f:
         _source = _f.read()
     return run_source(_source, filename=args.file, type_check=type_check,
                       no_warn=no_warn, no_warn_unused=no_warn_unused,
                       warn_as_error=warn_as_error, strict=strict,
-                      profile=profile,
+                      profile=profile, debug=debug_mode,
                       json_errors=getattr(args, 'json_errors', False))
 
 

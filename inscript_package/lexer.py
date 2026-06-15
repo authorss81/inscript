@@ -681,6 +681,12 @@ _RUST_TT: dict = {
     "Ellipsis": TT.ELLIPSIS,
     "FString": TT.FSTRING, "Eof": TT.EOF,
     "Pipe": TT.PIPE, "Assign": TT.ASSIGN,
+    "PlusEq": TT.PLUS_EQ, "MinusEq": TT.MINUS_EQ,
+    "StarEq": TT.STAR_EQ, "SlashEq": TT.SLASH_EQ,
+    "PercentEq": TT.PERCENT_EQ, "PowerEq": TT.POWER_EQ,
+    "AmpEq": TT.AMP_EQ, "PipeEq": TT.PIPE_EQ,
+    "CaretEq": TT.CARET_EQ, "LShiftEq": TT.LSHIFT_EQ,
+    "RShiftEq": TT.RSHIFT_EQ,
 }
 
 # ── Compound assign → TT map ──────────────────────────────────
@@ -692,6 +698,47 @@ _COMPOUND_ASSIGN: dict = {
     "<<=": TT.LSHIFT_EQ, ">>=": TT.RSHIFT_EQ,
 }
 
+# ── Rust lexer operator values (empty from Rust, fill with symbols) ─
+
+_RUST_OP_VALUES: dict = {
+    "Plus": "+", "Minus": "-", "Star": "*", "Slash": "/",
+    "Percent": "%", "Power": "**",
+    "Eq": "==", "Neq": "!=", "Lt": "<", "Lte": "<=",
+    "Gt": ">", "Gte": ">=",
+    "BitwiseAnd": "&", "BitwiseOr": "|", "BitwiseXor": "^",
+    "BitwiseNot": "~", "LeftShift": "<<", "RightShift": ">>",
+    "PlusPlus": "++", "SlashSlash": "//",
+    "Assign": "=", "Arrow": "->", "FatArrow": "=>",
+    "Colon": ":", "DoubleColon": "::",
+    "Comma": ",", "Dot": ".", "Semicolon": ";",
+    "LeftParen": "(", "RightParen": ")",
+    "LeftBrace": "{", "RightBrace": "}",
+    "LeftBracket": "[", "RightBracket": "]",
+    "Pipe": "|", "At": "@",
+    "DotDot": "..", "DotDotEq": "..=",
+    "Question": "?", "QuestionDot": "?.",
+    "Nullish": "??", "NullishEq": "??=",
+    "Ellipsis": "...", "PipeGt": "|>",
+    "And": "&&", "Or": "||", "Not": "!",
+    "PlusEq": "+=", "MinusEq": "-=",
+    "StarEq": "*=", "SlashEq": "/=",
+    "PercentEq": "%=", "PowerEq": "**=",
+    "AmpEq": "&=", "PipeEq": "|=",
+    "CaretEq": "^=", "LShiftEq": "<<=",
+    "RShiftEq": ">>=",
+    "OnStart": "on_start", "OnUpdate": "on_update",
+    "OnDraw": "on_draw", "OnExit": "on_exit",
+    "Node": "node", "OnReady": "_ready",
+    "OnNodeUpdate": "_update", "OnNodeDraw": "_draw",
+    "IntType": "int", "FloatType": "float",
+    "BoolType": "bool", "StringType": "string",
+    "VoidType": "void",
+    "Null": "null", "Self": "self", "Super": "super",
+    "Import": "import", "From": "from", "As": "as",
+    "Export": "export",
+    "Is": "is", "Div": "div",
+}
+
 # ── Ident value overrides (non-string values) ─────────────────
 
 _IDENT_MAP: dict = {
@@ -701,8 +748,12 @@ _IDENT_MAP: dict = {
 def tokenize(source: str, filename: str = "<stdin>") -> List[Token]:
     try:
         from inscript_parser import lex as _rust_lex
+        try:
+            raw_result = _rust_lex(source)
+        except Exception as e:
+            raise LexerError(str(e))
         tokens = []
-        for d in _rust_lex(source):
+        for d in raw_result:
             tt_name = d["token_type"]
             tt = _RUST_TT.get(tt_name)
             if tt is None:
@@ -736,7 +787,7 @@ def tokenize(source: str, filename: str = "<stdin>") -> List[Token]:
             elif tt == TT.IDENT and val_str in _IDENT_MAP:
                 val = _IDENT_MAP[val_str]
             else:
-                val = val_str if val_str else tt_name.lower()
+                val = val_str if val_str else _RUST_OP_VALUES.get(tt_name, tt_name.lower())
 
             tokens.append(Token(tt, val, line, col))
         return tokens
