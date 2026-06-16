@@ -64,6 +64,13 @@ T_TRANSFORM2D = InScriptType("Transform2D")
 T_TRANSFORM3D = InScriptType("Transform3D")
 T_TEXTURE = InScriptType("Texture")
 
+# Physics built-in types
+T_PHYSICS_WORLD = InScriptType("PhysicsWorld")
+T_BODY          = InScriptType("Body")
+T_SHAPE         = InScriptType("Shape")
+T_JOINT         = InScriptType("Joint")
+T_CONTACT       = InScriptType("Contact")
+
 T_NEVER  = InScriptType("never")   # v1.8.3: bottom type — function never returns normally
 T_PROMISE = InScriptType("Promise") # v1.9.7: async fn return type
 
@@ -82,6 +89,9 @@ BUILTIN_TYPES: Dict[str, InScriptType] = {
     "Color": T_COLOR, "Rect": T_RECT,
     "Transform2D": T_TRANSFORM2D, "Transform3D": T_TRANSFORM3D,
     "Texture": T_TEXTURE,
+    # physics types
+    "PhysicsWorld": T_PHYSICS_WORLD, "Body": T_BODY, "Shape": T_SHAPE,
+    "Joint": T_JOINT, "Contact": T_CONTACT,
     # tuple / array shorthand
     "Tuple": T_ANY, "List": T_ANY, "Dict": T_ANY, "Map": T_ANY,
     # v1.9.1: bare 'array' without element type (deprecated — use [T] in v2.0.0)
@@ -515,6 +525,17 @@ class Analyzer(Visitor):
             Symbol("Vec4",    T_VEC4,  kind="fn"),
             Symbol("Color",   T_COLOR, kind="fn"),
             Symbol("Rect",    T_RECT,  kind="fn"),
+            # physics constructors and constants
+            Symbol("PhysicsWorld", T_PHYSICS_WORLD, kind="fn"),
+            Symbol("PhysicsShape", T_SHAPE, kind="fn"),
+            Symbol("BODY_STATIC",    T_INT, kind="var"),
+            Symbol("BODY_DYNAMIC",   T_INT, kind="var"),
+            Symbol("BODY_KINEMATIC", T_INT, kind="var"),
+            Symbol("JOINT_DISTANCE",  T_INT, kind="var"),
+            Symbol("JOINT_REVOLUTE",  T_INT, kind="var"),
+            Symbol("JOINT_PRISMATIC", T_INT, kind="var"),
+            Symbol("JOINT_WELD",      T_INT, kind="var"),
+            Symbol("JOINT_MOUSE",     T_INT, kind="var"),
             # global objects
             Symbol("input",   T_ANY,   kind="var"),
             Symbol("draw",    T_ANY,   kind="var"),

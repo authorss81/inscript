@@ -15,6 +15,11 @@ from stdlib_values import (
     InScriptFunction, InScriptInstance, InScriptRange, InScriptGenerator,
     InScriptCoroutine,
 )
+from physics_engine import (
+    PhysicsWorld, Body, Shape, Joint, Contact,
+    BODY_STATIC, BODY_DYNAMIC, BODY_KINEMATIC,
+    JOINT_DISTANCE, JOINT_REVOLUTE, JOINT_PRISMATIC, JOINT_WELD, JOINT_MOUSE,
+)
 import stdlib as _stdlib  # loads all built-in modules
 from errors import (
     InScriptRuntimeError, NameError_, IndexError_,
@@ -507,6 +512,23 @@ class Interpreter(Visitor):
                                                else default),
             "unwrap_err":  lambda r: (r["_err"] if (isinstance(r, dict) and "_err" in r)
                                       else self._error("unwrap_err() called on Ok value")),
+            # ── Physics (Phase 10, v3.9.6.20) ──────────────────────────────────
+            "PhysicsWorld": lambda gravity=None: (
+                PhysicsWorld(*gravity.values()) if hasattr(gravity, 'values')  # Vec2
+                else PhysicsWorld(gravity.x, gravity.y) if hasattr(gravity, 'x')
+                else PhysicsWorld(float(gravity[0]), float(gravity[1])) if isinstance(gravity, (list, tuple))
+                else PhysicsWorld(0.0, 500.0) if gravity is None
+                else PhysicsWorld(float(gravity), 500.0)
+            ),
+            "PhysicsShape": Shape,
+            "BODY_STATIC":    BODY_STATIC,
+            "BODY_DYNAMIC":   BODY_DYNAMIC,
+            "BODY_KINEMATIC": BODY_KINEMATIC,
+            "JOINT_DISTANCE":  JOINT_DISTANCE,
+            "JOINT_REVOLUTE":  JOINT_REVOLUTE,
+            "JOINT_PRISMATIC": JOINT_PRISMATIC,
+            "JOINT_WELD":      JOINT_WELD,
+            "JOINT_MOUSE":     JOINT_MOUSE,
         }
         
         # ── BUG FIXES: Remaining 39 bugs (v3.8.2) ─────────────────────────────
@@ -604,7 +626,21 @@ class Interpreter(Visitor):
         env.define("scene",   _StubNamespace("scene"))
         env.define("world",   _StubNamespace("world"))
         env.define("network", _StubNamespace("network"))
-        env.define("physics", _StubNamespace("physics"))
+        env.define("physics", {
+            "World":       lambda gx=0.0, gy=500.0: PhysicsWorld(gx, gy),
+            "Body":        lambda shape, body_type=1, mass=1.0, tag="": Body(shape, body_type, mass, tag),
+            "Shape":       Shape,
+            "rect":        Shape.rect,
+            "circle":      Shape.circle,
+            "STATIC":      BODY_STATIC,
+            "DYNAMIC":     BODY_DYNAMIC,
+            "KINEMATIC":   BODY_KINEMATIC,
+            "JOINT_DIST":  JOINT_DISTANCE,
+            "JOINT_REV":   JOINT_REVOLUTE,
+            "JOINT_PRISM": JOINT_PRISMATIC,
+            "JOINT_WELD":  JOINT_WELD,
+            "JOINT_MOUSE": JOINT_MOUSE,
+        })
 
     # ── Debugger builtin (v3.9.6.10) ─────────────────────────────────────────
 
@@ -3300,7 +3336,7 @@ def _get_attr(obj: Any, name: str, line: int, interp: Interpreter) -> Any:
         interp._error(f"'{obj.struct_name}' has no attribute '{name}'", line)
 
     # Built-in game types
-    if isinstance(obj, (Vec2, Vec3, Color, Rect)):
+    if isinstance(obj, (Vec2, Vec3, Color, Rect, PhysicsWorld, Body, Shape, Joint, Contact)):
         try:
             return obj.get_attr(name)
         except AttributeError:
@@ -3482,7 +3518,7 @@ def _set_attr(obj: Any, name: str, val: Any, line: int, interp=None) -> None:
                                               self_instance=obj)
                         return
         obj.set(name, val); return
-    if isinstance(obj, (Vec2, Vec3, Color, Rect)):
+    if isinstance(obj, (Vec2, Vec3, Color, Rect, PhysicsWorld, Body, Shape)):
         try: obj.set_attr(name, val); return
         except AttributeError: pass
     raise InScriptRuntimeError(f"Cannot set attribute '{name}'", line)

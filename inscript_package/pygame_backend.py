@@ -726,6 +726,7 @@ def run_scene(ins_file: str, width=800, height=600, fps=60, title=None, profile=
     from lexer import Lexer
     from parser import Parser
     from ast_nodes import SceneDecl
+    from physics_engine import PhysicsWorld, Body, Shape, Joint, Contact
 
     with open(str(ins_file), "r", encoding="utf-8") as f:
         source = f.read()
@@ -851,6 +852,18 @@ def run_scene(ins_file: str, width=800, height=600, fps=60, title=None, profile=
         "audio": audio_ns, "font": font_ns, "math2d": math2d_ns,
         "Color": color_ns, "clock": game_clk,
         "print": print,
+        # Physics builtins
+        "PhysicsWorld":     PhysicsWorld,
+        "PhysicsShape":     Shape,
+        "Body":             Body,
+        "BODY_STATIC":      0,
+        "BODY_DYNAMIC":     1,
+        "BODY_KINEMATIC":   2,
+        "JOINT_DISTANCE":   0,
+        "JOINT_REVOLUTE":   1,
+        "JOINT_PRISMATIC":  2,
+        "JOINT_WELD":       3,
+        "JOINT_MOUSE":      4,
     }
     for _n in ["WHITE","BLACK","RED","GREEN","BLUE","YELLOW","CYAN","MAGENTA",
                "ORANGE","GRAY","DARK_GRAY","LIGHT_GRAY","PURPLE","PINK",

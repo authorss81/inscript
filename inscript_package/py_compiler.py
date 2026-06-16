@@ -120,6 +120,10 @@ _GLOBAL_NAMES = frozenset({
     "ORANGE","GRAY","DARK_GRAY","LIGHT_GRAY","PURPLE","PINK",
     "TEAL","NAVY","LIME","BROWN","SKY","GOLD","TRANSPARENT",
     "Vec2","Vec3","Vec4","Rect",
+    # Physics builtin types and constants
+    "PhysicsWorld","PhysicsShape","Body",
+    "BODY_STATIC","BODY_DYNAMIC","BODY_KINEMATIC",
+    "JOINT_DISTANCE","JOINT_REVOLUTE","JOINT_PRISMATIC","JOINT_WELD","JOINT_MOUSE",
     # InScript standard library functions (injected into globals by game engine)
     "clamp", "sin", "cos", "sqrt", "abs", "floor", "ceil", "round", "random",
     "lerp", "min", "max",

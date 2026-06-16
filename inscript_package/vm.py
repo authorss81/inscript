@@ -12,6 +12,7 @@ from compiler import Op, FnProto, Instr, NIL_REG, compile_source
 from stdlib_values import (Vec2, Vec3, Color, Rect,
                             InScriptFunction, InScriptInstance,
                             InScriptRange, InScriptGenerator)
+from physics_engine import PhysicsWorld, Body, Shape, Joint, Contact
 from errors import InScriptRuntimeError
 
 # BUG FIXES: Import remaining 39 bug fixes (v3.8.2)
@@ -473,6 +474,10 @@ class VM:
         g['any']    = lambda it: any(it); g['all']=lambda it: all(it)
         g['sum']    = sum
         g['Vec2']   = Vec2; g['Vec3']=Vec3; g['Color']=Color; g['Rect']=Rect
+        g['PhysicsWorld'] = PhysicsWorld; g['PhysicsShape'] = Shape; g['Body'] = Body
+        g['BODY_STATIC']=0; g['BODY_DYNAMIC']=1; g['BODY_KINEMATIC']=2
+        g['JOINT_DISTANCE']=0; g['JOINT_REVOLUTE']=1; g['JOINT_PRISMATIC']=2
+        g['JOINT_WELD']=3; g['JOINT_MOUSE']=4
         g['random'] = _r.random; g['rand_int']=_r.randint; g['rand_float']=_r.uniform
         g['rand_choice']=_r.choice; g['shuffle']=_r.shuffle; g['seed']=_r.seed
         g['time']   = _t.time; g['sleep']=_t.sleep

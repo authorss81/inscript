@@ -1,0 +1,29 @@
+# v3.9.6.20 — Physics Box2D binding (.ins tests)
+# Run: python inscript.py --test v3.9.6.20/test_physics_binding.ins
+
+test "basic physics world" {
+    let w = PhysicsWorld()
+    assert(w != nil)
+}
+
+test "body creation" {
+    let w = PhysicsWorld()
+    let s = PhysicsShape.rect(32, 32)
+    let b = w.create_body(s, BODY_DYNAMIC, 1.0, "test", 100, 200)
+    assert(b.x == 100)
+    assert(b.y == 200)
+    assert(b.tag == "test")
+}
+
+test "physics constants" {
+    assert(BODY_STATIC == 0)
+    assert(BODY_DYNAMIC == 1)
+    assert(BODY_KINEMATIC == 2)
+    assert(JOINT_DISTANCE == 0)
+    assert(JOINT_REVOLUTE == 1)
+}
+
+test "circle shape" {
+    let s = PhysicsShape.circle(10)
+    assert(s.radius == 10)
+}

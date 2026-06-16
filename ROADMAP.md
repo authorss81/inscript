@@ -1,6 +1,6 @@
 # InScript Roadmap — Production-Grade Microversion Plan
 
-> **Current:** v3.9.6.16 — Multi-file breakpoints. v3.9.6.17–19 planned (exception breakpoints, data breakpoints, REPL history/completion).
+> **Current:** v3.9.6.22 — Physics joints + constraints. Phase 10 ongoing.
 > 
 > **Version scheme:** MAJOR.MINOR.PATCH.MICRO — each micro targets a discrete production feature.
 > After v3.9.6.99, roll to v3.9.7.0 for the next feature cluster.
@@ -243,23 +243,27 @@ Parallel microversion to v3.9.6.13. Fixes 6 pre-existing Rust lexer tests by bri
 **P0 gap:** No physics engine — only primitive AABB/circle overlap.
 
 ### v3.9.6.20 — Physics: Box2D binding (native extension)
-- [ ] Create `physics` namespace module
-- [ ] `PhysicsWorld` — world creation, step, gravity
-- [ ] `Body` types: static, dynamic, kinematic
-- [ ] Shape types: rectangle, circle, polygon
+- [x] `PhysicsWorld` — world creation, step, gravity (`physics_engine.py`)
+- [x] `Body` types: static, dynamic, kinematic (with `get_attr`/`set_attr`)
+- [x] Shape types: rectangle, circle (with factory methods)
+- [x] InScript builtins: `PhysicsWorld`, `PhysicsShape`, constants
+- [x] `physics` namespace module (`physics::World`, `physics::Body`, `physics::DYNAMIC`)
+- [x] Tests: 49/49
 
 ### v3.9.6.21 — Physics: collision events + callbacks
-- [ ] `on_begin_contact(a, b)` — collision start callback
-- [ ] `on_end_contact(a, b)` — collision separation
-- [ ] `on_pre_solve(a, b)` — allow/disallow collision
-- [ ] Contact info: point, normal, impulse
+- [x] `on_begin_contact(body_a, body_b, contact)` — collision start callback
+- [x] `on_end_contact(body_a, body_b)` — collision separation
+- [x] `on_pre_solve(body_a, body_b, contact)` — allow/disallow collision
+- [x] Contact info: normal_x, normal_y, point_x, point_y, penetration, body_a, body_b
+- [x] Tests: 24/24
 
 ### v3.9.6.22 — Physics: joints + constraints
-- [ ] Distance joint (spring)
-- [ ] Revolute joint (hinge/pivot)
-- [ ] Prismatic joint (sliding)
-- [ ] Weld joint (rigid connection)
-- [ ] Mouse joint (click-drag bodies)
+- [x] Distance joint (spring with stiffness/damping)
+- [x] Revolute joint (hinge with angle limits + motor)
+- [x] Prismatic joint (sliding with axis + limits)
+- [x] Weld joint (rigid connection)
+- [x] Mouse joint (click-drag with max force)
+- [x] Tests: 26/26
 
 ### v3.9.6.23 — Physics: triggers + sensors
 - [ ] Sensor bodies (detect overlap without collision response)
