@@ -1,6 +1,6 @@
 # InScript Roadmap — Production-Grade Microversion Plan
 
-> **Current:** v3.9.6.15 — Debugger: watch window + REPL integration. Type display, pretty-print, auto-evaluated watches, .type command — all done.
+> **Current:** v3.9.6.16 — Multi-file breakpoints. v3.9.6.17–19 planned (exception breakpoints, data breakpoints, REPL history/completion).
 > 
 > **Version scheme:** MAJOR.MINOR.PATCH.MICRO — each micro targets a discrete production feature.
 > After v3.9.6.99, roll to v3.9.7.0 for the next feature cluster.
@@ -143,7 +143,7 @@ Longer-term: `net.listen()`, `net.accept()`, coroutines for async I/O.
 
 ---
 
-## Phase 9 — Debugger (v3.9.6.10–v3.9.6.15)
+## Phase 9 — Debugger (v3.9.6.10–v3.9.6.19)
 
 **P0 gap:** No step debugger is the single biggest blocker for production game dev.
 
@@ -204,6 +204,37 @@ Parallel microversion to v3.9.6.13. Fixes 6 pre-existing Rust lexer tests by bri
 - [x] `.type <expr>` command — shows type name + pretty-printed value
 - [x] `_format_value(val)` — returns `(type) pretty_value` string, used by `.locals`, `.globals`, `.watch`, `_eval_expr`
 - [x] Tests: `.ins` (20 tests — type/pretty-print via language features) + `.py` (39 tests — type formatting, pretty-print output, watch persistence)
+
+### v3.9.6.16 — Debugger: multi-file breakpoints
+- [x] `b file.ins:line` syntax works across multiple loaded files
+- [x] Dynamic filename tracking in `should_pause_at` (uses interpreter's current file)
+- [x] Source-line display from any file via `_source_files` dict
+- [x] `bl` groups breakpoints by file
+- [x] `.files` command lists all loaded files
+- [ ] Tests: `.ins` + `.py`
+
+### v3.9.6.17 — Debugger: exception breakpoints
+- [ ] `catch <error-type>` — pause when InScript raises matching error
+- [ ] `uncatch <error-type>` — remove catchpoint
+- [ ] `catch` — list active catchpoints
+- [ ] Interceptor in interpreter's error path
+- [ ] Shows error type + message + stack trace on catch
+- [ ] Tests: `.ins` + `.py`
+
+### v3.9.6.18 — Debugger: data breakpoints (watchpoints)
+- [ ] `watchvar <name>` — break when variable changes value
+- [ ] `unwatch <name>` — remove watchpoint
+- [ ] `watchvar` — list active watchpoints
+- [ ] Tracks variable writes at statement level
+- [ ] Shows old → new value on change
+- [ ] Tests: `.ins` + `.py`
+
+### v3.9.6.19 — Debugger: REPL history + tab completion + polish
+- [ ] Command history with up/down arrow (persistent via `~/.inscript_debug_history`)
+- [ ] Tab completion for debugger commands
+- [ ] Better error messages with suggestions for similar commands
+- [ ] `.locals` highlights current breakpoint line in scope
+- [ ] Tests: `.ins` + `.py`
 
 ---
 

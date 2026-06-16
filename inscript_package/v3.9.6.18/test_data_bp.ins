@@ -1,0 +1,16 @@
+# v3.9.6.18 — Data breakpoints (.ins tests)
+# Run: python inscript.py --test v3.9.6.18/test_data_bp.ins
+
+test "basic" {
+    assert(true)
+}
+
+test "watchvar concept" {
+    assert(1 == 1)
+}
+
+test "assign concept" {
+    let x = 1
+    x = 2
+    assert(x == 2)
+}

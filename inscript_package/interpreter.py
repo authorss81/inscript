@@ -58,6 +58,9 @@ class Interpreter(Visitor):
                  debug: bool = False):
         self._src   = source_lines or []
         self._filename = filename
+        self._source_files: Dict[str, List[str]] = {}  # v3.9.6.16: filename → source lines
+        if filename and self._src:
+            self._source_files[filename] = self._src
         self._globals = Environment(name="global")
         self._debug = debug
         self._debugger = None
@@ -89,10 +92,19 @@ class Interpreter(Visitor):
 
     # ── utilities ─────────────────────────────────────────────────────────────
 
-    def _src_line(self, line: int) -> str:
-        return self._src[line-1] if self._src and 0 < line <= len(self._src) else ""
+    def _src_line(self, line: int, filename: str = None) -> str:
+        src = self._source_files.get(filename) if filename else self._src
+        if not src:
+            src = self._src
+        return src[line-1] if src and 0 < line <= len(src) else ""
 
     def _error(self, msg: str, line: int = 0):
+        # v3.9.6.17: exception breakpoints — check debugger catchpoints
+        if self._debug:
+            from ast_nodes import Node as _Node
+            dummy = _Node(line=line)
+            if self._debugger and self._debugger.should_catch(msg):
+                self._debugger.enter_debug_repl(dummy)
         trace = self._call_stack.snapshot()
         raise InScriptRuntimeError(msg, line, 0, self._src_line(line),
                                    call_trace=trace)
@@ -1001,6 +1013,9 @@ class Interpreter(Visitor):
 
         with open(abs_path, "r", encoding="utf-8") as f:
             source = f.read()
+
+        # Register source lines for multi-file breakpoints (v3.9.6.16)
+        self._source_files[abs_path] = source.splitlines()
 
         from parser import parse as _parse
         prog = _parse(source, abs_path)
@@ -2200,6 +2215,9 @@ class Interpreter(Visitor):
 
         # Write back to the target
         if isinstance(target, IdentExpr):
+            # v3.9.6.18: data breakpoints check before assigning
+            if self._debug and self._debugger and not self._paused and target.name in self._debugger._watch_vars:
+                self._debugger._check_watchvar(target.name, val, node)
             self._env.set(target.name, val, node.line)
         elif isinstance(target, GetAttrExpr):
             obj = self.visit(target.obj)

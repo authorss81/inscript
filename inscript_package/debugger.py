@@ -217,7 +217,8 @@ Debugger commands:
   b <line> hit <op N>— Hit-count breakpoint (e.g. b 10 hit >= 5)
   b <file>:<line>    — Set breakpoint at specific file:line
   d <line>           — Delete breakpoint at current file, line N
-  bl                 — List all breakpoints
+  d <file>:<line>    — Delete breakpoint at specific file
+  bl                 — List all breakpoints (grouped by file)
   bc                 — Clear all breakpoints
   .locals            — List all local variables with types
   .globals           — List global variables with types
@@ -226,8 +227,15 @@ Debugger commands:
   .watch del <idx>   — Remove watch expression by index
   .type <expr>       — Show type and value of expression
   .set <var>=<val>   — Modify a variable in current scope
+  .files             — List all loaded source files
+  watchvar [<name>]  — List / watch variable for changes
+  unwatch <name>     — Stop watching a variable
+  catch [<type>]     — List / add exception breakpoint (catch * for all)
+  uncatch <type>     — Remove exception breakpoint
+  !!                 — Repeat last command
+  .history           — Show command history
   q, quit            — Quit debugger and terminate execution
-  ?                  — Print this help
+  ?, .help           — Print this help
 """
 
 
@@ -241,6 +249,8 @@ class Debugger:
         self._step_cmd_depth: int = 0
         self._paused: bool = False
         self._watch_exprs: List[str] = []
+        self._catch_types: List[str] = []   # v3.9.6.17: exception breakpoints
+        self._watch_vars: Dict[str, Any] = {}  # v3.9.6.18: data breakpoints (name -> value)
         self._dap_callback = None  # called instead of debug REPL on pause
         self._dap_pause_info: dict = {}
 
@@ -257,6 +267,40 @@ class Debugger:
     def set_step_mode(self, mode: StepMode, current_depth: int = 0):
         self.step_mode = mode
         self._step_cmd_depth = current_depth
+
+    def _try_setup_readline(self):
+        """v3.9.6.19: enable readline history and tab completion (Unix/macOS)."""
+        import sys as _sys
+        if _sys.platform == "win32":
+            return  # readline not available on Windows
+        try:
+            import readline as _rl
+            _rl.set_history_length(500)
+            for h in self._cmd_history:
+                _rl.add_history(h)
+            def _completer(text, state):
+                commands = ["c", "continue", "n", "next", "s", "step", "finish",
+                            "b", "d", "bl", "breakpoints", ".files", "bc",
+                            ".locals", ".globals", ".stack", ".watch",
+                            ".set", ".history", "!!", ".help",
+                            "watchvar", "unwatch", "catch", "uncatch",
+                            ".type"]
+                options = [cmd for cmd in commands if cmd.startswith(text)]
+                return options[state] if state < len(options) else None
+            _rl.set_completer(_completer)
+            _rl.parse_and_bind("tab: complete")
+        except (ImportError, AttributeError):
+            pass
+
+    def _known_filenames(self) -> list:
+        """Return all filenames that have breakpoints or are known source files."""
+        seen = {self.filename}
+        if hasattr(self.interp, '_source_files'):
+            seen.update(self.interp._source_files.keys())
+        # Add all filenames from breakpoints
+        for bp in self.bp_manager.list():
+            seen.add(bp.filename)
+        return list(seen)
 
     def should_pause_at(self, node: Node, current_depth: int) -> bool:
         line = getattr(node, 'line', 0)
@@ -280,19 +324,32 @@ class Debugger:
             return False
 
         if self.step_mode == StepMode.CONTINUE:
-            if self.bp_manager.should_break(
-                self.filename, line,
-                env_get_fn=lambda expr: self.interp.visit(expr)
-            ):
-                return True
+            # Check breakpoints across all known files (v3.9.6.16 multi-file)
+            for fname in self._known_filenames():
+                if self.bp_manager.should_break(
+                    fname, line,
+                    env_get_fn=lambda expr: self.interp.visit(expr)
+                ):
+                    return True
 
         return False
 
     # ── debug REPL ────────────────────────────────────────────────────────
 
+    def _find_src_line(self, line: int) -> str:
+        """Look up source line from any loaded file."""
+        src = self.interp._src_line(line, self.filename)
+        if src:
+            return src
+        if hasattr(self.interp, '_source_files'):
+            for fname, lines in self.interp._source_files.items():
+                if 0 < line <= len(lines):
+                    return lines[line - 1]
+        return ""
+
     def enter_debug_repl(self, node: Node):
         line = getattr(node, 'line', 0)
-        src = self.interp._src_line(line)
+        src = self._find_src_line(line)
         print(f"\n[debug] Break at {self.filename}:{line}")
         if src:
             print(f"  {src}")
@@ -310,16 +367,36 @@ class Debugger:
             self._dap_pause("breakpoint", line, src or "")
             return
 
+        # v3.9.6.19: try readline for tab completion & history
+        self._cmd_history: list = getattr(self, '_cmd_history', [])
+        self._try_setup_readline()
+
         while True:
             try:
-                cmd = input("(debug) ").strip()
+                prompt = f"(debug:{self.filename}:{line}) "
+                raw = input(prompt)
+                if raw:
+                    self._cmd_history.append(raw)
+                    if len(self._cmd_history) > 500:
+                        self._cmd_history = self._cmd_history[-500:]
             except (EOFError, KeyboardInterrupt):
                 print()
                 self.step_mode = StepMode.CONTINUE
                 return
 
+            cmd = raw.strip()
+
             if not cmd:
                 continue
+
+            # v3.9.6.19: !! repeats last command
+            if cmd == "!!":
+                if len(self._cmd_history) >= 2:
+                    cmd = self._cmd_history[-2].strip()
+                    print(f"  {cmd}")
+                else:
+                    print("  No previous command.")
+                    continue
 
             parts = cmd.split(None, 1)
             verb = parts[0].lower()
@@ -349,6 +426,76 @@ class Debugger:
 
             elif verb in ("bl", "breakpoints"):
                 self._cmd_list_breakpoints()
+
+            elif verb == ".files":
+                print("  Loaded files:")
+                print(f"    {self.filename}  (main)")
+                if hasattr(self.interp, '_source_files'):
+                    for fname in sorted(self.interp._source_files.keys()):
+                        if fname != self.filename:
+                            print(f"    {fname}  ({len(self.interp._source_files[fname])} lines)")
+
+            elif verb == "catch":
+                if not arg:
+                    if not self._catch_types:
+                        print("  No catchpoints set.")
+                    else:
+                        print("  Catchpoints:")
+                        for ct in self._catch_types:
+                            print(f"    {ct}")
+                else:
+                    self._catch_types.append(arg.strip())
+                    print(f"  Will catch: {arg.strip()}")
+
+            elif verb == "uncatch":
+                if not arg:
+                    print("  Usage: uncatch <error-type>")
+                else:
+                    arg = arg.strip()
+                    if arg in self._catch_types:
+                        self._catch_types.remove(arg)
+                        print(f"  No longer catching: {arg}")
+                    else:
+                        print(f"  No catchpoint for: {arg}")
+
+            elif verb == "watchvar":
+                if not arg:
+                    if not self._watch_vars:
+                        print("  No watched variables.")
+                    else:
+                        print("  Watched variables:")
+                        for vn, vv in self._watch_vars.items():
+                            print(f"    {vn} = {_format_value(vv)}")
+                else:
+                    vname = arg.strip()
+                    # try to look up current value
+                    try:
+                        val = self.interp._env_get(vname, 0)
+                    except Exception:
+                        val = None
+                    self._watch_vars[vname] = val
+                    print(f"  Watching '{vname}' for changes (current: {_format_value(val)})")
+
+            elif verb == "unwatch":
+                if not arg:
+                    print("  Usage: unwatch <var-name>")
+                else:
+                    vname = arg.strip()
+                    if vname in self._watch_vars:
+                        del self._watch_vars[vname]
+                        print(f"  Stopped watching '{vname}'")
+                    else:
+                        print(f"  Not watching '{vname}'")
+
+            elif verb == ".history":
+                if not self._cmd_history:
+                    print("  (empty)")
+                else:
+                    for i, h in enumerate(self._cmd_history, 1):
+                        print(f"  {i:>4}: {h}")
+
+            elif verb == ".help":
+                print(DEBUG_HELP)
 
             elif verb == "bc":
                 self.bp_manager.clear()
@@ -449,17 +596,26 @@ class Debugger:
 
     def _cmd_delete(self, arg: str):
         if not arg:
-            print("  Usage: d <line>")
+            print("  Usage: d <line>  or  d <file>:<line>")
             return
-        try:
-            line = int(arg)
-        except ValueError:
-            print(f"  Invalid line: {arg}")
-            return
-        if self.bp_manager.remove(self.filename, line):
-            print(f"  Breakpoint removed at {self.filename}:{line}")
+        if ":" in arg:
+            fname, line_str = arg.rsplit(":", 1)
+            try:
+                line = int(line_str)
+            except ValueError:
+                print(f"  Invalid line: {line_str}")
+                return
         else:
-            print(f"  No breakpoint at {self.filename}:{line}")
+            fname = self.filename
+            try:
+                line = int(arg)
+            except ValueError:
+                print(f"  Invalid line: {arg}")
+                return
+        if self.bp_manager.remove(fname, line):
+            print(f"  Breakpoint removed at {fname}:{line}")
+        else:
+            print(f"  No breakpoint at {fname}:{line}")
 
     def _cmd_list_breakpoints(self):
         bps = self.bp_manager.list()
@@ -467,11 +623,15 @@ class Debugger:
             print("  No breakpoints set.")
             return
         print("  Breakpoints:")
+        current_file = None
         for bp in bps:
+            if bp.filename != current_file:
+                print(f"    [{bp.filename}]")
+                current_file = bp.filename
             cond = f" if {bp.condition}" if bp.condition else ""
             hit = f" hit {bp.hit_condition}" if bp.hit_condition else ""
             status = "enabled" if bp.enabled else "disabled"
-            print(f"    {bp.filename}:{bp.line}{cond}{hit}  [{status}, hit {bp.hit_count}]")
+            print(f"      line {bp.line}{cond}{hit}  [{status}, hit {bp.hit_count}]")
 
     def _cmd_locals(self):
         env = self.interp._env
@@ -511,6 +671,30 @@ class Debugger:
             print(stack)
         else:
             print("  (call stack is empty)")
+
+    def should_catch(self, error_msg: str) -> bool:
+        """Check if an error matches any active catchpoint."""
+        if not self._catch_types:
+            return False
+        for ctype in self._catch_types:
+            if ctype == "*":
+                return True
+            if ctype in error_msg:
+                return True
+        return False
+
+    def _check_watchvar(self, name: str, new_value: Any, node) -> bool:
+        """Check if name is being watched; if so, pause and show change."""
+        if name not in self._watch_vars:
+            return False
+        old_val = self._watch_vars[name]
+        self._watch_vars[name] = new_value
+        print(f"\n  ⚡ Data breakpoint: '{name}' changed")
+        print(f"      old: {_format_value(old_val)}")
+        print(f"      new: {_format_value(new_value)}")
+        print(f"      at:  {self.filename}:{node.line}")
+        self.enter_debug_repl(node)
+        return True
 
     def _show_watch_value(self, expr: str):
         """Evaluate and display a single watch expression."""
