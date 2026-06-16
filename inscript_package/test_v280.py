@@ -57,6 +57,18 @@ def write_dummy_asset(directory, rel_path, content=b"DUMMY"):
         f.write(content)
     return full
 
+def make_minimal_png() -> bytes:
+    """Return bytes of a valid 1x1 white PNG."""
+    import struct, zlib
+    sig = b'\x89PNG\r\n\x1a\n'
+    def chunk(ctype, data):
+        c = ctype + data
+        return struct.pack('>I', len(data)) + c + struct.pack('>I', zlib.crc32(c) & 0xffffffff)
+    ihdr = struct.pack('>IIBBBBB', 1, 1, 8, 2, 0, 0, 0)  # 1x1, 8-bit RGB
+    raw = b'\x00\xff\xff\xff'  # filter=none, white pixel
+    idat = zlib.compress(raw)
+    return sig + chunk(b'IHDR', ihdr) + chunk(b'IDAT', idat) + chunk(b'IEND', b'')
+
 # ─────────────────────────────────────────────────────────────────────────────
 # 1. AssetHandle basics
 # ─────────────────────────────────────────────────────────────────────────────
@@ -104,7 +116,7 @@ print("\n── 3. Load with real file (headless) ──────────
 
 tmp = make_tmpdir()
 try:
-    write_dummy_asset(tmp, "sprites/hero.png", b"\x89PNG\r\n\x1a\n" + b"\x00" * 100)
+    write_dummy_asset(tmp, "sprites/hero.png", make_minimal_png())
     write_dummy_asset(tmp, "sfx/jump.wav",     b"RIFF" + b"\x00" * 40)
     write_dummy_asset(tmp, "fonts/roboto.ttf", b"\x00\x01\x00\x00" + b"\x00" * 100)
 

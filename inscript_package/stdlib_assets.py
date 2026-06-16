@@ -108,7 +108,12 @@ class AssetHandle:
             if t == "texture":
                 try:
                     import pygame
-                    self.data = pygame.image.load(full_path).convert_alpha()
+                    surf = pygame.image.load(full_path)
+                    try:
+                        surf = surf.convert_alpha()
+                    except pygame.error:
+                        pass  # no display initialized; use unconverted surface
+                    self.data = surf
                 except ImportError:
                     self.data = {"path": full_path, "type": "texture"}  # headless stub
             elif t == "sound":

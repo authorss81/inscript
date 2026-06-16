@@ -745,6 +745,16 @@ _IDENT_MAP: dict = {
     "true": True, "false": False, "nil": None, "null": None,
 }
 
+# Rust lexer maps these keywords to Identifier(value); convert to proper token type
+_RUST_SOFT_KEYWORDS: dict = {
+    "import":  TT.IMPORT,
+    "from":    TT.FROM,
+    "as":      TT.AS,
+    "export":  TT.EXPORT,
+    "self":    TT.SELF,
+    "super":   TT.SUPER,
+}
+
 def tokenize(source: str, filename: str = "<stdin>") -> List[Token]:
     try:
         from inscript_parser import lex as _rust_lex
@@ -770,6 +780,9 @@ def tokenize(source: str, filename: str = "<stdin>") -> List[Token]:
             # Disambiguate ++ string concat vs + addition
             elif tt == TT.PLUS and val_str == "++":
                 tt = TT.PLUSPLUS
+            # Rust lexer maps some keywords to Identifier (soft keywords)
+            elif tt == TT.IDENT and val_str in _RUST_SOFT_KEYWORDS:
+                tt = _RUST_SOFT_KEYWORDS[val_str]
 
             # Convert value to correct Python type
             if tt == TT.INT:
