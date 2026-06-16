@@ -553,7 +553,7 @@ impl Lexer {
             "on_update" => Token::OnUpdate,
             "on_draw" => Token::OnDraw,
             "on_exit" => Token::OnExit,
-            "node" => Token::Node,
+            "node" => Token::Identifier("node".to_string()),
             "_ready" => Token::OnReady,
             "_update" => Token::OnNodeUpdate,
             "_draw" => Token::OnNodeDraw,
