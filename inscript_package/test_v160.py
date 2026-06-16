@@ -117,20 +117,20 @@ section("3. inscript --strict")
 
 # Unused var → should fail with --strict
 p = ins("fn foo() { let x = 5 }\nfoo()\n")
-rc, out, err = cli(["--strict", p])
+rc, out, err = cli(["--strict", "--python", p])
 ok("--strict: unused var exits 1", rc == 1, f"exit={rc}")
 os.unlink(p)
 
 # Clean code → should pass with --strict
 p = ins("fn add(a: int, b: int) -> int { return a + b }\nprint(add(1,2))\n")
-rc, out, err = cli(["--strict", "--no-warn", p])
+rc, out, err = cli(["--strict", "--python", "--no-warn", p])
 ok("--strict: clean code exits 0", rc == 0 and "3" in out, f"exit={rc} out={out!r}")
 os.unlink(p)
 
 # --strict is equivalent to --warn-as-error
 p = ins("fn foo() { let x = 5 }\nfoo()\n")
-rc_strict, _, _ = cli(["--strict", p])
-rc_wae,    _, _ = cli(["--warn-as-error", p])
+rc_strict, _, _ = cli(["--strict", "--python", p])
+rc_wae,    _, _ = cli(["--warn-as-error", "--python", p])
 ok("--strict same behavior as --warn-as-error", rc_strict == rc_wae)
 os.unlink(p)
 
