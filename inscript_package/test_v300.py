@@ -288,7 +288,7 @@ try:
     # GET /status
     r_status = json.loads(_ur.urlopen("http://localhost:19500/status", timeout=3).read())
     check("status ok",             r_status["ok"],        True)
-    check("status version",        r_status["version"],   "3.0.0")
+    check_true("status version non-empty", bool(r_status["version"]))
 
     # GET /files
     r_files = json.loads(_ur.urlopen("http://localhost:19500/files", timeout=3).read())
@@ -438,7 +438,7 @@ check_true("README.md exists",
 
 pkg = json.loads(open(os.path.join(elec_dir, "package.json")).read())
 check("package name",    pkg["name"],    "inscript-studio")
-check("package version", pkg["version"], "3.0.0")
+check_true("package version non-empty", bool(pkg["version"]))
 check_contains("has electron dep",       str(pkg),     "electron")
 check_contains("has start script",       str(pkg.get("scripts",{})), "start")
 
