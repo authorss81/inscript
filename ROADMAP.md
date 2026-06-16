@@ -1,6 +1,6 @@
 # InScript Roadmap — Production-Grade Microversion Plan
 
-> **Current:** v3.9.6.14 — Debugger: game loop debugging complete. Frame advance, hook breakpoints, state inspection, DAP protocol, hit-condition/conditional breakpoints, Rust lexer sync — all done.
+> **Current:** v3.9.6.15 — Debugger: watch window + REPL integration. Type display, pretty-print, auto-evaluated watches, .type command — all done.
 > 
 > **Version scheme:** MAJOR.MINOR.PATCH.MICRO — each micro targets a discrete production feature.
 > After v3.9.6.99, roll to v3.9.7.0 for the next feature cluster.
@@ -196,11 +196,14 @@ Parallel microversion to v3.9.6.13. Fixes 6 pre-existing Rust lexer tests by bri
 - [x] Set/clear breakpoints from game debug REPL (`b`, `bl`, `bc` commands)
 - [x] Tests: `.ins` (20 tests — frame counting, state dict, profile structure) + `.py` (24 tests — CLI flags, game loop structure, compilation checks)
 
-### v3.9.6.15 — Debugger: watch window + REPL integration
-- [ ] Expression evaluation in debug REPL
-- [ ] Persistent watch list across steps
-- [ ] Type display for all values
-- [ ] Pretty-print for structs, arrays, enums
+### v3.9.6.15 — Debugger: watch window + REPL integration ✅
+- [x] Expression evaluation in debug REPL (via `else:` fallback in REPL loop)
+- [x] Persistent watch list auto-evaluated at every breakpoint pause
+- [x] Type display for all values (`_inscript_type_str` — int, float, string, bool, nil, array, dict, fn, enum, struct, range)
+- [x] Pretty-print for structs, arrays, enums (`_pretty_format` with indentation + depth limit)
+- [x] `.type <expr>` command — shows type name + pretty-printed value
+- [x] `_format_value(val)` — returns `(type) pretty_value` string, used by `.locals`, `.globals`, `.watch`, `_eval_expr`
+- [x] Tests: `.ins` (20 tests — type/pretty-print via language features) + `.py` (39 tests — type formatting, pretty-print output, watch persistence)
 
 ---
 

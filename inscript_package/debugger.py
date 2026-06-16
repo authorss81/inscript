@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Set, Tuple
 from enum import Enum, auto
 
-from ast_nodes import Node, Program, FunctionDecl, LambdaExpr, BlockStmt
+from ast_nodes import Node, Program, FunctionDecl, LambdaExpr, BlockStmt, StructDecl
 from errors import InScriptRuntimeError
 
 
@@ -115,6 +115,90 @@ class StepMode(Enum):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Type display + pretty-print (v3.9.6.15)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _inscript_type_str(val) -> str:
+    """Return InScript type name for a value."""
+    if val is None:                      return "nil"
+    if isinstance(val, bool):            return "bool"
+    if isinstance(val, int):             return "int"
+    if isinstance(val, float):           return "float"
+    if isinstance(val, str):             return "string"
+    if isinstance(val, list):            return "array"
+    if isinstance(val, dict):
+        if "_variant" in val:
+            return f"enum({val.get('_enum', '?')}::{val.get('_variant', '?')})"
+        if "_ok" in val or "_err" in val:
+            return "result"
+        return "dict"
+    if hasattr(val, 'struct_name') and hasattr(val, 'fields'):
+        return val.struct_name
+    if callable(val):
+        if hasattr(val, 'name') and val.name:
+            return f"fn({val.name})"
+        return "fn"
+    if hasattr(val, 'start') and hasattr(val, 'end'):
+        return "range"
+    return type(val).__name__
+
+
+def _pretty_format(val, indent: int = 0, max_depth: int = 3) -> str:
+    """Pretty-print an InScript value with indentation."""
+    prefix = "  " * indent
+    next_prefix = "  " * (indent + 1)
+    from interpreter import _inscript_str, _inscript_repr
+
+    if val is None or isinstance(val, (bool, int, float)):
+        return _inscript_str(val)
+    if isinstance(val, str):
+        return _inscript_str(val)
+
+    if isinstance(val, list):
+        if indent >= max_depth:
+            return f"[...] ({len(val)} items)"
+        if not val:
+            return "[]"
+        items = [f"{next_prefix}{_pretty_format(v, indent + 1, max_depth)}," for v in val]
+        return "[\n" + "\n".join(items) + f"\n{prefix}]"
+
+    if isinstance(val, dict):
+        if indent >= max_depth:
+            n = len([k for k in val if not str(k).startswith("_")])
+            return f"{{...}} ({n} fields)"
+        if not val:
+            return "{}"
+        items = []
+        for k, v in val.items():
+            if str(k).startswith("_"):
+                continue
+            k_str = f'"{k}"' if isinstance(k, str) else _inscript_str(k)
+            items.append(f"{next_prefix}{k_str}: {_pretty_format(v, indent + 1, max_depth)},")
+        if not items:
+            return "{}"
+        return "{\n" + "\n".join(items) + f"\n{prefix}}}"
+
+    if hasattr(val, 'struct_name') and hasattr(val, 'fields'):
+        if indent >= max_depth:
+            return f"{val.struct_name}{{...}}"
+        data = {k: v for k, v in val.fields.items()
+                if not (callable(v) or (hasattr(v, 'is_native') or hasattr(v, 'params')))}
+        if not data:
+            return f"{val.struct_name}{{}}"
+        items = [f"{next_prefix}{k}: {_pretty_format(v, indent + 1, max_depth)}," for k, v in data.items()]
+        return f"{val.struct_name}{{\n" + "\n".join(items) + f"\n{prefix}}}"
+
+    return _inscript_str(val)
+
+
+def _format_value(val) -> str:
+    """Return type: pretty_value string for display."""
+    t = _inscript_type_str(val)
+    p = _pretty_format(val)
+    return f"({t}) {p}"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Debugger
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -135,11 +219,13 @@ Debugger commands:
   d <line>           — Delete breakpoint at current file, line N
   bl                 — List all breakpoints
   bc                 — Clear all breakpoints
-  .locals            — List all local variables in current scope
+  .locals            — List all local variables with types
+  .globals           — List global variables with types
   .stack             — Print call stack with line numbers
-  .watch <expr>      — Evaluate an expression in current context
+  .watch [<expr>]    — Add/evaluate watch expression (auto-evaluated at breaks)
+  .watch del <idx>   — Remove watch expression by index
+  .type <expr>       — Show type and value of expression
   .set <var>=<val>   — Modify a variable in current scope
-  .globals           — List global variables
   q, quit            — Quit debugger and terminate execution
   ?                  — Print this help
 """
@@ -211,6 +297,15 @@ class Debugger:
         if src:
             print(f"  {src}")
 
+        # Show auto-evaluated watches (v3.9.6.15)
+        if self._watch_exprs:
+            print("  Watches:")
+            for expr in self._watch_exprs:
+                try:
+                    self._show_watch_value(expr)
+                except Exception:
+                    print(f"    {expr} = (error)")
+
         if self._dap_callback:
             self._dap_pause("breakpoint", line, src or "")
             return
@@ -272,8 +367,14 @@ class Debugger:
                 if arg:
                     self._cmd_watch(arg)
                 else:
-                    for i, expr in enumerate(self._watch_exprs):
-                        print(f"  {i}: {expr}")
+                    if not self._watch_exprs:
+                        print("  (no watch expressions)")
+                    else:
+                        for i, expr in enumerate(self._watch_exprs):
+                            try:
+                                self._show_watch_value(expr)
+                            except Exception as e:
+                                print(f"  [{i}] {expr} = (error: {e})")
 
             elif verb == ".set":
                 self._cmd_set(arg)
@@ -284,6 +385,21 @@ class Debugger:
 
             elif verb in ("?", "help"):
                 print(DEBUG_HELP)
+
+            elif verb == ".type":
+                if arg:
+                    try:
+                        from parser import parse
+                        from ast_nodes import ExprStmt
+                        prog = parse(arg, "<debug>")
+                        if prog.body and isinstance(prog.body[0], ExprStmt):
+                            val = self.interp.visit(prog.body[0].expr)
+                            print(f"  type: {_inscript_type_str(val)}")
+                            print(f"  value: {_pretty_format(val)}")
+                    except Exception as e:
+                        print(f"  Error: {e}")
+                else:
+                    print("  Usage: .type <expr>")
 
             else:
                 try:
@@ -368,10 +484,9 @@ class Debugger:
         if not items:
             print("  (no local variables)")
             return
-        from interpreter import _inscript_str
         for k in sorted(items.keys()):
             try:
-                vs = _inscript_str(items[k])
+                vs = _format_value(items[k])
             except Exception:
                 vs = repr(items[k])
             print(f"  {k} = {vs}")
@@ -383,10 +498,9 @@ class Debugger:
         if not items:
             print("  (no global variables)")
             return
-        from interpreter import _inscript_str
         for k in sorted(items.keys())[:80]:
             try:
-                vs = _inscript_str(items[k])
+                vs = _format_value(items[k])
             except Exception:
                 vs = repr(items[k])
             print(f"  {k} = {vs}")
@@ -397,6 +511,15 @@ class Debugger:
             print(stack)
         else:
             print("  (call stack is empty)")
+
+    def _show_watch_value(self, expr: str):
+        """Evaluate and display a single watch expression."""
+        from parser import parse
+        from ast_nodes import ExprStmt
+        prog = parse(expr, "<watch>")
+        if prog.body and isinstance(prog.body[0], ExprStmt):
+            val = self.interp.visit(prog.body[0].expr)
+            print(f"    {expr} = {_format_value(val)}")
 
     def _cmd_watch(self, arg: str):
         arg = arg.strip()
@@ -448,8 +571,7 @@ class Debugger:
             prog = parse(expr_str, "<debug>")
             if prog.body and isinstance(prog.body[0], ExprStmt):
                 val = self.interp.visit(prog.body[0].expr)
-                from interpreter import _inscript_str
-                print(f"  → {_inscript_str(val)}")
+                print(f"  → {_format_value(val)}")
                 return
         except Exception as e:
             print(f"  Error: {e}")

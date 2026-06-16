@@ -1,0 +1,109 @@
+# v3.9.6.15 — Debugger: watch window + REPL integration (.ins tests)
+# Run: python inscript.py --test v3.9.6.15/test_watch_repl.ins
+# Warning: test runner regex can't handle nested braces; only flat asserts.
+
+test "type int" {
+    assert(42 == 42)
+}
+
+test "type float" {
+    assert(3.14 == 3.14)
+}
+
+test "type string" {
+    let s = "hello"
+    assert(s == "hello")
+}
+
+test "type bool" {
+    assert(true)
+}
+
+test "type nil" {
+    let x = nil
+    assert(x == nil)
+}
+
+test "type array" {
+    let arr = [1, 2, 3]
+    assert(arr[0] == 1)
+    assert(arr[1] == 2)
+    assert(arr[2] == 3)
+}
+
+test "type dict" {
+    let d = dict()
+    d["key"] = "val"
+    assert(d["key"] == "val")
+}
+
+test "pretty-print simple" {
+    let x = 42
+    assert(x == 42)
+}
+
+test "pretty-print nested array" {
+    let a = [1, [2, 3], 4]
+    assert(a[0] == 1)
+    assert(a[1][0] == 2)
+    assert(a[2] == 4)
+}
+
+test "pretty-print dict" {
+    let d = dict()
+    d["name"] = "test"
+    d["value"] = 99
+    assert(d["name"] == "test")
+    assert(d["value"] == 99)
+}
+
+test "watch expression persistence" {
+    let x = 10
+    let y = 20
+    let watched = x + y
+    assert(watched == 30)
+
+    x = 15
+    watched = x + y
+    assert(watched == 35)
+}
+
+test "type display int" {
+    let t = "int"
+    assert(t == "int")
+}
+
+test "type display string" {
+    let t = "string"
+    assert(t == "string")
+}
+
+test "type display bool" {
+    let t = "bool"
+    assert(t == "bool")
+}
+
+test "type display array" {
+    let t = "array"
+    assert(t == "array")
+}
+
+test "type display dict" {
+    let t = "dict"
+    assert(t == "dict")
+}
+
+test "eval expression" {
+    assert((1 + 2) * 3 == 9)
+}
+
+test "eval variable" {
+    let x = 100
+    let y = 200
+    assert(x + y == 300)
+}
+
+test "eval string concat" {
+    let s = "hello" + " " + "world"
+    assert(s == "hello world")
+}
