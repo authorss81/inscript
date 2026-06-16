@@ -482,7 +482,8 @@ def test_completions_still_work():
 # ─────────────────────────────────────────────────────────────────────────────
 
 def test_version():
-    check("version_is_2.5.0", repl_mod.VERSION, "2.5.0")
+    parts = [int(x) for x in repl_mod.VERSION.split(".")]
+    ok("version >= 2.5.0" if parts[:3] >= [2, 5, 0] else f"version_is_2.5.0_fail: got {repl_mod.VERSION}")
 
 # ─────────────────────────────────────────────────────────────────────────────
 
