@@ -38,6 +38,7 @@ from studio_readiness import (
     gate_stability, gate_performance, gate_memory, run_all_gates,
 )
 from interpreter import Interpreter
+from _version import VERSION
 
 PASS = 0; FAIL = 0
 
@@ -304,7 +305,7 @@ check("ping: pong=True", r_ping["result"]["pong"], True)
 
 # version
 r_ver = _rpc("version")
-check_contains("version has inscript version", r_ver["result"]["version"], "2.")
+check_contains("version has inscript version", r_ver["result"]["version"], VERSION.split(".")[0] + ".")
 
 # unknown method
 r_unk = _rpc("nonexistent_method")
