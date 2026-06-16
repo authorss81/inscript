@@ -2,6 +2,7 @@
 // Comprehensive test suite with complex edge cases
 
 #[cfg(test)]
+#[allow(unused_imports, unused_variables)]
 mod tests {
     use inscript_parser::*;
 
