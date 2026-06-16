@@ -175,7 +175,7 @@ KEYWORDS: dict = {
     "on_draw":   TT.ON_DRAW,
     "on_exit":   TT.ON_EXIT,
     # v2.7.0
-    "node":      TT.NODE,
+    "node":      TT.IDENT,
     "_ready":    TT.ON_READY,
     "_update":   TT.ON_NODE_UPDATE,
     "_draw":     TT.ON_NODE_DRAW,

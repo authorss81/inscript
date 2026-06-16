@@ -190,7 +190,7 @@ class Parser:
         if tok.type == TT.SCENE:
             return self.parse_scene_decl()
 
-        if tok.type == TT.NODE:                         # v2.7.0
+        if tok.type == TT.IDENT and tok.value == "node":  # v2.7.0
             return self.parse_node_decl()
 
         # --- AI block ---

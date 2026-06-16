@@ -98,7 +98,7 @@ test_unexpected_char_error()
 def test_node_lifecycle():
     toks = tokenize("node _ready _update _draw")
     types = [t.type for t in toks if t.type != TT.EOF]
-    expected = [TT.NODE, TT.ON_READY, TT.ON_NODE_UPDATE, TT.ON_NODE_DRAW]
+    expected = [TT.IDENT, TT.ON_READY, TT.ON_NODE_UPDATE, TT.ON_NODE_DRAW]
     check("node lifecycle keywords got correct tokens", types == expected,
           f"got {types}")
 test_node_lifecycle()

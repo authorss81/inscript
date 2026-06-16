@@ -58,7 +58,7 @@ print("\n── 1. Lexer — node keyword tokens ──────────�
 src = "node _ready _update _draw"
 tokens = Lexer(src).tokenize()
 types = [t.type for t in tokens if t.type != TT.EOF]
-check("'node' lexed as TT.NODE",          TT.NODE           in types, True)
+check("'node' lexed as TT.IDENT",         TT.IDENT          in types, True)
 check("'_ready' lexed as TT.ON_READY",    TT.ON_READY       in types, True)
 check("'_update' lexed as TT.ON_NODE_UPDATE", TT.ON_NODE_UPDATE in types, True)
 check("'_draw' lexed as TT.ON_NODE_DRAW",     TT.ON_NODE_DRAW   in types, True)
