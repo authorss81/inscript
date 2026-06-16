@@ -1,6 +1,9 @@
 // inscript_rust_parser/src/token.rs
 // Token types and token stream
 
+// Many variants are reserved keywords never constructed by the current lexer.
+// Suppress dead_code to allow -D warnings in CI.
+#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token {
     // ── Literals ──────────────────────────────────

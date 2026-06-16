@@ -124,6 +124,8 @@ impl fmt::Display for Value {
 }
 
 /// OpCode definitions
+// Some variants are not used by the current compiler passes.
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy)]
 pub enum OpCode {
     // Stack operations
