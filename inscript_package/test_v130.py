@@ -315,7 +315,7 @@ try:
     os.write(fd, b"fn fib(n:int)->int{if n<=1{return n} return fib(n-1)+fib(n-2)} print(fib(15))\n")
     os.close(fd)   # must close before subprocess can open on Windows
     result = subprocess.run(
-        [sys.executable, "inscript.py", "--profile", "--no-warn", tmp],
+        [sys.executable, "inscript.py", "--profile", "--python", "--no-warn", tmp],
         capture_output=True, text=True, encoding="utf-8"
     )
     ok("--profile flag accepted (exit 0)", result.returncode == 0,
