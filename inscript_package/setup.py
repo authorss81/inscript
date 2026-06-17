@@ -22,7 +22,7 @@ VERSION = _match.group(1)
 # ──────────────────────────────────────────────────
 
 try:
-    from setuptools_rust import RustExtension, build_rust as _build_rust
+    from setuptools_rust import RustExtension, Binding, build_rust as _build_rust
     from setuptools_rust.command import RustCommand
     from setuptools_rust.build import _Platform as _RustPlatform
     RUST_AVAILABLE = True
@@ -41,7 +41,7 @@ if RUST_AVAILABLE:
         RustExtension(
             'inscript.inscript_parser',
             path='inscript_rust_parser/Cargo.toml',
-            binding='PyO3',
+            binding=Binding.PyO3,
         ),
     ]
     # build_rust.finalize_options calls set_undefined_options("build_ext", ...)
