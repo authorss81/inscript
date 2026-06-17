@@ -56,6 +56,7 @@ if RUST_AVAILABLE:
             self.set_undefined_options(
                 "build",
                 ("plat_name", "plat_name"),
+                ("build_lib", "build_lib"),
             )
             if getattr(self, 'build_temp', None) is None:
                 self.set_undefined_options(
@@ -71,20 +72,21 @@ if RUST_AVAILABLE:
             return filenames
 
         def get_ext_fullpath(self, ext_name):
-            modpath = ext_name.split('.')
-            filename = self.get_ext_filename(ext_name)
-            filename = os.path.split(filename)[-1]
+            fullname = self.get_ext_fullname(ext_name)
+            modpath = fullname.split('.')
+            filename = self.get_ext_filename(modpath[-1])
             if not getattr(self, 'inplace', False):
-                build_lib = getattr(self, 'build_lib', 'build')
-                return os.path.join(build_lib, *modpath[:-1], filename)
+                filename = os.path.join(*modpath[:-1] + [filename])
+                return os.path.join(self.build_lib, filename)
             return os.path.join(*modpath[:-1], filename)
 
         def get_ext_fullname(self, ext_name):
             return ext_name
 
         def get_ext_filename(self, ext_name):
-            ext_path = ext_name.replace('.', os.sep)
-            return ext_path + sysconfig.get_config_var('EXT_SUFFIX')
+            ext_path = ext_name.split('.')
+            ext_suffix = sysconfig.get_config_var('EXT_SUFFIX')
+            return os.path.join(*ext_path) + ext_suffix
     cmdclass['build_ext'] = _SafeBuildRust
 
 setup(

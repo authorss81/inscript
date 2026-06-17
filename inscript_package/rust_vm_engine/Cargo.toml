@@ -8,7 +8,7 @@ description = "InScript VM Engine - High-performance bytecode executor with LLVM
 
 [lib]
 name = "inscript_vm_engine"
-crate-type = ["cdylib", "rlib"]
+crate-type = ["rlib"]
 
 [dependencies]
 pyo3 = { version = "0.21", features = ["extension-module"] }
