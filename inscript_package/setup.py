@@ -22,11 +22,15 @@ VERSION = _match.group(1)
 # ──────────────────────────────────────────────────
 
 try:
-    from setuptools_rust import RustExtension, build_rust
+    from setuptools_rust import RustExtension, build_rust as _build_rust
+    from setuptools_rust.command import RustCommand
+    from setuptools_rust.build import _Platform as _RustPlatform
     RUST_AVAILABLE = True
 except ImportError:
     RUST_AVAILABLE = False
-    build_rust = None
+    _build_rust = None
+    RustCommand = None
+    _RustPlatform = None
 
 # Rust extension for parser
 rust_extensions = []
@@ -40,7 +44,31 @@ if RUST_AVAILABLE:
             binding='PyO3',
         ),
     ]
-    cmdclass['build_ext'] = build_rust
+    # build_rust.finalize_options calls set_undefined_options("build_ext", ...)
+    # which self-recurses when build_rust IS the build_ext command.
+    # Subclass to break the cycle by inheriting build_temp from the build command.
+    class _SafeBuildRust(_build_rust):
+        def finalize_options(self):
+            RustCommand.finalize_options(self)
+            if self.target is None:
+                self.target = _RustPlatform.CARGO_DEFAULT
+            self.set_undefined_options(
+                "build",
+                ("plat_name", "plat_name"),
+            )
+            if getattr(self, 'build_temp', None) is None:
+                self.set_undefined_options(
+                    "build",
+                    ("build_temp", "build_temp"),
+                )
+
+        def get_source_files(self):
+            filenames = []
+            for ext in self.extensions:
+                if hasattr(ext, 'path'):
+                    filenames.append(ext.path)
+            return filenames
+    cmdclass['build_ext'] = _SafeBuildRust
 
 setup(
     name='inscript-lang',
