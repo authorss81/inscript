@@ -24,7 +24,7 @@ from errors   import (InScriptError, LexerError, ParseError,
                        SemanticError, InScriptRuntimeError,
                        MultiError, InScriptWarning)
 
-VERSION = "3.9.6.10.9"
+VERSION = "3.9.6.10.10"
 
 MANIFEST_FILENAME = "inscript.toml"
 LOCK_FILENAME     = "inscript.lock"

@@ -9,6 +9,7 @@ Version is read dynamically from inscript.py's VERSION constant.
 import sys
 import os
 import re
+import sysconfig
 from setuptools import setup, find_packages
 
 # ── Dynamic version: read from inscript.py ────────
