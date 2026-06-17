@@ -49,6 +49,10 @@ if RUST_AVAILABLE:
     # which self-recurses when build_rust IS the build_ext command.
     # Subclass to break the cycle by inheriting build_temp from the build command.
     class _SafeBuildRust(_build_rust):
+        def initialize_options(self):
+            super().initialize_options()
+            self.build_lib = None
+
         def finalize_options(self):
             RustCommand.finalize_options(self)
             if self.target is None:
