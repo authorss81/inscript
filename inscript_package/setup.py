@@ -12,7 +12,8 @@ import re
 import sysconfig
 from setuptools import setup, find_packages
 
-os.environ.setdefault('PYO3_CROSS_PYTHON_VERSION', f"{sys.version_info.major}.{sys.version_info.minor}")
+if sys.platform.startswith('linux'):
+    os.environ.setdefault('PYO3_CROSS_PYTHON_VERSION', f"{sys.version_info.major}.{sys.version_info.minor}")
 
 # ── Dynamic version: read from inscript.py ────────
 _here = os.path.dirname(os.path.abspath(__file__))
