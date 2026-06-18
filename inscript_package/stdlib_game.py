@@ -436,9 +436,18 @@ class _P2DArea(_P2DBody):
         super().__init__(shape, mass=0.0, tag=tag)
         self.is_static = True
         self.on_overlap_cb = None
+        self._overlapping = set()
+        self._on_trigger_enter_cb = None
+        self._on_trigger_exit_cb = None
 
     def on_overlap(self, fn):
         self.on_overlap_cb = fn
+
+    def on_trigger_enter(self, fn):
+        self._on_trigger_enter_cb = fn
+
+    def on_trigger_exit(self, fn):
+        self._on_trigger_exit_cb = fn
 
 class _P2DWorld:
     def __init__(self, gravity_x=0.0, gravity_y=500.0):
@@ -457,6 +466,7 @@ class _P2DWorld:
         dt = float(dt)
         dynamics = [b for b in self._bodies if not b.is_static and b._alive]
         statics = [b for b in self._bodies if b.is_static and b._alive]
+        areas = [b for b in self._bodies if isinstance(b, _P2DArea) and b._alive]
 
         # Gravity + integrate
         for b in dynamics:
@@ -465,7 +475,7 @@ class _P2DWorld:
             b.position.x += b.velocity.x * dt
             b.position.y += b.velocity.y * dt
 
-        # AABB collision resolution
+        # AABB helpers
         def _aabb(body):
             if isinstance(body.shape, _P2DRect):
                 hw, hh = body.shape.w/2, body.shape.h/2
@@ -479,11 +489,11 @@ class _P2DWorld:
             ax1,ay1,ax2,ay2 = _aabb(a); bx1,by1,bx2,by2 = _aabb(b)
             return ax1 < bx2 and ax2 > bx1 and ay1 < by2 and ay2 > by1
 
+        # Collision resolution: dynamics vs statics
         for d in dynamics:
             for s in statics:
                 if _overlap(d, s):
                     ax1,ay1,ax2,ay2 = _aabb(d); bx1,by1,bx2,by2 = _aabb(s)
-                    # penetration depths
                     overlap_x = min(ax2-bx1, bx2-ax1)
                     overlap_y = min(ay2-by1, by2-ay1)
                     if isinstance(s, _P2DArea):
@@ -505,7 +515,6 @@ class _P2DWorld:
                 a, b = dynamics[i], dynamics[j]
                 if _overlap(a, b):
                     if self._on_collision_cb: self._on_collision_cb(a, b)
-                    # Simple separation
                     dx = b.x - a.x; dy = b.y - a.y
                     import math
                     dist = max(math.hypot(dx, dy), 0.001)
@@ -520,6 +529,35 @@ class _P2DWorld:
                         a.velocity.y -= j_val/a.mass * ny
                         b.velocity.x += j_val/b.mass * nx
                         b.velocity.y += j_val/b.mass * ny
+
+        # Trigger enter/exit tracking for Areas
+        for area in areas:
+            now = {b for b in self._bodies if b is not area and b._alive and _overlap(area, b)}
+            entered = now - area._overlapping
+            exited  = area._overlapping - now
+            for b in entered:
+                if area._on_trigger_enter_cb:
+                    area._on_trigger_enter_cb(area, b)
+            for b in exited:
+                if area._on_trigger_exit_cb:
+                    area._on_trigger_exit_cb(area, b)
+            area._overlapping = now
+
+    def query_area(self, area):
+        """Return list of bodies currently overlapping `area`."""
+        return [b for b in self._bodies if b is not area and b._alive and self._overlap_bodies(area, b)]
+
+    def _overlap_bodies(self, a, b):
+        def _aabb(body):
+            if isinstance(body.shape, _P2DRect):
+                hw, hh = body.shape.w/2, body.shape.h/2
+                return (body.x - hw, body.y - hh, body.x + hw, body.y + hh)
+            elif isinstance(body.shape, _P2DCircle):
+                r = body.shape.r
+                return (body.x - r, body.y - r, body.x + r, body.y + r)
+            return (body.x, body.y, body.x, body.y)
+        ax1,ay1,ax2,ay2 = _aabb(a); bx1,by1,bx2,by2 = _aabb(b)
+        return ax1 < bx2 and ax2 > bx1 and ay1 < by2 and ay2 > by1
 
     def body_count(self): return len(self._bodies)
     def __repr__(self): return f"<Physics2D.World bodies={len(self._bodies)} gravity=({self._gx},{self._gy})>"
@@ -2146,12 +2184,82 @@ def _physics_ray_cast(world, ox, oy, dx, dy, distance=10000.0):
     return best
 
 
+def _physics_shape_cast(world, shape, ox, oy, dx, dy, distance=10000.0):
+    """
+    Cast a shape along a ray.  shape is a _P2DRect or _P2DCircle.
+    Returns first body hit dict or None.
+    """
+    import math
+    length = math.hypot(float(dx), float(dy))
+    if length == 0:
+        return None
+    ndx, ndy = float(dx) / length, float(dy) / length
+    ox, oy, dist = float(ox), float(oy), float(distance)
+
+    if isinstance(shape, _P2DRect):
+        shw, shh = shape.w / 2, shape.h / 2
+    else:
+        sr = shape.r
+
+    def _b_aabb(b):
+        if isinstance(b.shape, _P2DRect):
+            hw, hh = b.shape.w / 2, b.shape.h / 2
+            return (b.x - hw, b.y - hh, b.x + hw, b.y + hh)
+        r = b.shape.r
+        return (b.x - r, b.y - r, b.x + r, b.y + r)
+
+    best = None
+    best_t = dist
+
+    for b in world._bodies:
+        if not b._alive or isinstance(b, _P2DArea):
+            continue
+        bx1, by1, bx2, by2 = _b_aabb(b)
+        # Expand target AABB by shape extents to get Minkowski-sum AABB
+        if isinstance(shape, _P2DRect):
+            ex1, ey1, ex2, ey2 = bx1 - shw, by1 - shh, bx2 + shw, by2 + shh
+        else:
+            ex1, ey1, ex2, ey2 = bx1 - sr, by1 - sr, bx2 + sr, by2 + sr
+        # Ray vs expanded AABB slab test
+        def _slab(origin, direction, lo, hi):
+            if abs(direction) < 1e-9:
+                if origin < lo or origin > hi:
+                    return float("inf"), float("-inf")
+                return float("-inf"), float("inf")
+            t0 = (lo - origin) / direction
+            t1 = (hi - origin) / direction
+            return (t0, t1) if t0 <= t1 else (t1, t0)
+        tx0, tx1 = _slab(ox, ndx, ex1, ex2)
+        ty0, ty1 = _slab(oy, ndy, ey1, ey2)
+        t_enter = max(tx0, ty0)
+        t_exit  = min(tx1, ty1)
+        if t_enter <= t_exit and t_exit >= 0:
+            t_hit = max(t_enter, 0.0)
+            if t_hit < best_t:
+                best_t = t_hit
+                hx, hy = ox + ndx * t_hit, oy + ndy * t_hit
+                # Check actual shape overlap at hit position
+                if isinstance(shape, _P2DRect):
+                    s1, s2, s3, s4 = hx - shw, hy - shh, hx + shw, hy + shh
+                else:
+                    s1, s2, s3, s4 = hx - sr, hy - sr, hx + sr, hy + sr
+                if s1 <= bx2 and s3 >= bx1 and s2 <= by2 and s4 >= by1:
+                    nx = -1.0 if ndx > 0 else 1.0 if ndx < 0 else 0.0
+                    ny = -1.0 if ndy > 0 else 1.0 if ndy < 0 else 0.0
+                    best = {
+                        "body": b, "hit_x": hx, "hit_y": hy,
+                        "distance": t_hit, "normal_x": nx, "normal_y": ny,
+                    }
+    return best
+
+
 register_module("physics", _wrapmod({
     "world":        _physics_world,
     "body":         _physics_body,
     "static_body":  _physics_static,
     "area":         _physics_area,
     "ray_cast":     _physics_ray_cast,
+    "shape_cast":   _physics_shape_cast,
     "Rect":         lambda w, h: _P2DRect(float(w), float(h)),
     "Circle":       lambda r:    _P2DCircle(float(r)),
     "Vec2":         lambda x=0.0, y=0.0: _Vec2(float(x), float(y)),
