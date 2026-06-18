@@ -125,19 +125,24 @@ jobs:
             platform: linux_x86_64
             target: x86_64-unknown-linux-gnu
             archs: x86_64
+            cargo_target: x86_64-unknown-linux-gnu
+            archs_macos: ""
           - os: ubuntu-24.04-arm
             platform: linux_aarch64
             target: aarch64-unknown-linux-gnu
             archs: aarch64
-          - os: macos-13
-            platform: macos_x86_64
-            target: x86_64-apple-darwin
+            cargo_target: aarch64-unknown-linux-gnu
+            archs_macos: ""
           - os: macos-latest
-            platform: macos_arm64
-            target: aarch64-apple-darwin
+            platform: macos_universal2
+            target: "aarch64-apple-darwin x86_64-apple-darwin"
+            cargo_target: ""
+            archs_macos: universal2
           - os: windows-latest
             platform: windows_amd64
             target: x86_64-pc-windows-msvc
+            cargo_target: x86_64-pc-windows-msvc
+            archs_macos: ""
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -154,7 +159,10 @@ jobs:
             curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
             rustup target add aarch64-unknown-linux-gnu
           CIBW_BEFORE_BUILD: "pip install setuptools-rust"
-          CIBW_ENVIRONMENT: "PATH=$HOME/.cargo/bin:$PATH CARGO_BUILD_TARGET=${{ matrix.target }}"
+          CIBW_ARCHS_MACOS: "${{ matrix.archs_macos }}"
+          CIBW_ENVIRONMENT: >
+            PATH=$HOME/.cargo/bin:$PATH
+            ${{ matrix.cargo_target && format('CARGO_BUILD_TARGET={0}', matrix.cargo_target) || '' }}
         run: python -m cibuildwheel --output-dir dist
       - uses: actions/upload-artifact@v4
         with:
