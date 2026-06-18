@@ -162,6 +162,7 @@ jobs:
           CIBW_ARCHS_MACOS: "${{ matrix.archs_macos }}"
           CIBW_ENVIRONMENT: >
             PATH=$HOME/.cargo/bin:$PATH
+            MACOSX_DEPLOYMENT_TARGET=10.12
             ${{ matrix.cargo_target && format('CARGO_BUILD_TARGET={0}', matrix.cargo_target) || '' }}
         run: python -m cibuildwheel --output-dir dist
       - uses: actions/upload-artifact@v4
