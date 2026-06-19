@@ -75,13 +75,14 @@ class Shape:
 # ── Body ────────────────────────────────────────────────────────────────
 class Body:
     __slots__ = (
-        "shape", "body_type", "mass", "invmass",
+        "shape", "body_type", "mass", "invmass", "density",
         "x", "y", "vx", "vy", "restitution", "friction",
         "tag", "_alive", "_prev_x", "_prev_y",
     )
     def __init__(self, shape: Shape, body_type: int = BODY_DYNAMIC, mass: float = 1.0, tag: str = ""):
         self.shape = shape
         self.body_type = body_type
+        self.density = 1.0
         self.mass = float(mass) if body_type == BODY_DYNAMIC else 0.0
         self.invmass = 1.0 / self.mass if self.mass > 0 else 0.0
         self.x = 0.0
@@ -108,6 +109,7 @@ class Body:
         if name == "vx": return self.vx
         if name == "vy": return self.vy
         if name == "mass": return self.mass
+        if name == "density": return self.density
         if name == "restitution": return self.restitution
         if name == "friction": return self.friction
         if name == "body_type": return self.body_type
@@ -133,6 +135,8 @@ class Body:
         elif name == "mass":
             self.mass = float(val)
             self.invmass = 1.0 / self.mass if self.mass > 0 else 0.0
+        elif name == "density":
+            self.density = float(val)
         elif name == "restitution": self.restitution = float(val)
         elif name == "friction": self.friction = float(val)
         elif name == "body_type": self.body_type = int(val)
@@ -270,8 +274,12 @@ class PhysicsWorld:
     @gravity_y.setter
     def gravity_y(self, v: float): self._gy = float(v)
 
-    def create_body(self, shape, body_type: int = BODY_DYNAMIC, mass: float = 1.0, tag: str = "", x: float = 0.0, y: float = 0.0) -> Body:
+    def create_body(self, shape, body_type: int = BODY_DYNAMIC, mass: float = 1.0, tag: str = "", x: float = 0.0, y: float = 0.0, density: float = 1.0) -> Body:
+        if density != 1.0 and body_type == BODY_DYNAMIC:
+            area = (shape.width * shape.height) if shape.shape_type == SHAPE_RECT else (3.14159 * shape.radius ** 2)
+            mass = area * density if area > 0 else mass
         b = Body(shape, body_type, mass, tag)
+        b.density = density
         b.x = float(x)
         b.y = float(y)
         b._prev_x = b.x
@@ -469,6 +477,18 @@ class PhysicsWorld:
         a.vy += j * a.invmass * ny
         b.vx -= j * b.invmass * nx
         b.vy -= j * b.invmass * ny
+        # Friction impulse (tangential, opposes relative motion)
+        tnx, tny = -ny, nx
+        rel_vt = rel_vx * tnx + rel_vy * tny
+        friction = (a.friction + b.friction) * 0.5
+        max_friction = abs(j) * friction
+        if abs(rel_vt) > 0 and invmass_sum > 0:
+            jt_desired = -rel_vt / invmass_sum
+            jt = max(-max_friction, min(jt_desired, max_friction))
+            a.vx += jt * a.invmass * tnx
+            a.vy += jt * a.invmass * tny
+            b.vx -= jt * b.invmass * tnx
+            b.vy -= jt * b.invmass * tny
         # Position correction
         correction = max(c.penetration - 0.01, 0.0)
         correction_factor = 0.8
@@ -555,6 +575,9 @@ class PhysicsWorld:
         if name == "body_count": return self.body_count
         if name == "get_bodies": return self.get_bodies
         if name == "find_body_by_tag": return self.find_body_by_tag
+        if name == "to_dict": return self.to_dict
+        if name == "save_scene": return self.save_scene
+        if name == "load_scene": return PhysicsWorld.load_scene
         raise AttributeError(name)
 
     def set_attr(self, name: str, val: Any):
@@ -574,3 +597,68 @@ class PhysicsWorld:
             if b.tag == tag:
                 return b
         return None
+
+    # ── Serialization ──────────────────────────────────────────────────
+    def to_dict(self) -> dict:
+        bodies = []
+        for b in self._bodies:
+            if not b._alive:
+                continue
+            if isinstance(b.shape, Shape):
+                if b.shape.shape_type == SHAPE_RECT:
+                    shape = {"type": "rect", "w": b.shape.width, "h": b.shape.height}
+                else:
+                    shape = {"type": "circle", "r": b.shape.radius}
+            body = {
+                "tag": b.tag, "body_type": b.body_type, "mass": b.mass,
+                "density": b.density, "restitution": b.restitution,
+                "friction": b.friction, "x": b.x, "y": b.y,
+                "vx": b.vx, "vy": b.vy, "shape": shape,
+            }
+            bodies.append(body)
+        joints = []
+        for j in self._joints:
+            joint = {
+                "joint_type": j.joint_type,
+                "body_a_tag": j.body_a.tag, "body_b_tag": j.body_b.tag,
+                "length": getattr(j, 'length', 0),
+                "stiffness": getattr(j, 'stiffness', 0),
+                "damping": getattr(j, 'damping', 0),
+            }
+            joints.append(joint)
+        return {"gravity_x": self._gx, "gravity_y": self._gy,
+                "bodies": bodies, "joints": joints}
+
+    def save_scene(self, path: str):
+        import json
+        with open(path, "w") as f:
+            json.dump(self.to_dict(), f, indent=2)
+
+    @staticmethod
+    def load_scene(path: str, gravity_x: float = 0.0, gravity_y: float = 500.0) -> "PhysicsWorld":
+        import json
+        with open(path) as f:
+            data = json.load(f)
+        w = PhysicsWorld(data.get("gravity_x", gravity_x), data.get("gravity_y", gravity_y))
+        tag_map = {}
+        for bd in data.get("bodies", []):
+            if bd["shape"]["type"] == "rect":
+                shape = Shape.rect(bd["shape"]["w"], bd["shape"]["h"])
+            else:
+                shape = Shape.circle(bd["shape"]["r"])
+            b = w.create_body(shape, bd["body_type"], bd["mass"], bd["tag"],
+                              bd["x"], bd["y"], bd.get("density", 1.0))
+            b.restitution = bd["restitution"]
+            b.friction = bd["friction"]
+            b.vx = bd.get("vx", 0.0)
+            b.vy = bd.get("vy", 0.0)
+            tag_map[bd["tag"]] = b
+        for jd in data.get("joints", []):
+            ba = tag_map.get(jd["body_a_tag"])
+            bb = tag_map.get(jd["body_b_tag"])
+            if ba and bb:
+                w.create_joint(jd["joint_type"], ba, bb,
+                               length=jd.get("length", 100.0),
+                               stiffness=jd.get("stiffness", 1.0),
+                               damping=jd.get("damping", 0.1))
+        return w

@@ -368,8 +368,8 @@ class MatchStmt(Node):
 
 @dataclass
 class LifecycleHook(Node):
-    """on_start { }  |  on_update(dt: float) { }  |  on_draw { }"""
-    hook_type: str          # "on_start" | "on_update" | "on_draw" | "on_exit"
+    """on_start { }  |  on_update(dt: float) { }  |  on_draw { }  |  on_physics(dt: float) { }"""
+    hook_type: str          # "on_start" | "on_update" | "on_draw" | "on_exit" | "on_physics"
     params:    List[Param]
     body:      "BlockStmt"
 

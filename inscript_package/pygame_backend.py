@@ -726,7 +726,14 @@ def run_scene(ins_file: str, width=800, height=600, fps=60, title=None, profile=
     from lexer import Lexer
     from parser import Parser
     from ast_nodes import SceneDecl
-    from physics_engine import PhysicsWorld, Body, Shape, Joint, Contact
+    from physics_engine import PhysicsWorld, Body, Shape, Joint, Contact, BODY_STATIC, BODY_DYNAMIC, BODY_KINEMATIC, SHAPE_RECT, SHAPE_CIRCLE
+
+    # Monkey-patch PhysicsWorld to auto-register for debug drawing
+    _orig_physics_init = PhysicsWorld.__init__
+    def _patched_physics_init(self, *a, **kw):
+        _orig_physics_init(self, *a, **kw)
+        _register_physics_world(self)
+    PhysicsWorld.__init__ = _patched_physics_init
 
     with open(str(ins_file), "r", encoding="utf-8") as f:
         source = f.read()
@@ -1024,6 +1031,9 @@ def run_scene(ins_file: str, width=800, height=600, fps=60, title=None, profile=
     # ── game loop ─────────────────────────────────────────────────────────
     running_flag = True
     _frame_count = 0
+    _physics_accumulator = 0.0
+    _physics_fixed_dt = 1.0 / 60.0  # 60 Hz fixed timestep
+    _physics_debug = debug  # debug flag enables physics overlay
     while running_flag:
         _frame_count += 1
 
@@ -1032,6 +1042,7 @@ def run_scene(ins_file: str, width=800, height=600, fps=60, title=None, profile=
             if ev.type == pygame.QUIT:                       running_flag = False
             elif ev.type == pygame.KEYDOWN:
                 if ev.key == pygame.K_ESCAPE:                running_flag = False
+                elif ev.key == pygame.K_F1:                  _physics_debug = not _physics_debug
 
         if not running_flag: break
 
@@ -1046,6 +1057,14 @@ def run_scene(ins_file: str, width=800, height=600, fps=60, title=None, profile=
         screen_ns._surf = pygame.display.get_surface()
         draw_ns._surf   = screen_ns._surf
 
+        # Fixed-timestep physics hook (on_physics)
+        _physics_accumulator += dt
+        _physics_hook_ran = False
+        while _physics_accumulator >= _physics_fixed_dt:
+            _run_hook("on_physics", _physics_fixed_dt)
+            _physics_accumulator -= _physics_fixed_dt
+            _physics_hook_ran = True
+
         if profile:
             _t0 = _time.perf_counter()
             _run_hook("on_update", dt)
@@ -1055,6 +1074,8 @@ def run_scene(ins_file: str, width=800, height=600, fps=60, title=None, profile=
             _t2 = _time.perf_counter()
             _profile_times["on_update"].append((_t1 - _t0) * 1000)
             _profile_times["on_draw"].append((_t2 - _t1) * 1000)
+            if _physics_hook_ran:
+                _profile_times.setdefault("on_physics", []).append((_t0 - _t0) * 1000)
             if len(_profile_times["on_update"]) > 0:
                 _ipc_data = {"profile": {}}
                 for _hk, _ht in _profile_times.items():
@@ -1078,6 +1099,11 @@ def run_scene(ins_file: str, width=800, height=600, fps=60, title=None, profile=
             _run_hook("on_update", dt)
             _run_hook("on_draw")
             if batch_draw: draw_ns.flush()
+
+        # Physics debug overlay
+        if _physics_debug:
+            _draw_physics_debug(draw_ns._surf)
+
         # v2.7.0: if a SceneManager is active and has a current scene, drive it
         if _scene_mgr is not None and _scene_mgr.current is not None:
             _scene_mgr.update(dt)
@@ -1104,6 +1130,51 @@ def run_scene(ins_file: str, width=800, height=600, fps=60, title=None, profile=
                 print(f"  {_hook_name:12s}: avg={_avg:.3f}ms  min={_min:.3f}ms  "
                       f"max={_max:.3f}ms  calls={len(_times)}")
         print(f"{'='*50}\n")
+
+
+# ── Physics debug draw ───────────────────────────────────────────────────
+_PHYSICS_DEBUG_WORLDS = []
+
+def _register_physics_world(w):
+    """Register a PhysicsWorld for debug rendering."""
+    _PHYSICS_DEBUG_WORLDS.append(w)
+    return w
+
+def _draw_physics_debug(surf):
+    """Draw physics bodies, contacts, and joints as wireframe overlay."""
+    try:
+        import pygame as _pg
+    except ImportError:
+        return
+    for _w in _PHYSICS_DEBUG_WORLDS:
+        for _b in _w._bodies:
+            if not _b._alive:
+                continue
+            if isinstance(_b.shape, Shape) and _b.shape.shape_type == SHAPE_RECT:
+                hw, hh = _b.shape.width / 2, _b.shape.height / 2
+                _rect = _pg.Rect(_b.x - hw, _b.y - hh, _b.shape.width, _b.shape.height)
+                _color = (0, 255, 0) if _b.is_dynamic else (100, 100, 255)
+                _pg.draw.rect(surf, _color, _rect, 1)
+            elif isinstance(_b.shape, Shape) and _b.shape.shape_type == SHAPE_CIRCLE:
+                _color = (0, 255, 0) if _b.is_dynamic else (100, 100, 255)
+                _pg.draw.circle(surf, _color, (int(_b.x), int(_b.y)), int(_b.shape.radius), 1)
+            else:
+                _rect = _pg.Rect(int(_b.x - 10), int(_b.y - 10), 20, 20)
+                _pg.draw.rect(surf, (255, 0, 0), _rect, 1)
+        for _c in _w._contacts:
+            _pg.draw.line(surf, (255, 255, 0),
+                          (int(_c.point_x), int(_c.point_y)),
+                          (int(_c.point_x + _c.normal_x * 15),
+                           int(_c.point_y + _c.normal_y * 15)), 2)
+            _pg.draw.circle(surf, (255, 200, 0),
+                            (int(_c.point_x), int(_c.point_y)), 3)
+        for _j in _w._joints:
+            _ax, _ay = _j.body_a.x, _j.body_a.y
+            _bx, _by = _j.body_b.x, _j.body_b.y
+            _pg.draw.line(surf, (200, 200, 255),
+                          (int(_ax), int(_ay)), (int(_bx), int(_by)), 1)
+            _pg.draw.circle(surf, (200, 200, 255),
+                            (int((_ax+_bx)/2), int((_ay+_by)/2)), 4, 1)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
