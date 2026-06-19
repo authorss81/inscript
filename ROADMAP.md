@@ -1,6 +1,6 @@
 # InScript Roadmap — Production-Grade Microversion Plan
 
-> **Current:** v3.9.6.22 — Physics joints + constraints. Phase 10 ongoing.
+> **Current:** v3.9.6.24 — Physics: scene integration. Phase 10 ongoing.
 > 
 > **Version scheme:** MAJOR.MINOR.PATCH.MICRO — each micro targets a discrete production feature.
 > After v3.9.6.99, roll to v3.9.7.0 for the next feature cluster.
@@ -271,11 +271,11 @@ Parallel microversion to v3.9.6.13. Fixes 6 pre-existing Rust lexer tests by bri
 - [ ] Area detection queries
 - [ ] Ray-cast and shape-cast queries
 
-### v3.9.6.24 — Physics: scene integration
-- [ ] `on_physics_update(dt)` lifecycle hook (fixed timestep)
-- [ ] Physics debug draw (show shapes, contacts, joints)
-- [ ] Body + shape serialization to `.inscene` files
-- [ ] Restitution, friction, density parameters
+### v3.9.6.24 — Physics: scene integration ✅
+- [x] `on_physics(dt)` lifecycle hook (fixed timestep, 60Hz accumulator)
+- [x] Physics debug draw (F1 toggle — shape wireframes, contact normals, joint lines)
+- [x] Body + shape serialization (`to_dict()`, `save_scene()`, `load_scene()`)
+- [x] Restitution, friction, density parameters (friction wired into collision resolution)
 
 ### v3.9.6.25 — Physics: character controller
 - [ ] `CharacterBody` — move_and_slide, move_and_collide
