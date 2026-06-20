@@ -74,6 +74,9 @@ class Shape:
 
 # ── Body ────────────────────────────────────────────────────────────────
 COLLISION_GROUP_ALL = 0xFFFF
+SLEEP_THRESHOLD = 5.0    # velocity magnitude below which body can sleep
+SLEEP_FRAMES    = 60     # consecutive frames at low velocity before sleep
+BROADPHASE_THRESHOLD = 32  # body count above which spatial grid is used
 
 class Body:
     __slots__ = (
@@ -81,6 +84,7 @@ class Body:
         "x", "y", "vx", "vy", "restitution", "friction",
         "tag", "_alive", "_prev_x", "_prev_y",
         "ccd_enabled", "collision_group", "collision_mask",
+        "_sleep_timer", "_sleeping",
     )
     def __init__(self, shape: Shape, body_type: int = BODY_DYNAMIC, mass: float = 1.0, tag: str = ""):
         self.shape = shape
@@ -101,6 +105,8 @@ class Body:
         self.ccd_enabled = False
         self.collision_group = COLLISION_GROUP_ALL
         self.collision_mask = COLLISION_GROUP_ALL
+        self._sleep_timer = 0
+        self._sleeping = False
 
     @property
     def is_static(self) -> bool: return self.body_type == BODY_STATIC
@@ -131,13 +137,22 @@ class Body:
         if name == "get_velocity": return self.get_velocity
         if name == "set_velocity": return self.set_velocity
         if name == "set_transform": return self.set_transform
+        if name == "sleeping": return self._sleeping
+        if name == "collision_group": return self.collision_group
+        if name == "collision_mask": return self.collision_mask
         raise AttributeError(name)
 
     def set_attr(self, name: str, val: Any):
         if name == "x": self.x = float(val)
         elif name == "y": self.y = float(val)
-        elif name == "vx": self.vx = float(val)
-        elif name == "vy": self.vy = float(val)
+        elif name == "vx":
+            self.vx = float(val)
+            self._sleeping = False
+            self._sleep_timer = 0
+        elif name == "vy":
+            self.vy = float(val)
+            self._sleeping = False
+            self._sleep_timer = 0
         elif name == "mass":
             self.mass = float(val)
             self.invmass = 1.0 / self.mass if self.mass > 0 else 0.0
@@ -147,17 +162,23 @@ class Body:
         elif name == "friction": self.friction = float(val)
         elif name == "body_type": self.body_type = int(val)
         elif name == "tag": self.tag = str(val)
+        elif name == "collision_group": self.collision_group = int(val)
+        elif name == "collision_mask": self.collision_mask = int(val)
         else: raise AttributeError(name)
 
     def apply_force(self, fx: float, fy: float):
         if self.is_dynamic and self.mass > 0:
             self.vx += fx / self.mass
             self.vy += fy / self.mass
+            self._sleeping = False
+            self._sleep_timer = 0
 
     def apply_impulse(self, ix: float, iy: float):
         if self.is_dynamic and self.mass > 0:
             self.vx += ix / self.mass
             self.vy += iy / self.mass
+            self._sleeping = False
+            self._sleep_timer = 0
 
     def apply_force_to_center(self, fx: float, fy: float):
         self.apply_force(fx, fy)
@@ -175,6 +196,8 @@ class Body:
     def set_velocity(self, vx: float, vy: float):
         self.vx = float(vx)
         self.vy = float(vy)
+        self._sleeping = False
+        self._sleep_timer = 0
 
     def set_transform(self, x: float, y: float):
         self.set_position(x, y)
@@ -318,19 +341,51 @@ class PhysicsWorld:
     def on_pre_solve(self, cb: Callable):
         self._pre_solve_cb = cb
 
+    # ── Spatial broadphase ────────────────────────────────────────────
+    def _get_broadphase_pairs(self, bodies: List[Body]) -> List[Tuple[Body, Body]]:
+        """Spatial grid broadphase to reduce collision pair count."""
+        cell_size = 200.0
+        cells: Dict[Tuple[int, int], List[Body]] = {}
+        for b in bodies:
+            bx1, by1, bx2, by2 = self._get_aabb(b)
+            x1 = int(bx1 / cell_size)
+            x2 = int(bx2 / cell_size)
+            y1 = int(by1 / cell_size)
+            y2 = int(by2 / cell_size)
+            for cx in range(x1, x2 + 1):
+                for cy in range(y1, y2 + 1):
+                    cells.setdefault((cx, cy), []).append(b)
+        pairs: List[Tuple[Body, Body]] = []
+        seen: set = set()
+        for cell_bodies in cells.values():
+            for i in range(len(cell_bodies)):
+                for j in range(i + 1, len(cell_bodies)):
+                    a, bb = cell_bodies[i], cell_bodies[j]
+                    pid = (id(a), id(bb)) if id(a) < id(bb) else (id(bb), id(a))
+                    if pid not in seen:
+                        seen.add(pid)
+                        pairs.append((a, bb))
+        return pairs
+
     # ── Step ──────────────────────────────────────────────────────────
     def step(self, dt: float):
         dt = float(dt)
-        dynamics = [b for b in self._bodies if b.is_dynamic and b._alive]
+        awake = [b for b in self._bodies if b.is_dynamic and b._alive and not b._sleeping]
         all_bodies = [b for b in self._bodies if b._alive]
 
         # Save previous positions for kinematic velocity calc
-        for b in dynamics:
+        for b in awake:
             b._prev_x = b.x
             b._prev_y = b.y
 
-        # Apply gravity
-        for b in dynamics:
+        # Wake kinematic bodies that moved
+        for b in all_bodies:
+            if b.body_type == BODY_KINEMATIC and b._sleeping:
+                if abs(b.x - b._prev_x) > 0.001 or abs(b.y - b._prev_y) > 0.001:
+                    b._sleeping = False
+
+        # Apply gravity (only to awake bodies)
+        for b in awake:
             b.vx += self._gx * dt
             b.vy += self._gy * dt
 
@@ -339,7 +394,7 @@ class PhysicsWorld:
             self._solve_joint(j)
 
         # Integrate positions (with CCD sub-stepping for fast bodies)
-        for b in dynamics:
+        for b in awake:
             dx = b.vx * dt
             dy = b.vy * dt
             if b.ccd_enabled:
@@ -371,35 +426,51 @@ class PhysicsWorld:
                 b.vx = (b.x - b._prev_x) / dt if dt > 0 else 0
                 b.vy = (b.y - b._prev_y) / dt if dt > 0 else 0
 
-        # Detect collisions
+        # Detect collisions (use broadphase for many bodies)
         new_pairs: set = set()
         self._last_contacts.clear()
-        for i in range(len(all_bodies)):
-            for j_idx in range(i + 1, len(all_bodies)):
-                a, b_body = all_bodies[i], all_bodies[j_idx]
-                if a.is_static and b_body.is_static:
-                    continue
-                if not self._can_collide(a, b_body):
-                    continue
-                contact = self._detect_collision(a, b_body)
-                if contact:
-                    pair = (id(a), id(b_body))
-                    new_pairs.add(pair)
-                    self._last_contacts[pair] = contact
-                    reversed_pair = (id(b_body), id(a))
+        if len(all_bodies) > BROADPHASE_THRESHOLD:
+            collision_candidates = self._get_broadphase_pairs(all_bodies)
+        else:
+            collision_candidates = []
+            for i in range(len(all_bodies)):
+                for j in range(i + 1, len(all_bodies)):
+                    collision_candidates.append((all_bodies[i], all_bodies[j]))
+        for a, b_body in collision_candidates:
+            if a.is_static and b_body.is_static:
+                continue
+            if not self._can_collide(a, b_body):
+                continue
+            # Wake sleeping bodies on collision check
+            if (a.is_dynamic and a._sleeping) or (b_body.is_dynamic and b_body._sleeping):
+                continue  # Skip sleeping bodies — they can't collide
+            contact = self._detect_collision(a, b_body)
+            if contact:
+                pair = (id(a), id(b_body))
+                new_pairs.add(pair)
+                self._last_contacts[pair] = contact
+                reversed_pair = (id(b_body), id(a))
 
-                    # Allow callback to disable collision
-                    if self._pre_solve_cb:
-                        result = self._pre_solve_cb(a, b_body, contact)
-                        if result is False:
-                            continue
+                # Wake bodies on collision
+                if a.is_dynamic and a._sleeping:
+                    a._sleeping = False
+                    a._sleep_timer = 0
+                if b_body.is_dynamic and b_body._sleeping:
+                    b_body._sleeping = False
+                    b_body._sleep_timer = 0
 
-                    # Resolve collision
-                    self._resolve_collision(contact)
+                # Allow callback to disable collision
+                if self._pre_solve_cb:
+                    result = self._pre_solve_cb(a, b_body, contact)
+                    if result is False:
+                        continue
 
-                    # Fire begin contact
-                    if pair not in self._collision_pairs and self._begin_contact_cb:
-                        self._begin_contact_cb(a, b_body, contact)
+                # Resolve collision
+                self._resolve_collision(contact)
+
+                # Fire begin contact
+                if pair not in self._collision_pairs and self._begin_contact_cb:
+                    self._begin_contact_cb(a, b_body, contact)
 
         # Fire end contact for pairs that separated
         for pair in self._collision_pairs:
@@ -413,9 +484,23 @@ class PhysicsWorld:
         self._collision_pairs = new_pairs
 
         # Damping for stability
-        for b in dynamics:
-            b.vx *= 0.99
-            b.vy *= 0.99
+        for b in all_bodies:
+            if b.is_dynamic and not b._sleeping:
+                b.vx *= 0.99
+                b.vy *= 0.99
+
+        # Sleep management
+        for b in all_bodies:
+            if b.is_dynamic and not b._sleeping:
+                speed = abs(b.vx) + abs(b.vy)
+                if speed < SLEEP_THRESHOLD:
+                    b._sleep_timer += 1
+                    if b._sleep_timer >= SLEEP_FRAMES:
+                        b._sleeping = True
+                        b.vx = 0
+                        b.vy = 0
+                else:
+                    b._sleep_timer = 0
 
     # ── Collision detection ──────────────────────────────────────────
     def _get_aabb(self, body: Body) -> Tuple[float, float, float, float]:
