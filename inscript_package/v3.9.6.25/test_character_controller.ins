@@ -1,0 +1,15 @@
+# v3.9.6.25 — Physics: character controller (.ins tests)
+# Run: python inscript.py --test v3.9.6.25/test_character_controller.ins
+# Note: CharacterBody is a Python-level class used by the game backend.
+# The `physics` module exports are top-level (import "physics" dumps into global scope).
+
+test "world function exists" {
+    import "physics"
+    assert(world != nil)
+}
+
+test "world creates physics world" {
+    import "physics"
+    let w = world(0, 500)
+    assert(w != nil)
+}

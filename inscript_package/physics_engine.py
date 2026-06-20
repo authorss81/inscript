@@ -578,6 +578,8 @@ class PhysicsWorld:
         if name == "to_dict": return self.to_dict
         if name == "save_scene": return self.save_scene
         if name == "load_scene": return PhysicsWorld.load_scene
+        if name == "create_character_body": return self.create_character_body
+        if name == "character_body": return self.create_character_body
         raise AttributeError(name)
 
     def set_attr(self, name: str, val: Any):
@@ -597,6 +599,12 @@ class PhysicsWorld:
             if b.tag == tag:
                 return b
         return None
+
+    def create_character_body(self, shape, tag: str = "", x: float = 0.0, y: float = 0.0,
+                               one_way_platforms: bool = True) -> "CharacterBody":
+        """Create a CharacterBody (dynamic body + character controller)."""
+        b = self.create_body(shape, BODY_DYNAMIC, 1.0, tag, x, y)
+        return CharacterBody(self, b, one_way_platforms=one_way_platforms)
 
     # ── Serialization ──────────────────────────────────────────────────
     def to_dict(self) -> dict:
@@ -662,3 +670,176 @@ class PhysicsWorld:
                                stiffness=jd.get("stiffness", 1.0),
                                damping=jd.get("damping", 0.1))
         return w
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# v3.9.6.25 — CharacterBody: platformer character controller
+# ═══════════════════════════════════════════════════════════════════════════
+
+class CharacterBody:
+    """Platformer character controller wrapping a Body.
+
+    Usage:
+        w = PhysicsWorld(0, 500)
+        b = w.create_body(Shape.rect(16, 32), BODY_DYNAMIC, 1.0, "player")
+        char = CharacterBody(w, b)
+        char.move_and_slide(vel_x, vel_y)
+        if char.is_on_floor(): ...
+    """
+
+    def __init__(self, world: "PhysicsWorld", body: Body, one_way_platforms: bool = True):
+        self.world = world
+        self.body = body
+        self._floor = False
+        self._wall = False
+        self._ceiling = False
+        self._floor_normal_x = 0.0
+        self._floor_normal_y = 0.0
+        self._wall_side = 0  # -1 left, 1 right, 0 none
+        self._one_way_platforms = one_way_platforms
+        self._platform_bodies: List[Body] = []
+        self._knockback_x = 0.0
+        self._knockback_y = 0.0
+        self._slide_depth = 20  # max iteration depth
+
+    def apply_knockback(self, ix: float, iy: float):
+        self._knockback_x += float(ix)
+        self._knockback_y += float(iy)
+
+    def set_platforms(self, bodies: List[Body]):
+        """Mark bodies as one-way platforms (collide only from above)."""
+        self._platform_bodies = list(bodies)
+
+    def move_and_slide(self, vx: float, vy: float, dt: float = 0.016):
+        """Move character with collision resolution, updating floor/wall/ceiling state."""
+        self._floor = False
+        self._wall = False
+        self._ceiling = False
+        self._floor_normal_x = 0.0
+        self._floor_normal_y = 0.0
+        self._wall_side = 0
+
+        total_vx = float(vx) + self._knockback_x
+        total_vy = float(vy) + self._knockback_y
+        self._knockback_x = 0.0
+        self._knockback_y = 0.0
+
+        dx = total_vx * dt
+        dy = total_vy * dt
+
+        remaining_x = dx
+        remaining_y = dy
+        iterations = 0
+        max_iter = self._slide_depth
+        # Always run at least one pass to resolve existing overlaps
+        first_pass = True
+
+        while (first_pass or abs(remaining_x) > 0.001 or abs(remaining_y) > 0.001) and iterations < max_iter:
+            first_pass = False
+            iterations += 1
+            step_x = remaining_x
+            step_y = remaining_y
+            if step_x != 0 or step_y != 0:
+                self.body.x += step_x
+                self.body.y += step_y
+            collision, hit = self._check_collision()
+
+            if collision and hit is not None:
+                nx, ny = hit.normal_x, hit.normal_y
+                pen = hit.penetration
+
+                # One-way platform check
+                if self._one_way_platforms and hit.body_b in self._platform_bodies:
+                    # Player above platform (ny < 0): standing or falling onto it → resolve
+                    # Player below platform (ny > 0): jumping up into it → pass through
+                    if ny > 0.5:
+                        # Hitting from below — pass through
+                        self.body.x -= step_x
+                        self.body.y -= step_y
+                        remaining_x = 0
+                        remaining_y = 0
+                        break
+                    elif ny < -0.5 and step_y > 0:
+                        # Moving upward into platform from below — pass through
+                        self.body.x -= step_x
+                        self.body.y -= step_y
+                        remaining_x = 0
+                        remaining_y = 0
+                        break
+
+                # Separate along collision normal
+                self.body.x += nx * pen
+                self.body.y += ny * pen
+
+                # Update state
+                if nx != 0:
+                    self._wall = True
+                    # nx < 0 means wall is on the right (push left), nx > 0 means wall is on the left
+                    self._wall_side = -1 if nx > 0 else 1
+                if ny < 0:
+                    self._floor = True
+                    self._floor_normal_x = nx
+                    self._floor_normal_y = ny
+                elif ny > 0:
+                    self._ceiling = True
+
+                # Consume velocity along normal, keep slide velocity
+                if abs(nx) > abs(ny):
+                    remaining_x = 0
+                    remaining_y = step_y * (1 - abs(nx))
+                else:
+                    remaining_y = 0
+                    if self._floor and step_x != 0 and abs(ny) > 0.7:
+                        remaining_x = step_x * 0.3
+                    else:
+                        remaining_x = 0
+            elif not collision:
+                remaining_x -= step_x
+                remaining_y -= step_y
+                if abs(remaining_x) <= 0.001 and abs(remaining_y) <= 0.001:
+                    break
+
+    def move_and_collide(self, vx: float, vy: float, dt: float = 0.016) -> Optional[dict]:
+        """Move and return first collision hit, or None. Does not auto-resolve."""
+        dx = float(vx) * dt
+        dy = float(vy) * dt
+        self.body.x += dx
+        self.body.y += dy
+        _, hit = self._check_collision()
+        if hit:
+            self.body.x -= dx
+            self.body.y -= dy
+            return {
+                "body": hit.body_b,
+                "normal_x": hit.normal_x,
+                "normal_y": hit.normal_y,
+                "penetration": hit.penetration,
+                "point_x": hit.point_x,
+                "point_y": hit.point_y,
+            }
+        return None
+
+    def is_on_floor(self) -> bool:
+        return self._floor
+
+    def is_on_wall(self) -> bool:
+        return self._wall
+
+    def is_on_ceiling(self) -> bool:
+        return self._ceiling
+
+    def get_floor_normal(self):
+        return (self._floor_normal_x, self._floor_normal_y)
+
+    def get_wall_side(self) -> int:
+        return self._wall_side
+
+    def _check_collision(self):
+        """Check body vs all other bodies in world. Returns (hit: bool, Contact or None)."""
+        for other in self.world._bodies:
+            if other is self.body or not other._alive:
+                continue
+            c = self.world._detect_collision(self.body, other)
+            if c is not None:
+                return True, c
+        return False, None
