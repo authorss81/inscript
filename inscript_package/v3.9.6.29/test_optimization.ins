@@ -1,7 +1,20 @@
 ﻿# v3.9.6.29 — Physics: optimization (.ins tests)
 # Run: python inscript.py --test v3.9.6.29/test_optimization.ins
 
-test "physics module loads" {
-    import "physics"
-    assert(world != nil)
+test "body sleeping attr accessible" {
+    let w = PhysicsWorld()
+    let b = w.create_body(PhysicsShape.rect(10, 10), BODY_DYNAMIC, 1.0, "b", 0, 0)
+    assert(b.get_attr("sleeping") != nil)
+}
+
+test "static body is not dynamic" {
+    let w = PhysicsWorld()
+    let b = w.create_body(PhysicsShape.rect(10, 10), BODY_STATIC, 0.0, "wall", 0, 0)
+    assert(b.get_attr("is_static") == true)
+}
+
+test "dynamic body is dynamic" {
+    let w = PhysicsWorld()
+    let b = w.create_body(PhysicsShape.rect(10, 10), BODY_DYNAMIC, 1.0, "dyn", 0, 0)
+    assert(b.get_attr("is_dynamic") == true)
 }

@@ -16,7 +16,7 @@ from stdlib_values import (
     InScriptCoroutine,
 )
 from physics_engine import (
-    PhysicsWorld, Body, Shape, Joint, Contact,
+    PhysicsWorld, Body, Shape, Joint, Contact, CharacterBody,
     BODY_STATIC, BODY_DYNAMIC, BODY_KINEMATIC,
     JOINT_DISTANCE, JOINT_REVOLUTE, JOINT_PRISMATIC, JOINT_WELD, JOINT_MOUSE,
 )
@@ -521,6 +521,7 @@ class Interpreter(Visitor):
                 else PhysicsWorld(float(gravity), 500.0)
             ),
             "PhysicsShape": Shape,
+            "CharacterBody": lambda world, body, one_way_platforms=True: CharacterBody(world, body, one_way_platforms),
             "BODY_STATIC":    BODY_STATIC,
             "BODY_DYNAMIC":   BODY_DYNAMIC,
             "BODY_KINEMATIC": BODY_KINEMATIC,

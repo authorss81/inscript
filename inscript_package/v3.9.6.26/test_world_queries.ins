@@ -1,8 +1,52 @@
 # v3.9.6.26 — Physics: world queries (.ins tests)
 # Run: python inscript.py --test v3.9.6.26/test_world_queries.ins
-# Note: query methods are on PhysicsWorld (Python-level), exposed via pygame_backend.
+# Note: PhysicsWorld() uses default gravity. Use PhysicsWorld() then w.set_attr("gravity_y", 500).
 
-test "physics module loads" {
-    import "physics"
-    assert(world != nil)
+test "world query methods accessible via get_attr" {
+    let w = PhysicsWorld()
+    assert(w.get_attr("query_aabb") != nil)
+    assert(w.get_attr("query_circle") != nil)
+    assert(w.get_attr("contact_points") != nil)
+    assert(w.get_attr("ray_cast") != nil)
+    assert(w.get_attr("ray_cast_all") != nil)
+}
+
+test "ray_cast returns hit dict" {
+    let w = PhysicsWorld()
+    let wall = w.create_body(PhysicsShape.rect(20, 100), BODY_STATIC, 0.0, "wall", 200, 50)
+    let hit = w.ray_cast(0, 50, 1, 0, 500)
+    assert(hit != nil)
+    assert(hit.body != nil)
+    assert(hit.body.tag == "wall")
+}
+
+test "ray_cast miss returns nil" {
+    let w = PhysicsWorld()
+    let wall = w.create_body(PhysicsShape.rect(20, 100), BODY_STATIC, 0.0, "wall", 200, 50)
+    let hit = w.ray_cast(0, -50, 1, 0, 500)
+    assert(hit == nil)
+}
+
+test "ray_cast_all returns list" {
+    let w = PhysicsWorld()
+    w.create_body(PhysicsShape.rect(20, 20), BODY_STATIC, 0.0, "a", 100, 50)
+    w.create_body(PhysicsShape.rect(20, 20), BODY_STATIC, 0.0, "b", 300, 50)
+    let hits = w.ray_cast_all(0, 50, 1, 0, 500)
+    assert(hits.length >= 2)
+}
+
+test "query_aabb returns bodies" {
+    let w = PhysicsWorld()
+    let a = w.create_body(PhysicsShape.rect(20, 20), BODY_STATIC, 0.0, "box", 100, 100)
+    let results = w.query_aabb(100, 100, 30, 30)
+    assert(results.length >= 1)
+    assert(results[0].tag == "box")
+}
+
+test "query_circle returns bodies" {
+    let w = PhysicsWorld()
+    let a = w.create_body(PhysicsShape.rect(20, 20), BODY_STATIC, 0.0, "box", 100, 100)
+    let results = w.query_circle(100, 100, 30)
+    assert(results.length >= 1)
+    assert(results[0].tag == "box")
 }

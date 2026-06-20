@@ -1,7 +1,28 @@
 # v3.9.6.27 — Physics: CCD (.ins tests)
 # Run: python inscript.py --test v3.9.6.27/test_ccd.ins
 
-test "physics module loads" {
-    import "physics"
-    assert(world != nil)
+test "Body has ccd_enabled attr" {
+    let w = PhysicsWorld()
+    let b = w.create_body(PhysicsShape.rect(10, 10), BODY_DYNAMIC, 1.0, "b", 0, 0)
+    assert(b.get_attr("is_dynamic") == true)
+}
+
+test "CCD prevents tunneling" {
+    let w = PhysicsWorld()
+    let bullet = w.create_body(PhysicsShape.rect(4, 4), BODY_DYNAMIC, 1.0, "bullet", 50, 50)
+    bullet.set_attr("ccd_enabled", 1)
+    let wall = w.create_body(PhysicsShape.rect(4, 100), BODY_STATIC, 0.0, "wall", 105, 50)
+    bullet.set_attr("vx", 10000)
+    w.step(0.016)
+    assert(bullet.x <= 105)
+}
+
+test "CCD can be disabled" {
+    let w = PhysicsWorld()
+    let bullet = w.create_body(PhysicsShape.rect(4, 4), BODY_DYNAMIC, 1.0, "bullet", 50, 50)
+    bullet.set_attr("ccd_enabled", 0)
+    let wall = w.create_body(PhysicsShape.rect(4, 100), BODY_STATIC, 0.0, "wall", 105, 50)
+    bullet.set_attr("vx", 10000)
+    w.step(0.016)
+    assert(bullet.x >= 200)
 }

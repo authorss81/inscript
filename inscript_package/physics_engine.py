@@ -164,6 +164,8 @@ class Body:
         elif name == "tag": self.tag = str(val)
         elif name == "collision_group": self.collision_group = int(val)
         elif name == "collision_mask": self.collision_mask = int(val)
+        elif name == "ccd_enabled": self.ccd_enabled = bool(int(val)) if not isinstance(val, bool) else bool(val)
+        elif name == "_sleeping": self._sleeping = bool(int(val)) if not isinstance(val, bool) else bool(val)
         else: raise AttributeError(name)
 
     def apply_force(self, fx: float, fy: float):

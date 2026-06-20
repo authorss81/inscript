@@ -1,7 +1,40 @@
 ﻿# v3.9.6.28 — Physics: collision filtering (.ins tests)
 # Run: python inscript.py --test v3.9.6.28/test_collision_filtering.ins
 
-test "physics module loads" {
-    import "physics"
-    assert(world != nil)
+test "body has collision_group attr" {
+    let w = PhysicsWorld()
+    let b = w.create_body(PhysicsShape.rect(10, 10), BODY_DYNAMIC, 1.0, "b", 0, 0)
+    assert(b.get_attr("collision_group") != nil)
+}
+
+test "body has collision_mask attr" {
+    let w = PhysicsWorld()
+    let b = w.create_body(PhysicsShape.rect(10, 10), BODY_DYNAMIC, 1.0, "b", 0, 0)
+    assert(b.get_attr("collision_mask") != nil)
+}
+
+test "non-overlapping mask prevents collision" {
+    let w = PhysicsWorld()
+    let body = w.create_body(PhysicsShape.rect(40, 40), BODY_DYNAMIC, 1.0, "dyn", 100, 85)
+    body.set_attr("collision_group", 1)
+    body.set_attr("collision_mask", 2)
+    let floor = w.create_body(PhysicsShape.rect(200, 20), BODY_STATIC, 0.0, "floor", 100, 100)
+    floor.set_attr("collision_group", 4)
+    floor.set_attr("collision_mask", 65535)
+    w.step(0.016)
+    let contacts = w.contact_points(body)
+    assert(contacts.length == 0)
+}
+
+test "overlapping mask allows collision" {
+    let w = PhysicsWorld()
+    let body = w.create_body(PhysicsShape.rect(40, 40), BODY_DYNAMIC, 1.0, "dyn", 100, 85)
+    body.set_attr("collision_group", 1)
+    body.set_attr("collision_mask", 4)
+    let floor = w.create_body(PhysicsShape.rect(200, 20), BODY_STATIC, 0.0, "floor", 100, 100)
+    floor.set_attr("collision_group", 4)
+    floor.set_attr("collision_mask", 65535)
+    w.step(0.016)
+    let contacts = w.contact_points(body)
+    assert(contacts.length > 0)
 }

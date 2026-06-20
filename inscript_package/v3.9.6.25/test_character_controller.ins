@@ -1,15 +1,84 @@
 # v3.9.6.25 — Physics: character controller (.ins tests)
 # Run: python inscript.py --test v3.9.6.25/test_character_controller.ins
-# Note: CharacterBody is a Python-level class used by the game backend.
-# The `physics` module exports are top-level (import "physics" dumps into global scope).
 
-test "world function exists" {
-    import "physics"
-    assert(world != nil)
+test "CharacterBody exists" {
+    assert(CharacterBody != nil)
 }
 
-test "world creates physics world" {
-    import "physics"
-    let w = world(0, 500)
-    assert(w != nil)
+test "CharacterBody can be created" {
+    let w = PhysicsWorld()
+    let b = w.create_body(PhysicsShape.rect(16, 32), BODY_DYNAMIC, 1.0, "p", 0, 0)
+    let c = CharacterBody(w, b)
+    assert(c != nil)
+}
+
+test "CharacterBody has is_on_floor" {
+    let w = PhysicsWorld()
+    let b = w.create_body(PhysicsShape.rect(16, 32), BODY_DYNAMIC, 1.0, "p", 0, 0)
+    let c = CharacterBody(w, b)
+    assert(c.is_on_floor != nil)
+}
+
+test "CharacterBody has is_on_wall" {
+    let w = PhysicsWorld()
+    let b = w.create_body(PhysicsShape.rect(16, 32), BODY_DYNAMIC, 1.0, "p", 0, 0)
+    let c = CharacterBody(w, b)
+    assert(c.is_on_wall != nil)
+}
+
+test "CharacterBody has is_on_ceiling" {
+    let w = PhysicsWorld()
+    let b = w.create_body(PhysicsShape.rect(16, 32), BODY_DYNAMIC, 1.0, "p", 0, 0)
+    let c = CharacterBody(w, b)
+    assert(c.is_on_ceiling != nil)
+}
+
+test "CharacterBody has move_and_slide" {
+    let w = PhysicsWorld()
+    let b = w.create_body(PhysicsShape.rect(16, 32), BODY_DYNAMIC, 1.0, "p", 0, 0)
+    let c = CharacterBody(w, b)
+    assert(c.move_and_slide != nil)
+}
+
+test "CharacterBody has move_and_collide" {
+    let w = PhysicsWorld()
+    let b = w.create_body(PhysicsShape.rect(16, 32), BODY_DYNAMIC, 1.0, "p", 0, 0)
+    let c = CharacterBody(w, b)
+    assert(c.move_and_collide != nil)
+}
+
+test "CharacterBody has apply_knockback" {
+    let w = PhysicsWorld()
+    let b = w.create_body(PhysicsShape.rect(16, 32), BODY_DYNAMIC, 1.0, "p", 0, 0)
+    let c = CharacterBody(w, b)
+    assert(c.apply_knockback != nil)
+}
+
+test "CharacterBody has get_wall_side" {
+    let w = PhysicsWorld()
+    let b = w.create_body(PhysicsShape.rect(16, 32), BODY_DYNAMIC, 1.0, "p", 0, 0)
+    let c = CharacterBody(w, b)
+    assert(c.get_wall_side != nil)
+}
+
+test "CharacterBody has get_floor_normal" {
+    let w = PhysicsWorld()
+    let b = w.create_body(PhysicsShape.rect(16, 32), BODY_DYNAMIC, 1.0, "p", 0, 0)
+    let c = CharacterBody(w, b)
+    assert(c.get_floor_normal != nil)
+}
+
+test "CharacterBody has set_platforms" {
+    let w = PhysicsWorld()
+    let b = w.create_body(PhysicsShape.rect(16, 32), BODY_DYNAMIC, 1.0, "p", 0, 0)
+    let c = CharacterBody(w, b)
+    assert(c.set_platforms != nil)
+}
+
+test "move_and_slide changes position" {
+    let w = PhysicsWorld()
+    let b = w.create_body(PhysicsShape.rect(16, 32), BODY_DYNAMIC, 1.0, "p", 100, 100)
+    let c = CharacterBody(w, b)
+    c.move_and_slide(100, 0, 0.016)
+    assert(b.x > 100)
 }
