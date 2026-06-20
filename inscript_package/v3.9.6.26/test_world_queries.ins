@@ -1,0 +1,8 @@
+# v3.9.6.26 — Physics: world queries (.ins tests)
+# Run: python inscript.py --test v3.9.6.26/test_world_queries.ins
+# Note: query methods are on PhysicsWorld (Python-level), exposed via pygame_backend.
+
+test "physics module loads" {
+    import "physics"
+    assert(world != nil)
+}

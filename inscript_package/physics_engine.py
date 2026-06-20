@@ -263,6 +263,7 @@ class PhysicsWorld:
         self._end_contact_cb: Optional[Callable] = None
         self._pre_solve_cb: Optional[Callable] = None
         self._collision_pairs: set = set()
+        self._last_contacts: Dict[Tuple[int, int], Contact] = {}
 
     @property
     def gravity_x(self) -> float: return self._gx
@@ -344,6 +345,7 @@ class PhysicsWorld:
 
         # Detect collisions
         new_pairs: set = set()
+        self._last_contacts.clear()
         for i in range(len(all_bodies)):
             for j_idx in range(i + 1, len(all_bodies)):
                 a, b_body = all_bodies[i], all_bodies[j_idx]
@@ -353,6 +355,7 @@ class PhysicsWorld:
                 if contact:
                     pair = (id(a), id(b_body))
                     new_pairs.add(pair)
+                    self._last_contacts[pair] = contact
                     reversed_pair = (id(b_body), id(a))
 
                     # Allow callback to disable collision
@@ -580,6 +583,11 @@ class PhysicsWorld:
         if name == "load_scene": return PhysicsWorld.load_scene
         if name == "create_character_body": return self.create_character_body
         if name == "character_body": return self.create_character_body
+        if name == "query_aabb": return self.query_aabb
+        if name == "query_circle": return self.query_circle
+        if name == "contact_points": return self.contact_points
+        if name == "ray_cast": return self.ray_cast
+        if name == "ray_cast_all": return self.ray_cast_all
         raise AttributeError(name)
 
     def set_attr(self, name: str, val: Any):
@@ -605,6 +613,164 @@ class PhysicsWorld:
         """Create a CharacterBody (dynamic body + character controller)."""
         b = self.create_body(shape, BODY_DYNAMIC, 1.0, tag, x, y)
         return CharacterBody(self, b, one_way_platforms=one_way_platforms)
+
+    # ── v3.9.6.26 — World queries ──────────────────────────────────────
+    def query_aabb(self, cx: float, cy: float, half_w: float, half_h: float) -> List[Body]:
+        """Return all bodies whose AABB overlaps the query AABB."""
+        result = []
+        qx1, qy1, qx2, qy2 = cx - half_w, cy - half_h, cx + half_w, cy + half_h
+        for b in self._bodies:
+            if not b._alive:
+                continue
+            bx1, by1, bx2, by2 = self._get_aabb(b)
+            if bx1 < qx2 and bx2 > qx1 and by1 < qy2 and by2 > qy1:
+                result.append(b)
+        return result
+
+    def query_circle(self, cx: float, cy: float, radius: float) -> List[Body]:
+        """Return all bodies whose shape overlaps the query circle."""
+        result = []
+        r2 = radius * radius
+        for b in self._bodies:
+            if not b._alive:
+                continue
+            # Quick AABB reject
+            bx1, by1, bx2, by2 = self._get_aabb(b)
+            if not (bx1 < cx + radius and bx2 > cx - radius and by1 < cy + radius and by2 > cy - radius):
+                continue
+            # Precise check
+            s = b.shape
+            if s.shape_type == SHAPE_RECT:
+                hw, hh = s.width / 2, s.height / 2
+                closest_x = max(b.x - hw, min(cx, b.x + hw))
+                closest_y = max(b.y - hh, min(cy, b.y + hh))
+            else:
+                closest_x = max(b.x - s.radius, min(cx, b.x + s.radius))
+                closest_y = max(b.y - s.radius, min(cy, b.y + s.radius))
+            dx = cx - closest_x
+            dy = cy - closest_y
+            if dx * dx + dy * dy <= r2:
+                result.append(b)
+        return result
+
+    def contact_points(self, body: Body) -> List[dict]:
+        """Return current contact information for a body from last step()."""
+        result = []
+        body_id = id(body)
+        for pair, contact in self._last_contacts.items():
+            a_id, b_id = pair
+            if a_id == body_id:
+                other_id = b_id
+            elif b_id == body_id:
+                other_id = a_id
+            else:
+                continue
+            other = next((b for b in self._bodies if id(b) == other_id), None)
+            if other and other._alive:
+                result.append({
+                    "body": other,
+                    "normal_x": contact.normal_x,
+                    "normal_y": contact.normal_y,
+                    "penetration": contact.penetration,
+                    "point_x": contact.point_x,
+                    "point_y": contact.point_y,
+                })
+        return result
+
+    def ray_cast(self, ox: float, oy: float, dx: float, dy: float,
+                 distance: float = 10000.0) -> Optional[dict]:
+        """Cast a ray and return the closest hit, or None."""
+        all_hits = self.ray_cast_all(ox, oy, dx, dy, distance)
+        if all_hits:
+            return all_hits[0]
+        return None
+
+    def ray_cast_all(self, ox: float, oy: float, dx: float, dy: float,
+                     distance: float = 10000.0) -> List[dict]:
+        """Cast a ray and return ALL hits sorted by distance."""
+        result = []
+        d_len = math.hypot(dx, dy)
+        if d_len == 0:
+            return result
+        ux, uy = dx / d_len, dy / d_len
+        for b in self._bodies:
+            if not b._alive:
+                continue
+            hit = self._ray_cast_body(ox, oy, ux, uy, distance, b)
+            if hit:
+                result.append(hit)
+        result.sort(key=lambda h: h["distance"])
+        return result
+
+    def _ray_cast_body(self, ox: float, oy: float, ux: float, uy: float,
+                       max_dist: float, body: Body) -> Optional[dict]:
+        """Cast ray against a single body. Returns hit dict or None."""
+        s = body.shape
+        if s.shape_type == SHAPE_RECT:
+            hw, hh = s.width / 2, s.height / 2
+            x1, y1 = body.x - hw, body.y - hh
+            x2, y2 = body.x + hw, body.y + hh
+            # Ray vs AABB (slab method)
+            if ux == 0 and (ox < x1 or ox > x2):
+                return None
+            if uy == 0 and (oy < y1 or oy > y2):
+                return None
+            t1 = (x1 - ox) / ux if ux != 0 else -1e9
+            t2 = (x2 - ox) / ux if ux != 0 else 1e9
+            t3 = (y1 - oy) / uy if uy != 0 else -1e9
+            t4 = (y2 - oy) / uy if uy != 0 else 1e9
+            t_min = max(min(t1, t2), min(t3, t4))
+            t_max = min(max(t1, t2), max(t3, t4))
+            if t_max < 0 or t_min > t_max or t_min > max_dist:
+                return None
+            t = t_min if t_min > 0 else t_max
+            if t > max_dist or t < 0:
+                return None
+            hx, hy = ox + ux * t, oy + uy * t
+            # Contact normal (face normal)
+            nx, ny = 0.0, 0.0
+            eps = 0.001
+            if abs(hx - x1) < eps:
+                nx = -1.0
+            elif abs(hx - x2) < eps:
+                nx = 1.0
+            elif abs(hy - y1) < eps:
+                ny = -1.0
+            elif abs(hy - y2) < eps:
+                ny = 1.0
+        else:
+            # Circle
+            bx, by = body.x, body.y
+            r = s.radius
+            to_cx, to_cy = bx - ox, by - oy
+            t_proj = to_cx * ux + to_cy * uy
+            if t_proj < 0:
+                return None
+            closest_x = ox + ux * t_proj
+            closest_y = oy + uy * t_proj
+            ddx, ddy = bx - closest_x, by - closest_y
+            d2 = ddx * ddx + ddy * ddy
+            if d2 > r * r:
+                return None
+            dt = math.sqrt(r * r - d2)
+            t = t_proj - dt
+            if t < 0 or t > max_dist:
+                return None
+            hx, hy = ox + ux * t, oy + uy * t
+            if t_proj - dt < 0:
+                t = t_proj + dt
+                if t > max_dist:
+                    return None
+                hx, hy = ox + ux * t, oy + uy * t
+            # Normal pointing from surface to ray origin
+            nx = (hx - bx) / r if r > 0 else 0
+            ny = (hy - by) / r if r > 0 else 0
+        return {
+            "body": body,
+            "hit_x": hx, "hit_y": hy,
+            "normal_x": nx, "normal_y": ny,
+            "distance": t,
+        }
 
     # ── Serialization ──────────────────────────────────────────────────
     def to_dict(self) -> dict:
