@@ -73,12 +73,14 @@ class Shape:
 
 
 # ── Body ────────────────────────────────────────────────────────────────
+COLLISION_GROUP_ALL = 0xFFFF
+
 class Body:
     __slots__ = (
         "shape", "body_type", "mass", "invmass", "density",
         "x", "y", "vx", "vy", "restitution", "friction",
         "tag", "_alive", "_prev_x", "_prev_y",
-        "ccd_enabled",
+        "ccd_enabled", "collision_group", "collision_mask",
     )
     def __init__(self, shape: Shape, body_type: int = BODY_DYNAMIC, mass: float = 1.0, tag: str = ""):
         self.shape = shape
@@ -97,6 +99,8 @@ class Body:
         self._prev_x = 0.0
         self._prev_y = 0.0
         self.ccd_enabled = False
+        self.collision_group = COLLISION_GROUP_ALL
+        self.collision_mask = COLLISION_GROUP_ALL
 
     @property
     def is_static(self) -> bool: return self.body_type == BODY_STATIC
@@ -349,6 +353,8 @@ class PhysicsWorld:
                     for other in all_bodies:
                         if other is b or other.is_dynamic or not other._alive:
                             continue
+                        if not self._can_collide(b, other):
+                            continue
                         c = self._detect_collision(b, other)
                         if c:
                             self._resolve_collision(c)
@@ -372,6 +378,8 @@ class PhysicsWorld:
             for j_idx in range(i + 1, len(all_bodies)):
                 a, b_body = all_bodies[i], all_bodies[j_idx]
                 if a.is_static and b_body.is_static:
+                    continue
+                if not self._can_collide(a, b_body):
                     continue
                 contact = self._detect_collision(a, b_body)
                 if contact:
@@ -420,6 +428,11 @@ class PhysicsWorld:
             return (body.x - r, body.y - r, body.x + r, body.y + r)
         return (body.x, body.y, body.x, body.y)
 
+    @staticmethod
+    def _can_collide(a: Body, b: Body) -> bool:
+        """Check collision group/mask filtering."""
+        return bool(a.collision_group & b.collision_mask) and bool(b.collision_group & a.collision_mask)
+
     def _sweep_to_static(self, body: Body, dx: float, dy: float) -> float:
         """Compute earliest TOI [0,1] for body moving by (dx,dy) against static bodies."""
         toi = 1.0
@@ -432,6 +445,8 @@ class PhysicsWorld:
             hw = hh = s.radius
         for other in self._bodies:
             if other is body or other.is_dynamic or not other._alive:
+                continue
+            if not self._can_collide(body, other):
                 continue
             os = other.shape
             if os.shape_type == SHAPE_RECT:
