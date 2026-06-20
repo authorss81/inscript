@@ -78,6 +78,7 @@ class Body:
         "shape", "body_type", "mass", "invmass", "density",
         "x", "y", "vx", "vy", "restitution", "friction",
         "tag", "_alive", "_prev_x", "_prev_y",
+        "ccd_enabled",
     )
     def __init__(self, shape: Shape, body_type: int = BODY_DYNAMIC, mass: float = 1.0, tag: str = ""):
         self.shape = shape
@@ -95,6 +96,7 @@ class Body:
         self._alive = True
         self._prev_x = 0.0
         self._prev_y = 0.0
+        self.ccd_enabled = False
 
     @property
     def is_static(self) -> bool: return self.body_type == BODY_STATIC
@@ -332,10 +334,30 @@ class PhysicsWorld:
         for j in self._joints:
             self._solve_joint(j)
 
-        # Integrate positions
+        # Integrate positions (with CCD sub-stepping for fast bodies)
         for b in dynamics:
-            b.x += b.vx * dt
-            b.y += b.vy * dt
+            dx = b.vx * dt
+            dy = b.vy * dt
+            if b.ccd_enabled:
+                toi = self._sweep_to_static(b, dx, dy)
+                if toi < 1.0:
+                    b.x += dx * toi
+                    b.y += dy * toi
+                    b.vx = 0
+                    b.vy = 0
+                    # Resolve immediately at TOI
+                    for other in all_bodies:
+                        if other is b or other.is_dynamic or not other._alive:
+                            continue
+                        c = self._detect_collision(b, other)
+                        if c:
+                            self._resolve_collision(c)
+                else:
+                    b.x += dx
+                    b.y += dy
+            else:
+                b.x += dx
+                b.y += dy
 
         # Kinematic bodies: compute velocity from position delta
         for b in all_bodies:
@@ -397,6 +419,50 @@ class PhysicsWorld:
             r = s.radius
             return (body.x - r, body.y - r, body.x + r, body.y + r)
         return (body.x, body.y, body.x, body.y)
+
+    def _sweep_to_static(self, body: Body, dx: float, dy: float) -> float:
+        """Compute earliest TOI [0,1] for body moving by (dx,dy) against static bodies."""
+        toi = 1.0
+        if dx == 0 and dy == 0:
+            return toi
+        s = body.shape
+        if s.shape_type == SHAPE_RECT:
+            hw, hh = s.width / 2, s.height / 2
+        else:
+            hw = hh = s.radius
+        for other in self._bodies:
+            if other is body or other.is_dynamic or not other._alive:
+                continue
+            os = other.shape
+            if os.shape_type == SHAPE_RECT:
+                ohw, ohh = os.width / 2, os.height / 2
+            else:
+                ohw = ohh = os.radius
+            # Swept AABB vs AABB TOI
+            t_entry = -1e9
+            t_exit = 1e9
+            # X axis
+            if dx != 0:
+                x_entry = (other.x - ohw - (body.x + hw)) / dx if dx > 0 else (other.x + ohw - (body.x - hw)) / dx
+                x_exit  = (other.x + ohw - (body.x - hw)) / dx if dx > 0 else (other.x - ohw - (body.x + hw)) / dx
+            else:
+                if abs(body.x - other.x) >= hw + ohw:
+                    continue  # Parallel and separated
+                x_entry, x_exit = -1e9, 1e9
+            # Y axis
+            if dy != 0:
+                y_entry = (other.y - ohh - (body.y + hh)) / dy if dy > 0 else (other.y + ohh - (body.y - hh)) / dy
+                y_exit  = (other.y + ohh - (body.y - hh)) / dy if dy > 0 else (other.y - ohh - (body.y + hh)) / dy
+            else:
+                if abs(body.y - other.y) >= hh + ohh:
+                    continue
+                y_entry, y_exit = -1e9, 1e9
+            t_entry = max(x_entry, y_entry)
+            t_exit = min(x_exit, y_exit)
+            if t_entry <= t_exit and t_exit > 0 and t_entry < 1.0 and t_entry < toi:
+                if t_entry > 0 or (t_entry <= 0 and abs(x_entry) <= 0 and abs(y_entry) <= 0):
+                    toi = max(0.0, t_entry)
+        return toi
 
     def _detect_collision(self, a: Body, b: Body) -> Optional[Contact]:
         sa, sb = a.shape, b.shape

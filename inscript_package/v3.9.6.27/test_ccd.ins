@@ -1,0 +1,7 @@
+# v3.9.6.27 — Physics: CCD (.ins tests)
+# Run: python inscript.py --test v3.9.6.27/test_ccd.ins
+
+test "physics module loads" {
+    import "physics"
+    assert(world != nil)
+}
