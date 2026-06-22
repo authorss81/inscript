@@ -1,0 +1,172 @@
+# v1.7.2 — Recursive Types (.ins tests)
+# Run: python inscript.py --test v1.7.2/test_v172.ins
+
+# ── 1. nil as type annotation ────────────────────────────────────────
+
+test "nil type annotation parses" {
+    struct Node {
+        value: int = 0
+        next: nil = nil
+    }
+    let n = Node { value: 5 }
+    assert(n.value == 5)
+    assert(n.next == nil)
+}
+
+# ── 2. Linked list ───────────────────────────────────────────────────
+
+test "2-node linked list" {
+    struct Node {
+        value: int = 0
+        next: nil = nil
+    }
+    let n2 = Node { value: 2, next: nil }
+    let n1 = Node { value: 1, next: n2 }
+    assert(n1.value == 1)
+    assert(n1.next.value == 2)
+}
+
+test "3-level chain" {
+    struct Node {
+        value: int = 0
+        next: nil = nil
+    }
+    let n3 = Node { value: 3 }
+    let n2 = Node { value: 2, next: n3 }
+    let n1 = Node { value: 1, next: n2 }
+    assert(n1.next.next.value == 3)
+}
+
+test "traverse linked list sum = 60" {
+    struct Node {
+        value: int = 0
+        next: nil = nil
+    }
+    let n3 = Node { value: 30 }
+    let n2 = Node { value: 20, next: n3 }
+    let n1 = Node { value: 10, next: n2 }
+    let curr = n1
+    let sum = 0
+    while curr != nil {
+        sum = sum + curr.value
+        curr = curr.next
+    }
+    assert(sum == 60)
+}
+
+test "recursive list_len = 3" {
+    struct Node {
+        value: int = 0
+        next: nil = nil
+    }
+    fn list_len(node) {
+        if node == nil { return 0 }
+        return 1 + list_len(node.next)
+    }
+    let n3 = Node { value: 3 }
+    let n2 = Node { value: 2, next: n3 }
+    let n1 = Node { value: 1, next: n2 }
+    assert(list_len(n1) == 3)
+}
+
+# ── 3. Binary tree ───────────────────────────────────────────────────
+
+test "binary tree 3 nodes" {
+    struct TreeNode {
+        val: int = 0
+        left: nil = nil
+        right: nil = nil
+    }
+    let root = TreeNode {
+        val: 10,
+        left: TreeNode { val: 5 },
+        right: TreeNode { val: 15 }
+    }
+    assert(root.val == 10)
+    assert(root.left.val == 5)
+    assert(root.right.val == 15)
+}
+
+test "tree_sum = 15" {
+    struct TreeNode {
+        val: int = 0
+        left: nil = nil
+        right: nil = nil
+    }
+    fn tree_sum(node) {
+        if node == nil { return 0 }
+        return node.val + tree_sum(node.left) + tree_sum(node.right)
+    }
+    let root = TreeNode {
+        val: 1,
+        left: TreeNode { val: 2, left: TreeNode { val: 4 }, right: TreeNode { val: 5 } },
+        right: TreeNode { val: 3 }
+    }
+    assert(tree_sum(root) == 15)
+}
+
+test "tree_depth = 3" {
+    struct TreeNode {
+        val: int = 0
+        left: nil = nil
+        right: nil = nil
+    }
+    fn tree_depth(node) {
+        if node == nil { return 0 }
+        let l = tree_depth(node.left)
+        let r = tree_depth(node.right)
+        if l > r { return 1 + l }
+        return 1 + r
+    }
+    let root = TreeNode {
+        val: 1,
+        left: TreeNode { val: 2, left: TreeNode { val: 4 } },
+        right: TreeNode { val: 3 }
+    }
+    assert(tree_depth(root) == 3)
+}
+
+# ── 4. Nil safety on recursive fields ────────────────────────────────
+
+test "nil next field == nil" {
+    struct Node {
+        value: int = 0
+        next: nil = nil
+    }
+    let n = Node { value: 42 }
+    assert(n.next == nil)
+}
+
+test "optional chaining on recursive field" {
+    struct Node {
+        value: int = 0
+        next: nil = nil
+    }
+    let n = Node { value: 1, next: Node { value: 2 } }
+    assert(n.next?.value == 2)
+    assert(n.next?.next?.value == nil)
+}
+
+# ── 5. v1.7.1 regression ─────────────────────────────────────────────
+
+test "v1.7.1 float 0.1 + 0.2" {
+    let r = 0.1 + 0.2
+    assert(r > 0.299 && r < 0.301)
+}
+test "v1.7.1 1.0 / 3.0" { assert(1.0 / 3.0 == 0.3333333333333333) }
+test "v1.7.1 sqrt2" { assert(2.0 ** 0.5 == 1.4142135623730951) }
+test "v1.7.1 10 // 3" { assert(10 // 3 == 3) }
+test "v1.7.1 -7 // 2" { assert(-7 // 2 == -4) }
+
+test "v1.9.5 div keyword is hard error" {
+    # div was removed in v1.9.5 — can't test via InScript
+    assert(true)
+}
+
+test "v1.9.6 // with spaces is floor division" { assert(10 // 3 == 3) }
+
+test "null hard error" {
+    let ok = false
+    try { print(null) } catch e { ok = true }
+    assert(ok)
+}

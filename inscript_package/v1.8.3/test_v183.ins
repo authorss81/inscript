@@ -1,0 +1,98 @@
+# v1.8.3 — Enum Exhaustiveness, Interface Enforcement & never (.ins tests)
+# Run: python inscript.py --test v1.8.3/test_v183.ins
+
+# Note: Static type analysis tests (is_clean/has_error) require Python-level
+# Analyzer access and remain in test_v183.py.
+
+# ── 20. Runtime: enum match ──────────────────────────────────────────
+
+test "enum match red" {
+    enum Color { Red; Green; Blue }
+    fn name(c: Color) {
+        match c {
+            case Color::Red   { return "red" }
+            case Color::Green { return "green" }
+            case Color::Blue  { return "blue" }
+        }
+    }
+    assert(name(Color::Red) == "red")
+}
+
+test "enum match green" {
+    enum Color { Red; Green; Blue }
+    fn name(c: Color) {
+        match c {
+            case Color::Red   { return "red" }
+            case Color::Green { return "green" }
+            case Color::Blue  { return "blue" }
+        }
+    }
+    assert(name(Color::Green) == "green")
+}
+
+test "enum match blue" {
+    enum Color { Red; Green; Blue }
+    fn name(c: Color) {
+        match c {
+            case Color::Red   { return "red" }
+            case Color::Green { return "green" }
+            case Color::Blue  { return "blue" }
+        }
+    }
+    assert(name(Color::Blue) == "blue")
+}
+
+# ── 21. Runtime: interface struct method ─────────────────────────────
+
+test "interface struct draw called" {
+    interface Drawable { fn draw() -> void }
+    struct Sprite implements Drawable {
+        name: string = ""
+        fn draw() { return "drawing " + self.name }
+    }
+    let s = Sprite { name: "hero" }
+    let r = s.draw()
+    assert(r == "drawing hero")
+}
+
+# ── 22. Runtime: never fn throws ─────────────────────────────────────
+
+test "never fn throws at runtime" {
+    let caught = false
+    fn fatal(msg: string) -> never { throw "FATAL: " + msg }
+    try { fatal("out of bounds") } catch e { caught = true }
+    assert(caught)
+}
+
+# ── 23. v1.8.2 regression: type aliases ─────────────────────────────
+
+test "type alias runtime" {
+    type HP = int
+    let h: HP = 100
+    assert(h == 100)
+}
+
+# ── 24. v1.8.1 regression: union types ──────────────────────────────
+
+test "typeof int|string at runtime" {
+    let x = 42
+    assert(typeof(x) == "int")
+}
+
+# ── 25. v1.7.4 regression ───────────────────────────────────────────
+
+test "null E0055" {
+    let caught = false
+    try { let z = null } catch e { caught = true }
+    assert(caught)
+}
+
+# ── 26. v1.7.3 regression: stack traces ─────────────────────────────
+
+test "stack trace works" {
+    let caught = false
+    fn a() { throw "err" }
+    fn b() { a() }
+    try { b() } catch e { caught = true }
+    assert(caught)
+}

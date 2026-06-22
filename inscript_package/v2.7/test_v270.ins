@@ -1,0 +1,33 @@
+# test_v270.ins — v2.7.0: Scene System (InScript-executable subset)
+#
+# Tests: backward compat legacy `scene` declarations, node + scene coexistence
+# Skipped (Python-only): lexer/parser tests, NodeBlueprint/NodeInstance API,
+#   SceneTree/SceneManager API, .inscene save/load file I/O
+
+# ── 9. Backward compat — legacy `scene` declarations ───────────────────────
+
+test "legacy_scene_decl" {
+    scene LegacyGame {
+        let x: int = 0
+        on_start() { x = 10 }
+        on_update(dt) { x = x + 1 }
+        on_draw() {}
+    }
+    assert(true)
+}
+
+# ── 10. node + scene coexistence ───────────────────────────────────────────
+
+test "node_scene_coexistence" {
+    node HUD {
+        let visible: bool = true
+        _ready() { visible = true }
+    }
+    scene MainGame {
+        let running: bool = true
+        on_start() { running = true }
+        on_update(dt) {}
+        on_draw() {}
+    }
+    assert(true)
+}

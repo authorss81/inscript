@@ -1,0 +1,43 @@
+# v3.9.6.9 — Studio live-preview + hot-reload (.ins tests)
+# Tests that studio bridge and related modules are importable
+# Run: python inscript.py --test v3.9.6.9/test_studio.ins
+
+test "studio_bridge module is importable" {
+    import "py:studio_bridge" as sb
+    assert(sb != nil)
+}
+
+test "StudioBridge class exists" {
+    import "py:studio_bridge" as sb
+    assert(sb.StudioBridge != nil)
+}
+
+test "DEFAULT_PORT constant exists" {
+    import "py:studio_bridge" as sb
+    assert(sb.DEFAULT_PORT != nil)
+}
+
+test "pygame_backend module is importable" {
+    import "py:pygame_backend" as pb
+    assert(pb != nil)
+}
+
+test "pygame_backend run_scene function exists" {
+    import "py:pygame_backend" as pb
+    assert(pb.run_scene != nil)
+}
+
+test "hot_reload module is importable" {
+    import "py:hot_reload" as hr
+    assert(hr != nil)
+}
+
+test "studio_app module is importable" {
+    import "py:studio_app" as sa
+    assert(sa != nil)
+}
+
+test "studio_bridge uses threading" {
+    import "py:studio_bridge" as sb
+    assert(sb.threading != nil)
+}

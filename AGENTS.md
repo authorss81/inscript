@@ -44,11 +44,15 @@ python inscript.py --game examples/pong.ins
 
 ### Test file format
 
-Prefer `.ins` test files (with `test "name" { assert(...) }` syntax) over `.py` test files. Use `.py` test files **only** when the test requires Python-level access that InScript cannot provide (importing Python modules, protocol framing, CLI flag handling, interactive debug REPL).
+Prefer `.ins` test files (with `test "name" { assert(...) }` syntax) over `.py` test files. `.ins` tests exercise the full InScript pipeline (lexer → parser → analyzer → interpreter) and validate that game devs can access the feature from `.ins` files.
+
+Use `.py` test files **only** when the test requires Python-level access that InScript cannot provide (importing Python modules, protocol framing, CLI flag handling, interactive debug REPL, or features like loops/math that need nested `{}`).
 
 If you create a `.py` test, document why `.ins` was insufficient in the version's test directory README or in ROADMAP.md.
 
-> **Test runner limitation:** `inscript_test.py` uses a non-greedy regex `(.*?)\}` to extract test bodies, which cannot handle nested braces. This means `.ins` tests cannot contain `if {}`, `for {}`, `let x = {}`, or any `{}` inside `test "..." { ... }`. (If this becomes a blocker, fix the regex with a balanced-brace parser.)
+**Architecture rule**: All physics features available in `.py` tests (`PhysicsWorld`, `CharacterBody`, etc.) must also be registered in `interpreter.py` globals so `.ins` files can use them directly. `CharacterBody` is wrapped via lambda in the globals dict at `interpreter.py:516`; `Body` methods are accessible via `get_attr`/`set_attr`. New physics types or methods must be registered in both `physics_engine.py` AND `interpreter.py`.
+
+> **Test runner:** `inscript_test.py` uses a balanced-brace parser to extract test bodies, so nested `{}` inside `test "..." { ... }` are supported.
 
 **Self-registering Python scripts** (not pytest) with `✅`/`❌` output. Run from `inscript_package/`:
 

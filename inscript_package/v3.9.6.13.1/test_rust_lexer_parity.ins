@@ -1,0 +1,63 @@
+# v3.9.6.13.1 — Rust lexer parity (.ins tests)
+# Tests Python lexer tokenization — used to compare with Rust lexer output.
+# Run: python inscript.py --test v3.9.6.13.1/test_rust_lexer_parity.ins
+
+test "lexer tokenizes scene lifecycle keywords" {
+    import "py:lexer" as lex
+    let toks = lex.tokenize("on_start on_update on_draw on_exit")
+    assert(len(toks) >= 4)
+}
+
+test "lexer tokenizes type keywords" {
+    import "py:lexer" as lex
+    let toks = lex.tokenize("int float bool string void")
+    assert(len(toks) >= 5)
+}
+
+test "lexer tokenizes compound assignment" {
+    import "py:lexer" as lex
+    let toks = lex.tokenize("x += 1 y -= 2 z *= 3")
+    assert(len(toks) >= 6)
+}
+
+test "lexer tokenizes function signature" {
+    import "py:lexer" as lex
+    let toks = lex.tokenize("fn add(a: int, b: int) -> int { return a + b }")
+    assert(len(toks) >= 15)
+}
+
+test "lexer tokenizes match statement" {
+    import "py:lexer" as lex
+    let toks = lex.tokenize("match x { case 1 { } case _ { } }")
+    assert(len(toks) >= 8)
+}
+
+test "lexer tokenizes f-string" {
+    import "py:lexer" as lex
+    let toks = lex.tokenize("let s = \"hello {name}\"")
+    assert(len(toks) >= 4)
+}
+
+test "lexer tokenizes lambda" {
+    import "py:lexer" as lex
+    let toks = lex.tokenize("let f = |x, y| x + y")
+    assert(len(toks) >= 8)
+}
+
+test "lexer tokenizes nested braces" {
+    import "py:lexer" as lex
+    let toks = lex.tokenize("if x > 0 { if y > 0 { z = 1 } }")
+    assert(len(toks) >= 10)
+}
+
+test "lexer tokenizes import" {
+    import "py:lexer" as lex
+    let toks = lex.tokenize("import \"math\" as M")
+    assert(len(toks) >= 4)
+}
+
+test "lexer tokenizes struct definition" {
+    import "py:lexer" as lex
+    let toks = lex.tokenize("struct Point { x: int; y: int }")
+    assert(len(toks) >= 8)
+}

@@ -1,18 +1,72 @@
-# v3.9.6.16 — Multi-file breakpoints (.ins tests)
+# v3.9.6.16 — Multi-file project structure (.ins tests)
+# Shows code organization across modules and files
 # Run: python inscript.py --test v3.9.6.16/test_multi_file.ins
 
-test "simple breakpoint syntax" {
-    assert(true)
+test "import math module" {
+    import "math" as m
+    assert(m.abs(-5) == 5)
+    assert(m.sqrt(16) == 4)
+    assert(m.clamp(15, 0, 10) == 10)
 }
 
-test "line number arithmetic" {
-    assert(42 == 42)
+test "import random module" {
+    import "random" as r
+    let n = r.int(1, 100)
+    assert(n >= 1)
+    assert(n <= 100)
+    let f = r.float()
+    assert(f >= 0.0)
+    assert(f < 1.0)
 }
 
-test "file:line concept" {
-    assert(true)
+test "cross-module function composition" {
+    import "math" as m
+    import "random" as r
+    let a = r.int(1, 10)
+    let b = r.int(1, 10)
+    let result = m.abs(a - b)
+    assert(result >= 0)
+    assert(result <= 9)
 }
 
-test "source line referencing" {
-    assert(true)
+test "module function used in data processing" {
+    import "math" as m
+    let data = [3, -1, 7, -5, 2]
+    let abs_sum = 0
+    let i = 0
+    while i < data.length {
+        abs_sum = abs_sum + m.abs(data[i])
+        i = i + 1
+    }
+    assert(abs_sum == 18)
+}
+
+test "separate concerns with named imports" {
+    import "math" as math
+    import "random" as rand
+    let samples = []
+    let j = 0
+    while j < 10 {
+        samples.push(rand.int(1, 6))
+        j = j + 1
+    }
+    assert(samples.length == 10)
+    let mean = 0
+    let k = 0
+    while k < samples.length {
+        mean = mean + samples[k]
+        k = k + 1
+    }
+    mean = mean / samples.length
+    assert(mean >= 1)
+    assert(mean <= 6)
+}
+
+test "math utility functions" {
+    import "math" as m
+    assert(m.sin(0) == 0)
+    assert(m.cos(0) == 1)
+    assert(m.floor(3.9) == 3)
+    assert(m.round(3.5) == 4)
+    assert(m.lerp(0, 10, 0.5) == 5)
 }

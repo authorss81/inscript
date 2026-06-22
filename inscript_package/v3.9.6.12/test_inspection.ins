@@ -1,50 +1,81 @@
 # v3.9.6.12 — Debugger variable inspection (.ins tests)
+# Code with various types for inspector to display
 # Run: python inscript.py --test v3.9.6.12/test_inspection.ins
 
-test "local vars" {
-    let x = 42
-    let y = "hello"
-    let z = [1, 2, 3]
-    assert(x == 42)
-    assert(y == "hello")
-    assert(len(z) == 3)
+test "locals of all primitive types" {
+    let i = 42
+    let f = 3.14
+    let s = "hello"
+    let b = true
+    let n = nil
+    assert(i == 42)
+    assert(f == 3.14)
+    assert(s == "hello")
+    assert(b)
+    assert(n == nil)
 }
 
-test "global access" {
-    let pi = 3.14159
-    assert(pi > 3.14)
+test "nested scope variables" {
+    let msg = "visible"
+    let n = 0
+    if true {
+        let inner = "in block"
+        n = msg.length + inner.length
+    }
+    assert(n == 15)
 }
 
-test "expression eval" {
-    assert((1 + 2) * 3 == 9)
+test "array and dict inspection" {
+    let arr = [1, 2, 3, 4, 5]
+    let dict = { "red": 0xFF0000, "green": 0x00FF00, "blue": 0x0000FF }
+    arr.push(6)
+    dict["alpha"] = 0xFF
+    assert(arr.length == 6)
+    assert(dict.has("alpha"))
 }
 
-test "variable modification" {
-    let val = 10
-    val = 99
-    assert(val == 99)
+test "struct instance fields" {
+    struct Player { name: string; hp: int; x: float; y: float }
+    let p = Player(name: "Hero", hp: 100, x: 50.0, y: 200.0)
+    dbg(p)
+    assert(p.name == "Hero")
+    assert(p.hp == 100)
 }
 
-test "watch value" {
-    let a = 5
-    let b = 10
-    let watched = a + b
-    assert(watched == 15)
+test "lambda captures for inspection" {
+    let base = 10
+    let add = |x| x + base
+    let sub = |x| x - base
+    assert(add(5) == 15)
+    assert(sub(5) == -5)
 }
 
-test "stack depth" {
-    let d = 0
-    d = d + 1
-    d = d + 1
-    d = d + 1
-    assert(d == 3)
+test "watch expression across multiple assignments" {
+    let x = 0
+    let y = 0
+    x = 10
+    y = x * 2
+    assert(x + y == 30)
+    x = 100
+    assert(x + y == 120)
 }
 
-test "type checking" {
-    let num = 42
-    assert(num == 42)
-    let s = "str"
-    assert(s == "str")
-    let arr = [1, 2, 3]
-    assert(arr[0] == 1)
+test "nested struct access" {
+    struct Vec2 { x: float; y: float }
+    struct Entity { pos: Vec2; name: string; alive: bool }
+    let e = Entity(pos: Vec2(x: 1.5, y: 3.5), name: "goblin", alive: true)
+    assert(e.pos.x == 1.5)
+    assert(e.pos.y == 3.5)
+    assert(e.alive)
+}
+
+test "match with bound values" {
+    let val = "world"
+    let result = ""
+    match val {
+        case int n { result = "int" }
+        case string s { result = s }
+        case _ { result = "other" }
+    }
+    assert(result == "world")
 }

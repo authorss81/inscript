@@ -1,0 +1,51 @@
+# v1.7.4 — REPL Stability & Migrate Tool (.ins tests)
+# Run: python inscript.py --test v1.7.4/test_v174.ins
+
+# Note: REPL error recovery (sections 1-5), migrate tool file I/O (sections 8-13),
+# and InScriptCallStack unit tests require Python-level access and remain in test_v174.py.
+
+# ── 6. null hard error uses E0055 ────────────────────────────────────
+
+test "null raises error" {
+    let caught = false
+    try { let x = null } catch e { caught = true }
+    assert(caught)
+}
+
+test "nil is still valid" {
+    let x = nil
+    assert(x == nil)
+}
+
+test "nil in expression" {
+    let r = nil
+    assert(r == nil)
+}
+
+# ── 7. null migrate hint (Python-level string check) ─────────────────
+
+# ── 14. v1.7.3 regression: stack traces ──────────────────────────────
+
+test "stack trace inner present" {
+    let caught = false
+    fn inner() { throw "trace" }
+    fn outer() { inner() }
+    try { outer() } catch e { caught = true }
+    assert(caught)
+}
+
+# ── 15. v1.7.2 regression: recursive types ───────────────────────────
+
+test "linked list traversal sum = 6" {
+    struct Node { value: int = 0; next: nil = nil }
+    let n3 = Node { value: 3 }
+    let n2 = Node { value: 2, next: n3 }
+    let n1 = Node { value: 1, next: n2 }
+    let curr = n1
+    let sum = 0
+    while curr != nil {
+        sum = sum + curr.value
+        curr = curr.next
+    }
+    assert(sum == 6)
+}

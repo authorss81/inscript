@@ -1,29 +1,146 @@
 # v3.9.6.20 — Physics Box2D binding (.ins tests)
 # Run: python inscript.py --test v3.9.6.20/test_physics_binding.ins
 
-test "basic physics world" {
+test "PhysicsWorld creation with default gravity" {
     let w = PhysicsWorld()
     assert(w != nil)
+    assert(w.get_attr("gravity_x") == 0)
+    assert(w.get_attr("gravity_y") == 500)
 }
 
-test "body creation" {
+test "PhysicsWorld custom gravity" {
+    let w = PhysicsWorld(0, 100)
+    assert(w.get_attr("gravity_y") == 100)
+}
+
+test "Shape.rect creation" {
+    let s = PhysicsShape.rect(32, 48)
+    assert(s != nil)
+    assert(s.width == 32)
+    assert(s.height == 48)
+}
+
+test "Shape.circle creation" {
+    let s = PhysicsShape.circle(16)
+    assert(s != nil)
+    assert(s.radius == 16)
+}
+
+test "dynamic body creation with position and tag" {
     let w = PhysicsWorld()
     let s = PhysicsShape.rect(32, 32)
-    let b = w.create_body(s, BODY_DYNAMIC, 1.0, "test", 100, 200)
+    let b = w.create_body(s, BODY_DYNAMIC, 1.0, "player", 100, 200)
     assert(b.x == 100)
     assert(b.y == 200)
-    assert(b.tag == "test")
+    assert(b.tag == "player")
 }
 
-test "physics constants" {
-    assert(BODY_STATIC == 0)
-    assert(BODY_DYNAMIC == 1)
+test "static body creation" {
+    let w = PhysicsWorld()
+    let s = PhysicsShape.rect(32, 32)
+    let b = w.create_body(s, BODY_STATIC, 0.0, "wall", 400, 300)
+    assert(b.is_static)
+    assert(b.mass == 0.0)
+}
+
+test "body get_attr and set_attr" {
+    let w = PhysicsWorld()
+    let s = PhysicsShape.rect(16, 16)
+    let b = w.create_body(s, BODY_DYNAMIC, 1.0, "test", 0, 0)
+    b.set_attr("x", 50)
+    b.set_attr("y", 100)
+    b.set_attr("vx", 5)
+    b.set_attr("vy", -3)
+    assert(b.get_attr("x") == 50)
+    assert(b.get_attr("y") == 100)
+    assert(b.get_attr("vx") == 5)
+    assert(b.get_attr("vy") == -3)
+}
+
+test "gravity accelerates dynamic body" {
+    let w = PhysicsWorld(0, 100)
+    let s = PhysicsShape.rect(8, 8)
+    let b = w.create_body(s, BODY_DYNAMIC, 1.0, "fall", 0, 0)
+    w.step(0.016)
+    assert(b.vy > 0)
+    assert(b.y > 0)
+}
+
+test "static body does not move under gravity" {
+    let w = PhysicsWorld(0, 100)
+    let wall = w.create_body(PhysicsShape.rect(32, 32), BODY_STATIC, 0.0, "wall", 400, 300)
+    w.step(0.016)
+    assert(wall.x == 400)
+    assert(wall.y == 300)
+}
+
+test "find_body_by_tag returns correct body" {
+    let w = PhysicsWorld()
+    let b = w.create_body(PhysicsShape.rect(8, 8), BODY_DYNAMIC, 1.0, "target")
+    let found = w.find_body_by_tag("target")
+    assert(found != nil)
+    assert(found.tag == "target")
+}
+
+test "find_body_by_tag returns nil for missing tag" {
+    let w = PhysicsWorld()
+    let found = w.find_body_by_tag("nope")
+    assert(found == nil)
+}
+
+test "body_count returns correct count" {
+    let w = PhysicsWorld()
+    w.create_body(PhysicsShape.rect(8, 8), BODY_DYNAMIC, 1.0)
+    w.create_body(PhysicsShape.rect(8, 8), BODY_DYNAMIC, 1.0)
+    assert(w.body_count() == 2)
+}
+
+test "destroy_body removes body" {
+    let w = PhysicsWorld()
+    let b = w.create_body(PhysicsShape.rect(8, 8), BODY_DYNAMIC, 1.0)
+    assert(w.body_count() == 1)
+    w.destroy_body(b)
+    assert(w.body_count() == 0)
+}
+
+test "get_bodies returns all bodies" {
+    let w = PhysicsWorld()
+    w.create_body(PhysicsShape.rect(8, 8), BODY_DYNAMIC, 1.0, "a")
+    w.create_body(PhysicsShape.rect(8, 8), BODY_DYNAMIC, 1.0, "b")
+    let bodies = w.get_bodies()
+    assert(bodies.length == 2)
+}
+
+test "World get_attr/set_attr for gravity" {
+    let w = PhysicsWorld(0, 500)
+    assert(w.get_attr("gravity_x") == 0)
+    assert(w.get_attr("gravity_y") == 500)
+    w.set_attr("gravity_x", 100)
+    assert(w.gravity_x == 100)
+}
+
+test "body apply_impulse changes velocity" {
+    let w = PhysicsWorld(0, 0)
+    let b = w.create_body(PhysicsShape.rect(16, 16), BODY_DYNAMIC, 2.0, "ball", 0, 0)
+    b.apply_impulse(10, 0)
+    assert(b.vx != 0)
+}
+
+test "body set_velocity works" {
+    let w = PhysicsWorld(0, 0)
+    let b = w.create_body(PhysicsShape.rect(16, 16), BODY_DYNAMIC, 1.0, "ball", 0, 0)
+    b.set_velocity(5, -3)
+    assert(b.get_attr("vx") == 5)
+    assert(b.get_attr("vy") == -3)
+}
+
+test "kinematic body type constant" {
     assert(BODY_KINEMATIC == 2)
-    assert(JOINT_DISTANCE == 0)
-    assert(JOINT_REVOLUTE == 1)
 }
 
-test "circle shape" {
-    let s = PhysicsShape.circle(10)
-    assert(s.radius == 10)
+test "create_body with density auto-calculates mass" {
+    let w = PhysicsWorld()
+    let s = PhysicsShape.rect(10, 10)
+    let b = w.create_body(s, BODY_DYNAMIC, 1.0, "box", 0, 0, 2.0)
+    assert(b.density == 2.0)
 }

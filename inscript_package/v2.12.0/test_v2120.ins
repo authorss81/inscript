@@ -1,0 +1,10 @@
+# test_v2120.ins — v2.12.0: Studio Readiness Gate
+#
+# NOTE: All Studio Readiness Gate tests remain in test_v2120.py because
+# they test Python-level infrastructure: InScriptError serialization,
+# StudioPlugin/StudioAPI event system, StudioBridge HTTP RPC,
+# project_inspect file scanning, and all 7 readiness gates. These
+# involve HTTP servers, JSON serialization, file I/O, and Python
+# class mechanics that cannot be expressed as InScript execution tests.
+#
+# See test_v2120.py for the full test suite.

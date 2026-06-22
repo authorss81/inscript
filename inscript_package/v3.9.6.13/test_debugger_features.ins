@@ -1,90 +1,165 @@
-# v3.9.6.13 — Debugger Features (.ins tests)
+# v3.9.6.13 — Debugger features (.ins tests)
+# Hit-count conditions, dbg expression patterns, conditional breakpoint logic
 # Run: python inscript.py --test v3.9.6.13/test_debugger_features.ins
-# Warning: test runner uses non-greedy regex; no nested braces allowed.
 
-test "dbg() does not crash" {
-    dbg(42)
-    assert(true)
+test "hit modulo 3 fires at multiples" {
+    let i = 0
+    while i < 6 {
+        if i % 3 == 0 {
+            dbg(i)
+        }
+        i = i + 1
+    }
+    assert(i == 6)
 }
 
-test "dbg() with string" {
-    dbg("hello")
-    assert(true)
+test "hit threshold condition" {
+    let count = 0
+    let i = 0
+    while i < 5 {
+        count = count + 1
+        if count >= 3 {
+            dbg(count)
+        }
+        i = i + 1
+    }
+    assert(count == 5)
 }
 
-test "dbg() with expression" {
-    dbg(1 + 2 * 3)
-    assert(true)
+test "conditional x > 5 evaluated in branches" {
+    let vals = [2, 8, 4, 10]
+    let big = 0
+    let i = 0
+    while i < len(vals) {
+        if vals[i] > 5 {
+            big = big + 1
+            dbg(vals[i])
+        }
+        i = i + 1
+    }
+    assert(big == 2)
 }
 
-test "hit % 3 at 3" {
-    assert(3 % 3 == 0)
+test "hit == 5 on loop iteration" {
+    let hits = 0
+    let i = 0
+    while i < 10 {
+        if i == 5 {
+            hits = hits + 1
+            dbg(i)
+        }
+        i = i + 1
+    }
+    assert(hits == 1)
 }
 
-test "hit % 3 at 6" {
-    assert(6 % 3 == 0)
+test "combined and conditions for breakpoints" {
+    let found = false
+    let x = 7
+    if x > 5 && x < 10 {
+        found = true
+    }
+    assert(found)
 }
 
-test "hit % 3 not at 4" {
-    assert(!(4 % 3 == 0))
-}
-
-test "hit >= 3 triggers at 3" {
-    assert(3 >= 3)
-}
-
-test "hit >= 3 does not trigger at 2" {
-    assert(!(2 >= 3))
-}
-
-test "conditional x > 5 with 10" {
-    assert(10 > 5)
-}
-
-test "conditional x > 5 with 3" {
-    assert(!(3 > 5))
-}
-
-test "hit == 5" {
-    assert(5 == 5)
-}
-
-test "hit == 5 false at 4" {
-    assert(!(4 == 5))
-}
-
-test "hit < 3" {
-    assert(2 < 3)
-}
-
-test "hit <= 3 at 3" {
-    assert(3 <= 3)
-}
-
-test "hit <= 3 at 2" {
-    assert(2 <= 3)
-}
-
-test "hit > 3 at 4" {
-    assert(4 > 3)
-}
-
-test "combined and" {
-    assert(7 > 5 && 3 < 5)
-}
-
-test "combined and false" {
-    assert(!(7 > 5 && 10 < 5))
-}
-
-test "assert message" {
+test "assert with message" {
     assert(1 + 1 == 2, "addition works")
 }
 
-test "assert math" {
-    assert(100 / 10 == 10)
+test "dbg with expression result" {
+    let a = 3
+    let b = 4
+    let c = a * a + b * b
+    dbg(c)
+    assert(c == 25)
 }
 
-test "string length" {
+test "dbg during string processing" {
+    fn reverse(s) {
+        let r = ""
+        let i = len(s) - 1
+        while i >= 0 {
+            r = r + s[i]
+            dbg(r)
+            i = i - 1
+        }
+        return r
+    }
+    let result = reverse("abc")
+    assert(result == "cba")
+}
+
+test "dbg with array map" {
+    let arr = [1, 2, 3, 4, 5]
+    let doubled = arr.map(|x| {
+        dbg(x)
+        return x * 2
+    })
+    assert(doubled[0] == 2)
+    assert(doubled[4] == 10)
+}
+
+test "conditional breakpoint with complex expression" {
+    let i = 0
+    while i < 20 {
+        if i > 5 && i % 2 == 0 {
+            dbg(i)
+        }
+        i = i + 1
+    }
+    assert(i == 20)
+}
+
+test "dbg with struct field access" {
+    struct Point { x: int; y: int }
+    let p = Point(x: 10, y: 20)
+    dbg(p.x)
+    dbg(p.y)
+    assert(p.x + p.y == 30)
+}
+
+test "hit count tracking with multiple conditions" {
+    let even_hits = 0
+    let odd_hits = 0
+    let i = 0
+    while i < 10 {
+        if i % 2 == 0 {
+            even_hits = even_hits + 1
+            dbg(i)
+        } else {
+            odd_hits = odd_hits + 1
+        }
+        i = i + 1
+    }
+    assert(even_hits == 5)
+    assert(odd_hits == 5)
+}
+
+test "watching accumulator across loop" {
+    let sum = 0
+    let i = 1
+    while i <= 5 {
+        sum = sum + i
+        dbg(sum)
+        i = i + 1
+    }
+    assert(sum == 15)
+}
+
+test "dbg in recursive tree traversal" {
+    fn sum_to(n) {
+        dbg(n)
+        if n <= 1 {
+            return n
+        }
+        return n + sum_to(n - 1)
+    }
+    let r = sum_to(5)
+    assert(r == 15)
+}
+
+test "assert with boolean expression" {
+    assert(10 / 2 == 5)
     assert(len("hello") == 5)
+    assert(len([1, 2, 3]) == 3)
 }

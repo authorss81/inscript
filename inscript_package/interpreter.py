@@ -513,12 +513,10 @@ class Interpreter(Visitor):
             "unwrap_err":  lambda r: (r["_err"] if (isinstance(r, dict) and "_err" in r)
                                       else self._error("unwrap_err() called on Ok value")),
             # ── Physics (Phase 10, v3.9.6.20) ──────────────────────────────────
-            "PhysicsWorld": lambda gravity=None: (
-                PhysicsWorld(*gravity.values()) if hasattr(gravity, 'values')  # Vec2
-                else PhysicsWorld(gravity.x, gravity.y) if hasattr(gravity, 'x')
-                else PhysicsWorld(float(gravity[0]), float(gravity[1])) if isinstance(gravity, (list, tuple))
-                else PhysicsWorld(0.0, 500.0) if gravity is None
-                else PhysicsWorld(float(gravity), 500.0)
+            "PhysicsWorld": lambda *args: (
+                PhysicsWorld(float(args[0]), float(args[1])) if len(args) >= 2
+                else PhysicsWorld(float(args[0]), 500.0) if len(args) == 1
+                else PhysicsWorld(0.0, 500.0)
             ),
             "PhysicsShape": Shape,
             "CharacterBody": lambda world, body, one_way_platforms=True: CharacterBody(world, body, one_way_platforms),
@@ -978,12 +976,23 @@ class Interpreter(Visitor):
         from "math" import sin    → bind only listed names
         import "./utils.ins"      → load InScript file, bring exports into scope
         import "./utils.ins" as U → load file, bind exports as namespace U
+        import "py:os"            → import Python module (fallback to Python import)
+        import "py:os" as OS      → import Python module with alias
         """
         path = node.path
 
         # ── File import: path starts with ./ ../ / or ends in .ins ──────────
         if path.startswith(("./", "../", "/")) or path.endswith(".ins"):
             mod = self._load_inscript_file(path, node.line)
+        elif path.startswith("py:"):
+            # ── Explicit Python module import ────────────────────────────────
+            py_path = path[3:]
+            try:
+                import importlib as _il
+                mod = _il.import_module(py_path)
+            except ImportError:
+                self._error(f"Python module not found: '{py_path}'", node.line)
+                return None
         else:
             # ── Built-in stdlib module ────────────────────────────────────────
             try:
@@ -994,36 +1003,52 @@ class Interpreter(Visitor):
                     if hasattr(_s, '_global_bus'):
                         _s._global_bus._set_interp(self)
             except ImportError:
-                self._error(
-                    f"Module not found: '{path}'\n"
-                    f"  Built-in modules: {list(_stdlib._MODULES.keys())}\n"
-                    f"  File imports: use a path starting with ./ or ending in .ins",
-                    node.line)
-                return None
+                # ── Fall through to Python import ──────────────────────────
+                try:
+                    import importlib as _il
+                    mod = _il.import_module(path)
+                except ImportError:
+                    self._error(
+                        f"Module not found: '{path}'\n"
+                        f"  Built-in modules: {list(_stdlib._MODULES.keys())}\n"
+                        f"  Python modules: use py: prefix (e.g. import \"py:os\")\n"
+                        f"  File imports: use a path starting with ./ or ending in .ins",
+                        node.line)
+                    return None
 
         if node.alias:
             self._env.define(node.alias, mod)
         elif node.names:
             for name in node.names:
-                if name not in mod:
-                    self._error(f"Module '{path}' has no export '{name}'", node.line)
-                self._env.define(name, mod[name])
+                if isinstance(mod, dict):
+                    if name not in mod:
+                        self._error(f"Module '{path}' has no export '{name}'", node.line)
+                    self._env.define(name, mod[name])
+                else:
+                    if not hasattr(mod, name):
+                        self._error(f"Module '{path}' has no attribute '{name}'", node.line)
+                    self._env.define(name, getattr(mod, name))
         else:
-            # DESIGN-07: unqualified import dumps everything into global scope — warn once
-            import sys as _sys
-            warned_key = f"_import_warn_{path}"
-            if not getattr(self, warned_key, False):
-                setattr(self, warned_key, True)
-                print(
-                    f"\033[33m[InScript] Warning: 'import \"{path}\"' without alias dumps all exports "
-                    f"into global scope and may shadow existing names.\n"
-                    f"  Prefer: import \"{path}\" as {path[0].upper()}  "
-                    f"or: from \"{path}\" import name1, name2\033[0m",
-                    file=_sys.stderr
-                )
-            for name, val in mod.items():
-                if not name.startswith("_"):
-                    self._env.define(name, val)
+            if isinstance(mod, dict):
+                # DESIGN-07: unqualified import dumps everything into global scope — warn once
+                import sys as _sys
+                warned_key = f"_import_warn_{path}"
+                if not getattr(self, warned_key, False):
+                    setattr(self, warned_key, True)
+                    print(
+                        f"\033[33m[InScript] Warning: 'import \"{path}\"' without alias dumps all exports "
+                        f"into global scope and may shadow existing names.\n"
+                        f"  Prefer: import \"{path}\" as {path[0].upper()}  "
+                        f"or: from \"{path}\" import name1, name2\033[0m",
+                        file=_sys.stderr
+                    )
+                for name, val in mod.items():
+                    if not name.startswith("_"):
+                        self._env.define(name, val)
+            else:
+                # Python module — bind with short name as alias
+                short = path.split(".")[-1].split(":")[-1]
+                self._env.define(short, mod)
         return None
 
     def _load_inscript_file(self, path: str, line: int) -> dict:
@@ -2429,6 +2454,15 @@ class Interpreter(Visitor):
                 raise
             except Exception as e:
                 self._error(f"Error in built-in function: {e}", node.line)
+
+        # Python class/type constructor (e.g. pygame.Surface, pg.Surface((w,h)))
+        if isinstance(callee, type) and callable(callee):
+            try:
+                return callee(*arg_vals)
+            except InScriptRuntimeError:
+                raise
+            except Exception as e:
+                self._error(f"Error in Python type constructor: {e}", node.line)
 
         # Struct constructor (StructDecl node stored as value)
         if isinstance(callee, StructDecl):

@@ -1,0 +1,53 @@
+# v1.8.1 — Union Types & Optionals (.ins tests)
+# Run: python inscript.py --test v1.8.1/test_v181.ins
+
+# Note: Static type analysis tests (is_clean/has_error) require Python-level
+# Analyzer access and remain in test_v181.py.
+
+# ── 18. Runtime: typeof on union-typed values ────────────────────────
+
+test "typeof(42) == int" {
+    let x = 42
+    assert(typeof(x) == "int")
+}
+
+test "typeof('hello') == string" {
+    let x = "hello"
+    assert(typeof(x) == "string")
+}
+
+test "typeof(nil) == nil" {
+    let x = nil
+    assert(typeof(x) == "nil")
+}
+
+# ── 19. Runtime: optional chaining on T? ────────────────────────────
+
+test "optional chain non-nil" {
+    struct Player { name: string = "" }
+    fn get_name(p) { return p?.name }
+    let p1 = Player { name: "Alice" }
+    assert(get_name(p1) == "Alice")
+}
+
+test "optional chain nil returns nil" {
+    struct Player { name: string = "" }
+    fn get_name(p) { return p?.name }
+    assert(get_name(nil) == nil)
+}
+
+# ── 20. v1.7.4 regression ───────────────────────────────────────────
+
+test "null is E0055 hard error" {
+    let caught = false
+    try { let z = null } catch e { caught = true }
+    assert(caught)
+}
+
+test "stack trace works" {
+    let caught = false
+    fn a() { throw "t" }
+    fn b() { a() }
+    try { b() } catch e { caught = true }
+    assert(caught)
+}

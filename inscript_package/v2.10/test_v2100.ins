@@ -1,0 +1,30 @@
+# test_v2100.ins — v2.10.0: Physics & Multiplayer (InScript-executable subset)
+#
+# Tests: import "physics" and import "net" from InScript source
+# Skipped (Python-only): sections 1-9 (physics/net Python API calls)
+
+# ── 10. import "physics" from InScript ─────────────────────────────────────
+
+test "physics_import" {
+    import "physics" as p
+    let w = p.world(0.0, 200.0)
+    let box = p.body(1.0, p.Rect(32.0, 32.0), "crate")
+    let gnd = p.static_body(p.Rect(400.0, 20.0), "ground")
+    w.add(box)
+    w.add(gnd)
+    w.step(1.0)
+    assert(box.y > 0.0)
+}
+
+# ── 11. import "net" from InScript ─────────────────────────────────────────
+
+test "net_import_delta_sync" {
+    import "net" as n
+    let ds = n.DeltaSync()
+    let s1 = ds.delta({"x": 0, "y": 0})
+    let s2 = ds.delta({"x": 0, "y": 0})
+    let s3 = ds.delta({"x": 5, "y": 0})
+    assert(len(s1) == 2)
+    assert(len(s2) == 0)
+    assert(len(s3) == 1)
+}

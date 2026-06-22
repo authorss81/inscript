@@ -1,0 +1,70 @@
+# v1.8.2 — Type Aliases, Literal Types & fn Types (.ins tests)
+# Run: python inscript.py --test v1.8.2/test_v182.ins
+
+# Note: Static type analysis tests (is_clean/has_error) require Python-level
+# Analyzer access and remain in test_v182.py.
+
+# ── 24. Runtime: type alias execution ────────────────────────────────
+
+test "alias runtime id=42" {
+    type PlayerID = int
+    type Name = string
+    let id: PlayerID = 42
+    assert(id == 42)
+}
+
+test "alias runtime name=Alice" {
+    type Name = string
+    let name: Name = "Alice"
+    assert(name == "Alice")
+}
+
+test "literal union alias runtime" {
+    type Dir = "left" | "right"
+    fn move(d) {
+        if d == "left" { return 1 }
+        if d == "right" { return 2 }
+        return 0
+    }
+    assert(move("left") == 1)
+    assert(move("right") == 2)
+}
+
+# ── 25. Runtime: fn type alias ───────────────────────────────────────
+
+test "fn alias runtime 42" {
+    type Transform = fn(int) -> int
+    fn apply(f, x) { return f(x) }
+    let double = fn(x) { return x * 2 }
+    assert(apply(double, 21) == 42)
+}
+
+# ── 26. v1.8.1 regression: union types ───────────────────────────────
+
+test "typeof int" {
+    let x = 42
+    assert(typeof(x) == "int")
+}
+
+test "typeof nil" {
+    let x = nil
+    assert(typeof(x) == "nil")
+}
+
+# ── 27. v1.7.4 regression ───────────────────────────────────────────
+
+test "null E0055 error" {
+    let caught = false
+    try { let z = null } catch e { caught = true }
+    assert(caught)
+}
+
+# ── 28. v1.7.3 regression: stack traces ─────────────────────────────
+
+test "stack trace frames" {
+    let caught = false
+    fn a() { throw "err" }
+    fn b() { a() }
+    try { b() } catch e { caught = true }
+    assert(caught)
+}

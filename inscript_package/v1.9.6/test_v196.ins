@@ -1,0 +1,79 @@
+# v1.9.6 — # line comments, // always floor division (.ins tests)
+# Run: python inscript.py --test v1.9.6/test_v196.ins
+
+# ── // is ALWAYS floor division (spaces allowed) ─────────────────────
+
+test "floor div no spaces" {
+    assert(10 // 3 == 3)
+}
+
+test "floor div with spaces" {
+    assert(10 // 3 == 3)
+}
+
+test "floor div mixed spaces" {
+    assert(10 // 3 == 3)
+}
+
+test "floor div negative" {
+    assert(-10 // 3 == -4)
+}
+
+test "floor div with vars" {
+    let a = 10
+    let b = 3
+    assert(a // b == 3)
+}
+
+test "floor div in expression" {
+    let r = 2 + 10 // 3
+    assert(r == 5)
+}
+
+test "floor div chained" {
+    let r = 100 // 3 // 2
+    assert(r == 16)
+}
+
+test "floor div in fn" {
+    fn half(n) { return n // 2 }
+    assert(half(11) == 5)
+}
+
+# ── # is the line comment ────────────────────────────────────────────
+
+test "hash comment standalone" {
+    # this whole line is a comment
+    let x = 42
+    assert(x == 42)
+}
+
+test "hash comment inline" {
+    let x = 99 # inline comment
+    assert(x == 99)
+}
+
+test "hash comment after expr" {
+    let a = 5
+    let b = 3
+    let c = a + b # sum
+    assert(c == 8)
+}
+
+test "hash comment does not affect value" {
+    let x = 10 // 2 # this divides ten by two
+    assert(x == 5)
+}
+
+test "hash comment multiple lines" {
+    # first comment
+    let x = 1
+    # second comment
+    let y = 2
+    assert(x + y == 3)
+}
+
+test "hash comment with // after" {
+    let x = 10
+    assert(x == 10)
+}

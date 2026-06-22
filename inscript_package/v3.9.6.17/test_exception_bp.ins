@@ -1,14 +1,75 @@
 # v3.9.6.17 — Exception breakpoints (.ins tests)
+# Shows error handling patterns for exception breakpoint tracking
 # Run: python inscript.py --test v3.9.6.17/test_exception_bp.ins
 
-test "basic" {
-    assert(true)
+test "try catch handles division by zero" {
+    let ok = false
+    try {
+        let x = 1 / 0
+    } catch e {
+        ok = true
+    }
+    assert(ok)
 }
 
-test "division by zero concept" {
-    assert(1 == 1)
+test "try catch handles runtime error" {
+    let msg = ""
+    try {
+        let arr = [1, 2, 3]
+        let x = arr[10]
+    } catch e {
+        msg = "caught"
+    }
+    assert(msg == "caught")
 }
 
-test "assertion concept" {
-    assert(true)
+test "assertion failure pattern" {
+    let x = 5
+    let y = 10
+    let ok = false
+    try {
+        assert(x > y)
+    } catch e {
+        ok = true
+    }
+    assert(ok)
+}
+
+test "fallback catches any error" {
+    let caught = false
+    try {
+        let x = [][0]
+    } catch e {
+        caught = true
+    }
+    assert(caught)
+}
+
+test "error propagates through function calls" {
+    fn inner(n: int) { return 10 / n }
+    fn outer(n: int) { return inner(n) }
+    let caught = false
+    try {
+        let r = outer(0)
+    } catch e {
+        caught = true
+    }
+    assert(caught)
+}
+
+test "nested exception handling" {
+    let level = 0
+    try {
+        level = 1
+        try {
+            level = 2
+            let x = [1][5]
+        } catch e {
+            level = 3
+        }
+        level = 4
+    } catch e {
+        level = 99
+    }
+    assert(level == 4)
 }

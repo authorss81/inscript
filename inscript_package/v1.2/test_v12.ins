@@ -1,0 +1,291 @@
+# v1.2 — Stdlib modules, select, v1.1 regression (.ins tests)
+# Run: python inscript.py --test v1.2/test_v12.ins
+
+# ── path module ──────────────────────────────────────────────────────
+
+test "path.join" {
+    import "path" as path
+    let r = path.join("/tmp", "a", "b.ins")
+    assert(r == "/tmp/a/b.ins" || r == "/tmp\\a\\b.ins")
+}
+
+test "path.basename" {
+    import "path" as path
+    assert(path.basename("/tmp/foo/bar.ins") == "bar.ins")
+}
+
+test "path.stem" {
+    import "path" as path
+    assert(path.stem("/tmp/foo/bar.ins") == "bar")
+}
+
+test "path.ext" {
+    import "path" as path
+    assert(path.ext("/tmp/foo/bar.ins") == ".ins")
+}
+
+test "path.dirname" {
+    import "path" as path
+    assert(path.dirname("/tmp/foo/bar.ins") == "/tmp/foo")
+}
+
+test "path.exists false" {
+    import "path" as path
+    assert(!path.exists("/this/does/not/exist"))
+}
+
+test "path.is_file false" {
+    import "path" as path
+    assert(!path.is_file("/this/does/not/exist"))
+}
+
+test "path.abs non-empty" {
+    import "path" as path
+    let p = path.abs(".")
+    assert(len(p) > 0)
+}
+
+# ── regex module ─────────────────────────────────────────────────────
+
+test "regex.test true" {
+    import "regex" as regex
+    assert(regex.test("hello123world", "\\d+"))
+}
+
+test "regex.test false" {
+    import "regex" as regex
+    assert(!regex.test("hello", "^\\d+$"))
+}
+
+test "regex.find_all digits" {
+    import "regex" as regex
+    let m = regex.find_all("a1 b22 c333", "\\d+")
+    assert(len(m) == 3)
+}
+
+test "regex.sub replace" {
+    import "regex" as regex
+    assert(regex.sub("foobar", "o+", "0") == "f0bar")
+}
+
+test "regex.match success" {
+    import "regex" as regex
+    let m = regex.match("hello", "(\\w+)")
+    assert(m["matched"] == true)
+}
+
+test "regex.search value" {
+    import "regex" as regex
+    let m = regex.search("abc123def", "\\d+")
+    assert(m["value"] == "123")
+}
+
+test "regex.split" {
+    import "regex" as regex
+    let parts = regex.split("a, b,c, d", ",\\s*")
+    assert(len(parts) == 4)
+}
+
+test "regex.escape roundtrip" {
+    import "regex" as regex
+    let e = regex.escape("a.b+c")
+    assert(regex.test("a.b+c", "^" ++ e ++ "$"))
+}
+
+# ── csv module ───────────────────────────────────────────────────────
+
+test "csv.parse basic" {
+    import "csv" as csv
+    let r = csv.parse("name,age\nAlice,30\nBob,25")
+    assert(len(r["data"]) == 2)
+}
+
+test "csv.parse headers" {
+    import "csv" as csv
+    let r = csv.parse("x,y\n1,2")
+    assert(r["headers"][0] == "x")
+}
+
+test "csv.parse field access" {
+    import "csv" as csv
+    let r = csv.parse("name,age\nAlice,30")
+    assert(r["data"][0]["name"] == "Alice")
+}
+
+test "csv.to_string roundtrip" {
+    import "csv" as csv
+    let orig = "a,b\n1,2\n3,4"
+    let parsed = csv.parse(orig)
+    let out = csv.to_string(parsed["rows"], parsed["headers"])
+    let re_parsed = csv.parse(out)
+    assert(len(re_parsed["data"]) == 2)
+}
+
+test "csv.parse no header" {
+    import "csv" as csv
+    let r = csv.parse("1,2\n3,4", ",", false)
+    assert(len(r["rows"]) == 2)
+}
+
+test "csv.from_dicts" {
+    import "csv" as csv
+    let data = [{"x": "1", "y": "2"}, {"x": "3", "y": "4"}]
+    let s = csv.from_dicts(data)
+    let p = csv.parse(s)
+    assert(p["data"][1]["x"] == "3")
+}
+
+# ── uuid module ──────────────────────────────────────────────────────
+
+test "uuid.v4 length" {
+    import "uuid" as uuid
+    let u = uuid.v4()
+    assert(len(u) == 36)
+}
+
+test "uuid.v4 format" {
+    import "uuid" as uuid
+    let u = uuid.v4()
+    let parts = split(u, "-")
+    assert(len(parts) == 5)
+}
+
+test "uuid.v4 unique" {
+    import "uuid" as uuid
+    let a = uuid.v4()
+    let b = uuid.v4()
+    assert(a != b)
+}
+
+test "uuid.short length" {
+    import "uuid" as uuid
+    let s = uuid.short()
+    assert(len(s) == 8)
+}
+
+test "uuid.nil value" {
+    import "uuid" as uuid
+    assert(uuid.nil == "00000000-0000-0000-0000-000000000000")
+}
+
+# ── crypto module ────────────────────────────────────────────────────
+
+test "crypto.sha256 length" {
+    import "crypto" as crypto
+    let h = crypto.sha256("hello")
+    assert(len(h) == 64)
+}
+
+test "crypto.sha256 deterministic" {
+    import "crypto" as crypto
+    assert(crypto.sha256("hello") == crypto.sha256("hello"))
+}
+
+test "crypto.sha256 different" {
+    import "crypto" as crypto
+    assert(crypto.sha256("a") != crypto.sha256("b"))
+}
+
+test "crypto.md5 length" {
+    import "crypto" as crypto
+    assert(len(crypto.md5("test")) == 32)
+}
+
+test "crypto.b64 roundtrip" {
+    import "crypto" as crypto
+    let encoded = crypto.b64_encode("hello world")
+    let decoded = crypto.b64_decode(encoded)
+    assert(decoded == "hello world")
+}
+
+test "crypto.hmac sign+verify" {
+    import "crypto" as crypto
+    let sig = crypto.hmac_sign("secret", "message")
+    assert(crypto.hmac_verify("secret", "message", sig))
+}
+
+test "crypto.hmac wrong key" {
+    import "crypto" as crypto
+    let sig = crypto.hmac_sign("secret", "message")
+    assert(!crypto.hmac_verify("wrong", "message", sig))
+}
+
+test "crypto.constant_time_eq match" {
+    import "crypto" as crypto
+    assert(crypto.constant_time_eq("abc", "abc"))
+}
+
+test "crypto.constant_time_eq mismatch" {
+    import "crypto" as crypto
+    assert(!crypto.constant_time_eq("abc", "xyz"))
+}
+
+# ── select statement ─────────────────────────────────────────────────
+
+test "select timeout fires" {
+    let done = false
+    select {
+        case timeout(0.01) { done = true }
+    }
+    assert(done)
+}
+
+test "select recv from full channel" {
+    let ch = make_channel()
+    chan_send(ch, 42)
+    let got = 0
+    select {
+        case got = ch.recv() { }
+        case timeout(0.1) { }
+    }
+    assert(got == 42)
+}
+
+# ── v1.1 regression ──────────────────────────────────────────────────
+
+test "v1.1 str index" {
+    assert("hello"[0] == "h")
+}
+
+test "v1.1 floor div" {
+    assert(7 // 2 == 3)
+}
+
+test "v1.1 fstring double brace" {
+    let r = f"{{lit}}"
+    assert(r == "{lit}")
+}
+
+test "v1.1 enum iteration" {
+    enum D { A; B; C }
+    let c = 0
+    for v in D {
+        c = c + 1
+    }
+    assert(c == 3)
+}
+
+test "v1.1 spread array" {
+    let r = [1, ...[2, 3], 4]
+    assert(r == [1, 2, 3, 4])
+}
+
+test "v1.1 multi-catch" {
+    let caught = ""
+    try { throw "e" } catch x { caught = x }
+    assert(caught == "e")
+}
+
+test "v1.1 decorator" {
+    fn id(f) { return f }
+    @id
+    fn hi() { return "ok" }
+    assert(hi() == "ok")
+}
+
+test "v1.1 abstract struct" {
+    struct S { abstract fn f() }
+    struct C extends S { fn f() {} }
+    C{}.f()
+    assert(true)
+}

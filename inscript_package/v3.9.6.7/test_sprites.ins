@@ -1,0 +1,80 @@
+# v3.9.6.7 — Sprite & draw batching (.ins tests)
+# Tests that pygame surfaces and draw namespaces work correctly
+# Run: python inscript.py --test v3.9.6.7/test_sprites.ins
+
+test "pygame module is importable" {
+    import "py:pygame" as pg
+    assert(pg != nil)
+}
+
+test "pygame surface creation works" {
+    import "py:pygame" as pg
+    let surf = pg.Surface((32, 32), pg.SRCALPHA)
+    assert(surf != nil)
+    assert(surf.get_width() == 32)
+    assert(surf.get_height() == 32)
+}
+
+test "pygame surface get_at returns RGBA color" {
+    import "py:pygame" as pg
+    let surf = pg.Surface((16, 16), pg.SRCALPHA)
+    let px = surf.get_at((0, 0))
+    assert(px[0] >= 0)
+    assert(px[1] >= 0)
+    assert(px[2] >= 0)
+    assert(px[3] >= 0)
+}
+
+test "pygame surface fill works" {
+    import "py:pygame" as pg
+    let surf = pg.Surface((16, 16), pg.SRCALPHA)
+    surf.fill((255, 0, 0, 255))
+    let px = surf.get_at((0, 0))
+    assert(px[0] == 255)
+    assert(px[1] == 0)
+    assert(px[2] == 0)
+}
+
+test "pygame draw rect works" {
+    import "py:pygame" as pg
+    let surf = pg.Surface((32, 32), pg.SRCALPHA)
+    pg.draw.rect(surf, (255, 255, 255, 255), (4, 4, 8, 8))
+    let px = surf.get_at((6, 6))
+    assert(px[0] == 255)
+}
+
+test "pygame draw circle works" {
+    import "py:pygame" as pg
+    let surf = pg.Surface((32, 32), pg.SRCALPHA)
+    pg.draw.circle(surf, (255, 255, 255, 255), (16, 16), 8)
+    let px = surf.get_at((16, 16))
+    assert(px[0] == 255)
+}
+
+test "pygame blit works" {
+    import "py:pygame" as pg
+    let dst = pg.Surface((32, 32), pg.SRCALPHA)
+    let src = pg.Surface((16, 16), pg.SRCALPHA)
+    src.fill((0, 255, 0, 255))
+    dst.blit(src, (8, 8))
+    let px = dst.get_at((10, 10))
+    assert(px[1] == 255)
+}
+
+test "pygame_backend BatchedDrawNamespace is importable" {
+    import "py:pygame_backend" as pb
+    assert(pb.BatchedDrawNamespace != nil)
+}
+
+test "pygame_backend DrawNamespace is importable" {
+    import "py:pygame_backend" as pb
+    assert(pb.DrawNamespace != nil)
+}
+
+test "pygame SRCALPHA flag works" {
+    import "py:pygame" as pg
+    let surf = pg.Surface((8, 8), pg.SRCALPHA)
+    surf.fill((255, 0, 0, 128))
+    let px = surf.get_at((4, 4))
+    assert(px[3] == 128)
+}

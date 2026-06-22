@@ -1,0 +1,145 @@
+# v3.9.6.1 — MatchStmt (.ins tests)
+# Run: python inscript.py --test v3.9.6.1/test_match_stmt.ins
+
+test "wildcard arm matches any value" {
+    let arm = 0
+    match 42 {
+        case _ { arm = 1 }
+    }
+    assert(arm == 1)
+}
+
+test "literal arm fires for matching int" {
+    let arm = 0
+    match 2 {
+        case 1 { arm = 1 }
+        case 2 { arm = 2 }
+        case _ { arm = 3 }
+    }
+    assert(arm == 2)
+}
+
+test "literal arm falls through to wildcard" {
+    let arm = 0
+    match 999 {
+        case 10 { arm = 10 }
+        case _ { arm = 99 }
+    }
+    assert(arm == 99)
+}
+
+test "literal arm matches string" {
+    let arm = 0
+    match "hello" {
+        case "hello" { arm = 1 }
+        case "world" { arm = 2 }
+        case _ { arm = 3 }
+    }
+    assert(arm == 1)
+}
+
+test "type-narrowing int binds value" {
+    let arm = 0
+    let bound = nil
+    match 42 {
+        case int n { arm = 1; bound = n }
+        case _ { arm = 2 }
+    }
+    assert(arm == 1)
+    assert(bound == 42)
+}
+
+test "type-narrowing falls through on type mismatch" {
+    let arm = 0
+    let bound = nil
+    match "hello" {
+        case int n { arm = 1 }
+        case string s { arm = 2; bound = s }
+        case _ { arm = 3 }
+    }
+    assert(arm == 2)
+    assert(bound == "hello")
+}
+
+test "guard arm fires when condition true" {
+    let arm = 0
+    let bound = nil
+    match 5 {
+        case n if n > 0 { arm = 1; bound = n }
+        case _ { arm = 2 }
+    }
+    assert(arm == 1)
+    assert(bound == 5)
+}
+
+test "guard arm falls through when condition false" {
+    let arm = 0
+    match -3 {
+        case n if n > 0 { arm = 1 }
+        case _ { arm = 2 }
+    }
+    assert(arm == 2)
+}
+
+test "expression subject" {
+    let a = 1
+    let b = 2
+    let arm = 0
+    match a + b {
+        case 3 { arm = 1 }
+        case _ { arm = 2 }
+    }
+    assert(arm == 1)
+}
+
+test "nested match outer and inner" {
+    let arm = 0
+    match 1 {
+        case 1 {
+            match 2 {
+                case 2 { arm = 12 }
+                case _ { arm = 11 }
+            }
+        }
+        case _ { arm = 0 }
+    }
+    assert(arm == 12)
+}
+
+test "multiple literal arms correct one fires" {
+    let arm = 0
+    match 300 {
+        case 100 { arm = 100 }
+        case 200 { arm = 200 }
+        case 300 { arm = 300 }
+        case _ { arm = 0 }
+    }
+    assert(arm == 300)
+}
+
+test "mixed literal type guard wildcard" {
+    let arm = 0
+    let bound = nil
+    match 7 {
+        case 0 { arm = 0 }
+        case int n if n > 10 { arm = 1; bound = n }
+        case int n { arm = 2; bound = n }
+        case string s { arm = 3; bound = s }
+        case _ { arm = 4 }
+    }
+    assert(arm == 2)
+    assert(bound == 7)
+}
+
+test "mixed pattern string match" {
+    let arm = 0
+    let bound = nil
+    match "world" {
+        case 0 { arm = 0 }
+        case int n { arm = 1; bound = n }
+        case string s { arm = 2; bound = s }
+        case _ { arm = 3 }
+    }
+    assert(arm == 2)
+    assert(bound == "world")
+}

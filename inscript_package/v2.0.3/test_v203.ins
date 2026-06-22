@@ -1,0 +1,170 @@
+# v2.0.3 — Spread operator ... (.ins tests)
+# Run: python inscript.py --test v2.0.3/test_v203.ins
+
+# ── 1. Spread into function calls ────────────────────────────────────
+
+test "spread basic" {
+    fn sum3(a, b, c) { return a + b + c }
+    let args = [1, 2, 3]
+    let r = sum3(...args)
+    assert(r == 6)
+}
+
+test "spread with leading positional" {
+    fn f(a, b, c) { return a + b + c }
+    let tail = [20, 30]
+    let r = f(10, ...tail)
+    assert(r == 60)
+}
+
+test "spread trailing positional" {
+    fn f(a, b, c) { return a + b + c }
+    let r = f(...[1, 2], 3)
+    assert(r == 6)
+}
+
+test "double spread" {
+    fn f(a, b, c, d) { return a + b + c + d }
+    let x = [1, 2]
+    let y = [3, 4]
+    let r = f(...x, ...y)
+    assert(r == 10)
+}
+
+test "spread empty array" {
+    fn f(a, b) { return a + b }
+    let e = []
+    let r = f(1, ...e, 2)
+    assert(r == 3)
+}
+
+test "spread string array" {
+    fn join3(a, b, c) { return a ++ b ++ c }
+    let parts = ["x", "y", "z"]
+    let r = join3(...parts)
+    assert(r == "xyz")
+}
+
+test "spread inline literal" {
+    fn sum3(a, b, c) { return a + b + c }
+    let r = sum3(...[4, 5, 6])
+    assert(r == 15)
+}
+
+test "spread fn result" {
+    fn get_args() { return [7, 8, 9] }
+    fn sum3(a, b, c) { return a + b + c }
+    let r = sum3(...get_args())
+    assert(r == 24)
+}
+
+# ── 2. Spread in array literals ──────────────────────────────────────
+
+test "spread concat arrays" {
+    let a = [1, 2]
+    let b = [3, 4]
+    let c = [...a, ...b]
+    assert(c == [1, 2, 3, 4])
+}
+
+test "spread array with literals" {
+    let a = [2, 3]
+    let b = [0, 1, ...a, 4, 5]
+    assert(b == [0, 1, 2, 3, 4, 5])
+}
+
+test "spread range into array" {
+    let a = [...0..5]
+    assert(a == [0, 1, 2, 3, 4])
+}
+
+test "spread range inclusive" {
+    let a = [...1..=5]
+    assert(a == [1, 2, 3, 4, 5])
+}
+
+test "spread range step" {
+    let a = [...0..10 step 2]
+    assert(a == [0, 2, 4, 6, 8])
+}
+
+test "spread three arrays" {
+    let a = [1]
+    let b = [2]
+    let c = [3]
+    let d = [...a, ...b, ...c]
+    assert(d == [1, 2, 3])
+}
+
+# ── 3. Spread in struct initializers ─────────────────────────────────
+
+test "spread dict into struct" {
+    let d = {"x": 3.0, "y": 4.0}
+    struct P { x: float = 0.0; y: float = 0.0 }
+    let p = P{...d}
+    assert(p.x == 3.0)
+    assert(p.y == 4.0)
+}
+
+test "spread struct instance" {
+    struct P { x: float = 0.0; y: float = 0.0 }
+    let base = P{x: 1.0, y: 2.0}
+    let p = P{...base}
+    assert(p.y == 2.0)
+}
+
+test "spread struct with override" {
+    struct P { x: float = 0.0; y: float = 0.0 }
+    let base = P{x: 1.0, y: 2.0}
+    let p = P{...base, y: 99.0}
+    assert(p.y == 99.0)
+    assert(p.x == 1.0)
+}
+
+# ── 4. Rest parameters ───────────────────────────────────────────────
+
+test "rest param basic" {
+    fn vsum(...args) {
+        let s = 0
+        for x in args { s = s + x }
+        return s
+    }
+    let r = vsum(1, 2, 3, 4, 5)
+    assert(r == 15)
+}
+
+test "rest param zero args" {
+    fn vsum(...args) {
+        let s = 0
+        for x in args { s = s + x }
+        return s
+    }
+    let r = vsum()
+    assert(r == 0)
+}
+
+test "rest param one arg" {
+    fn vsum(...args) {
+        let s = 0
+        for x in args { s = s + x }
+        return s
+    }
+    let r = vsum(42)
+    assert(r == 42)
+}
+
+test "rest after positional" {
+    fn f(prefix, ...nums) {
+        let s = 0
+        for n in nums { s = s + n }
+        return prefix ++ string(s)
+    }
+    let r = f("sum:", 1, 2, 3)
+    assert(r == "sum:6")
+}
+
+test "rest len" {
+    fn count(...args) { return len(args) }
+    let r = count(10, 20, 30)
+    assert(r == 3)
+}

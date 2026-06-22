@@ -1,6 +1,6 @@
 # InScript Roadmap — Production-Grade Microversion Plan
 
-> **Current:** v3.9.6.24 — Physics: scene integration. Phase 10 ongoing.
+> **Current:** v3.9.6.29 — Physics: optimization (sleeping + broadphase). Phase 10 done.
 > 
 > **Version scheme:** MAJOR.MINOR.PATCH.MICRO — each micro targets a discrete production feature.
 > After v3.9.6.99, roll to v3.9.7.0 for the next feature cluster.
@@ -26,8 +26,8 @@ Tests should be written as `.ins` files (`test "name" { assert(...) }`) **whenev
 - **Python module imports** — importing `debugger`, `dap_server`, `pygame_backend` and asserting on their internals
 - **Compilation/pyc checks** — verifying Python source files compile without syntax errors
 
-### Test runner limitation
-`inscript_test.py` uses a non-greedy regex `(.*?)\}` to extract test bodies, which cannot handle nested braces. Tests cannot contain `if {}`, `for {}`, `let x = {}` inside `test "..." { ... }`. This is a known limitation — if it becomes a blocker for `.ins`-first testing, the regex should be replaced with a balanced-brace parser.
+### Test runner
+`inscript_test.py` uses a balanced-brace parser to extract test bodies, so nested `{}` inside `test "..." { ... }` are supported.
 
 ---
 
@@ -277,11 +277,38 @@ Parallel microversion to v3.9.6.13. Fixes 6 pre-existing Rust lexer tests by bri
 - [x] Body + shape serialization (`to_dict()`, `save_scene()`, `load_scene()`)
 - [x] Restitution, friction, density parameters (friction wired into collision resolution)
 
-### v3.9.6.25 — Physics: character controller
-- [ ] `CharacterBody` — move_and_slide, move_and_collide
-- [ ] Slope handling, stair stepping
-- [ ] Platform collision (one-way platforms)
-- [ ] Knockback / impulse API
+### v3.9.6.25 — Physics: character controller ✅
+- [x] `CharacterBody` — move_and_slide, move_and_collide
+- [x] Slope handling, stair stepping
+- [x] Platform collision (one-way platforms)
+- [x] Knockback / impulse API
+- [x] Tests: `.ins` (11 tests — floor/wall/ceiling, knockback, move_and_collide, one-way platforms) + `.py` (19 tests)
+
+### v3.9.6.26 — Physics: world queries ✅
+- [x] `query_aabb` / `query_circle`
+- [x] `contact_points` (from `_last_contacts` stored during `step()`)
+- [x] `ray_cast` (closest) / `ray_cast_all` (all hits sorted by distance)
+- [x] Tests: `.ins` (9 tests — hit/miss, sorted multi-hit, aabb/circle find, contacts) + `.py` (32 tests)
+
+### v3.9.6.27 — Physics: continuous collision detection (CCD) ✅
+- [x] `Body.ccd_enabled` flag
+- [x] Swept-AABB TOI computation (`_sweep_to_static`)
+- [x] CCD bodies sub-step to collision point
+- [x] Works with rect and circle shapes
+- [x] Tests: `.ins` (6 tests — CCD on/off for rect+circle) + `.py` (11 tests)
+
+### v3.9.6.28 — Physics: collision filtering ✅
+- [x] `Body.collision_group` / `Body.collision_mask` bitmasks
+- [x] `_can_collide()` static helper
+- [x] Filtering applied in `_step_bodies`, `_sweep_to_static`, CCD TOI resolution
+- [x] Tests: `.ins` (5 tests — allow/block/mask=0/default) + `.py` (12 tests)
+
+### v3.9.6.29 — Physics: optimization (sleeping + broadphase) ✅
+- [x] Spatial grid broadphase (`_get_broadphase_pairs`) activated >32 bodies
+- [x] Body sleeping: `_sleep_timer` increments when speed < threshold
+- [x] Sleeping bodies skip gravity, integration, and collision checks
+- [x] Wake on velocity/force change or collision
+- [x] Tests: `.ins` (5 tests — settle/wake/sleep/stay) + `.py` (14 tests)
 
 ---
 
@@ -631,6 +658,50 @@ Parallel microversion to v3.9.6.13. Fixes 6 pre-existing Rust lexer tests by bri
 - [ ] Community showcase page (games made with InScript)
 - [ ] Monthly release cadence (predictable schedule)
 - [ ] Security vulnerability reporting process (HackerOne / self-hosted)
+
+---
+
+## .ins Test Coverage Roadmap
+
+`.ins` tests are the only place real InScript code is exercised end-to-end (lexer → parser → analyzer → interpreter). They serve as the primary examples for anyone learning the language. Currently, ~80% of `.py` tests fundamentally cannot be `.ins` (Python internals, DAP framing, benchmarks), but every feature exposed in the InScript runtime should have `.ins` coverage.
+
+### Progress
+
+| Area | Version | Feature | .ins tests | Status |
+|------|---------|---------|-----------|--------|
+| **Language** | v3.9.6.1 | MatchStmt | 14 | ✅ Done |
+| **Language** | v3.9.6.2 | F-strings | 12 | ✅ Done |
+| **Language** | v3.9.6.3 | Lambdas | 15 | ✅ Done |
+| **Language** | v3.9.6.4 | Comprehensions | 14 | ✅ Done |
+| **Language** | v3.9.6.5 | Method calls + named args | 16 | ✅ Done |
+| **Physics** | v3.9.6.20 | PhysicsWorld, Body, Shape basics | 20 | ✅ Done |
+| **Physics** | v3.9.6.21 | Collision events + callbacks | 9 | ✅ Done |
+| **Physics** | v3.9.6.22 | Joints + constraints | 10 | ✅ Done |
+| **Physics** | v3.9.6.23 | Triggers + sensors | 8 | ✅ Good |
+| **Physics** | v3.9.6.24 | Scene integration | 10 | ✅ Good |
+| **Physics** | v3.9.6.25 | Character controller | 11 | ✅ Good |
+| **Physics** | v3.9.6.26 | World queries | 9 | ✅ Good |
+| **Physics** | v3.9.6.27 | CCD | 6 | ✅ Good |
+| **Physics** | v3.9.6.28 | Collision filtering | 5 | ✅ Good |
+| **Physics** | v3.9.6.29 | Sleeping + broadphase | 5 | ✅ Good |
+| **Debugger** | v3.9.6.10 | Breakpoints | 11 | ✅ Done |
+| **Debugger** | v3.9.6.11 | Stepping | 9 | ✅ Done |
+| **Debugger** | v3.9.6.12 | Variable inspection | 9 | ✅ Done |
+| **Debugger** | v3.9.6.13 | DAP + hit/condition bps | 22 | ✅ Good |
+| **Debugger** | v3.9.6.14 | Game loop debugging | 20 | ✅ Good |
+| **Debugger** | v3.9.6.15 | Watch + REPL | 20 | ✅ Good |
+| **Debugger** | v3.9.6.16 | Multi-file breakpoints | 7 | ✅ Done |
+| **Debugger** | v3.9.6.17 | Exception breakpoints | 7 | ✅ Done |
+| **Debugger** | v3.9.6.18 | Data breakpoints | 8 | ✅ Done |
+| **Debugger** | v3.9.6.19 | REPL polish | 9 | ✅ Done |
+
+### Priority Plan
+
+**P0 — Language features** (v3.9.6.1–5): ✅ Done (71 tests across all 5 versions).
+
+**P1 — Physics backfill** (v3.9.6.20–22): ✅ Done (39 tests — gravity, bodies, shapes, collision callbacks, all 5 joint types).
+
+**P2 — Debugger backfill** (v3.9.6.10–12, 16–19): ✅ Done (60 tests — dbg loops, closures, imports, try/catch, struct mutation, REPL expressions).
 
 ---
 

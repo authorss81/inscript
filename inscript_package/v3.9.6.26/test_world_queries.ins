@@ -1,23 +1,13 @@
 # v3.9.6.26 — Physics: world queries (.ins tests)
 # Run: python inscript.py --test v3.9.6.26/test_world_queries.ins
-# Note: PhysicsWorld() uses default gravity. Use PhysicsWorld() then w.set_attr("gravity_y", 500).
 
-test "world query methods accessible via get_attr" {
+test "ray_cast returns closest hit" {
     let w = PhysicsWorld()
-    assert(w.get_attr("query_aabb") != nil)
-    assert(w.get_attr("query_circle") != nil)
-    assert(w.get_attr("contact_points") != nil)
-    assert(w.get_attr("ray_cast") != nil)
-    assert(w.get_attr("ray_cast_all") != nil)
-}
-
-test "ray_cast returns hit dict" {
-    let w = PhysicsWorld()
-    let wall = w.create_body(PhysicsShape.rect(20, 100), BODY_STATIC, 0.0, "wall", 200, 50)
+    w.create_body(PhysicsShape.rect(20, 20), BODY_STATIC, 0.0, "wall1", 100, 50)
+    w.create_body(PhysicsShape.rect(20, 20), BODY_STATIC, 0.0, "wall2", 300, 50)
     let hit = w.ray_cast(0, 50, 1, 0, 500)
     assert(hit != nil)
-    assert(hit.body != nil)
-    assert(hit.body.tag == "wall")
+    assert(hit.body.tag == "wall1")
 }
 
 test "ray_cast miss returns nil" {
@@ -27,26 +17,56 @@ test "ray_cast miss returns nil" {
     assert(hit == nil)
 }
 
-test "ray_cast_all returns list" {
+test "ray_cast_all returns multiple hits sorted by distance" {
     let w = PhysicsWorld()
     w.create_body(PhysicsShape.rect(20, 20), BODY_STATIC, 0.0, "a", 100, 50)
     w.create_body(PhysicsShape.rect(20, 20), BODY_STATIC, 0.0, "b", 300, 50)
     let hits = w.ray_cast_all(0, 50, 1, 0, 500)
     assert(hits.length >= 2)
+    assert(hits[0].body.tag == "a")
+    assert(hits[1].body.tag == "b")
 }
 
-test "query_aabb returns bodies" {
+test "query_aabb finds overlapping bodies" {
     let w = PhysicsWorld()
-    let a = w.create_body(PhysicsShape.rect(20, 20), BODY_STATIC, 0.0, "box", 100, 100)
+    w.create_body(PhysicsShape.rect(40, 40), BODY_STATIC, 0.0, "box", 100, 100)
     let results = w.query_aabb(100, 100, 30, 30)
     assert(results.length >= 1)
     assert(results[0].tag == "box")
 }
 
-test "query_circle returns bodies" {
+test "query_aabb empty area returns empty list" {
     let w = PhysicsWorld()
-    let a = w.create_body(PhysicsShape.rect(20, 20), BODY_STATIC, 0.0, "box", 100, 100)
+    w.create_body(PhysicsShape.rect(40, 40), BODY_STATIC, 0.0, "box", 100, 100)
+    let results = w.query_aabb(0, 0, 10, 10)
+    assert(results.length == 0)
+}
+
+test "query_circle finds overlapping bodies" {
+    let w = PhysicsWorld()
+    w.create_body(PhysicsShape.rect(40, 40), BODY_STATIC, 0.0, "box", 100, 100)
     let results = w.query_circle(100, 100, 30)
     assert(results.length >= 1)
     assert(results[0].tag == "box")
+}
+
+test "contact_points after step finds floor contact" {
+    let w = PhysicsWorld()
+    let a = w.create_body(PhysicsShape.rect(40, 40), BODY_DYNAMIC, 1.0, "dyn", 100, 85)
+    w.create_body(PhysicsShape.rect(200, 20), BODY_STATIC, 0.0, "floor", 100, 100)
+    let i = 0
+    while i < 10 {
+        w.step(0.016)
+        i += 1
+    }
+    let contacts = w.contact_points(a)
+    assert(contacts.length > 0)
+    assert(contacts[0].body.tag == "floor")
+}
+
+test "contact_points airborne returns empty list" {
+    let w = PhysicsWorld()
+    let a = w.create_body(PhysicsShape.rect(40, 40), BODY_DYNAMIC, 1.0, "dyn", 100, 0)
+    let contacts = w.contact_points(a)
+    assert(contacts.length == 0)
 }

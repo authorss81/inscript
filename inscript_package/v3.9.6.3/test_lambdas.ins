@@ -1,0 +1,93 @@
+# v3.9.6.3 — Lambdas (.ins tests)
+# Run: python inscript.py --test v3.9.6.3/test_lambdas.ins
+
+test "basic lambda |x| x * 2" {
+    let f = |x| x * 2
+    let r = f(5)
+    assert(r == 10)
+}
+
+test "multi-param lambda |a, b| a + b" {
+    let add = |a, b| a + b
+    let r = add(10, 20)
+    assert(r == 30)
+}
+
+test "zero-param lambda || 42" {
+    let f = || 42
+    let r = f()
+    assert(r == 42)
+}
+
+test "lambda assigned and called via var" {
+    let f = |x| x * 3
+    let r = f(7)
+    assert(r == 21)
+}
+
+test "lambda with complex expression body" {
+    let f = |a, b| (a + b) * 2 - 1
+    let r = f(5, 3)
+    assert(r == 15)
+}
+
+test "three-param lambda" {
+    let f = |a, b, c| a + b + c
+    let r = f(1, 2, 3)
+    assert(r == 6)
+}
+
+test "lambda using scene var closure" {
+    let scale = 3
+    let offset = 1
+    let f = |n| n * scale + offset
+    let r = f(10)
+    assert(r == 31)
+}
+
+test "lambda with type annotations" {
+    let f = |x: int, y: int| x * y
+    let r = f(6, 7)
+    assert(r == 42)
+}
+
+test "nested lambda |x| |y| x + y" {
+    let f = |x| |y| x + y
+    let r = f(3)(4)
+    assert(r == 7)
+}
+
+test "lambda returns lambda curried" {
+    let add = |a| |b| a + b
+    let r = add(10)(20)
+    assert(r == 30)
+}
+
+test "lambda with block body" {
+    let f = |x| { return x * 3 }
+    let r = f(7)
+    assert(r == 21)
+}
+
+test "lambda used with .map on array" {
+    let arr = [1, 2, 3]
+    let result = arr.map(|x| x * 2)
+    assert(result[0] == 2)
+    assert(result[1] == 4)
+    assert(result[2] == 6)
+}
+
+test "lambda used with .filter on array" {
+    let arr = [1, 2, 3, 4, 5]
+    let result = arr.filter(|x| x > 2)
+    assert(result[0] == 3)
+    assert(result[1] == 4)
+    assert(result[2] == 5)
+}
+
+test "lambda as method arg body expression" {
+    let arr = [1, 2, 3, 4]
+    let result = arr.filter(|x| x % 2 == 0)
+    assert(result[0] == 2)
+    assert(result[1] == 4)
+}

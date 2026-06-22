@@ -1,0 +1,330 @@
+# v1.4 — defer, repeat..until, type-narrowing match, generic constraints
+# Run: python inscript.py --test v1.4/test_v140.ins
+
+# ── 1. defer ─────────────────────────────────────────────────────────
+
+test "defer runs LIFO after body" {
+    let acc = ""
+    fn f() {
+        defer acc = acc + "c"
+        defer acc = acc + "b"
+        defer acc = acc + "a"
+        acc = acc + "body"
+    }
+    f()
+    assert(acc == "bodyabc")
+}
+
+test "defer runs before return value" {
+    let acc = ""
+    fn f() -> int {
+        defer acc = acc + "deferred"
+        return 42
+    }
+    let r = f()
+    assert(r == 42)
+    assert(acc == "deferred")
+}
+
+test "defer runs even on throw" {
+    let acc = ""
+    fn cleanup() {
+        defer acc = acc + "cleaned"
+        throw "oops"
+    }
+    try {
+        cleanup()
+    } catch e {
+        acc = acc + "caught"
+    }
+    assert(acc == "cleanedcaught")
+}
+
+test "multiple defer in loop accumulate" {
+    let acc = ""
+    fn f() {
+        let i = 0
+        while i < 3 {
+            defer acc = acc + str(i)
+            i = i + 1
+        }
+    }
+    f()
+    assert(len(acc) == 3)
+}
+
+test "nested fn each has own defer stack" {
+    let acc = ""
+    fn outer() {
+        defer acc = acc + "outer-defer"
+        fn inner() {
+            defer acc = acc + "inner-defer"
+            acc = acc + "inner-body"
+        }
+        inner()
+        acc = acc + "outer-body"
+    }
+    outer()
+    assert(acc == "inner-bodyinner-deferouter-bodyouter-defer")
+}
+
+# ── 2. repeat..until ─────────────────────────────────────────────────
+
+test "repeat..until sums 0..4 = 10" {
+    let i = 0
+    let s = 0
+    repeat {
+        s = s + i
+        i = i + 1
+    } until i >= 5
+    assert(s == 10)
+}
+
+test "repeat body runs at least once if condition true" {
+    let ran = false
+    repeat {
+        ran = true
+    } until true
+    assert(ran)
+}
+
+test "break exits repeat..until" {
+    let i = 0
+    repeat {
+        i = i + 1
+        if i == 3 { break }
+    } until i >= 10
+    assert(i == 3)
+}
+
+test "continue skips in repeat..until" {
+    let i = 0
+    let evens = 0
+    repeat {
+        i = i + 1
+        if i % 2 != 0 { continue }
+        evens = evens + 1
+    } until i >= 6
+    assert(evens == 3)
+}
+
+# ── 3. Type-narrowing match ──────────────────────────────────────────
+
+test "primitive type narrowing all branches" {
+    fn kind(v) -> string {
+        match v {
+            case int x { return "int:" ++ str(x) }
+            case float f { return "float:" ++ str(f) }
+            case string s { return "str:" ++ s }
+            case bool b { return "bool:" ++ str(b) }
+            case _ { return "other" }
+        }
+    }
+    assert(kind(42) == "int:42")
+    assert(kind(3.14) == "float:3.14")
+    assert(kind("hi") == "str:hi")
+    assert(kind(true) == "bool:true")
+    assert(kind(nil) == "other")
+}
+
+test "bound variable usable in body" {
+    fn describe(v) {
+        match v {
+            case int x { return x * 2 }
+            case _ { return 0 }
+        }
+    }
+    assert(describe(5) == 10)
+    assert(describe("x") == 0)
+}
+
+test "struct type narrowing" {
+    struct Circle { r: float = 0.0 }
+    struct Square { s: float = 0.0 }
+    fn area(shape) -> float {
+        match shape {
+            case Circle c { return 3.14159 * c.r * c.r }
+            case Square sq { return sq.s * sq.s }
+            case _ { return 0.0 }
+        }
+    }
+    assert(area(Circle{r: 1.0}) == 3.14159)
+    assert(area(Square{s: 4.0}) == 16.0)
+}
+
+test "type narrowing with guard" {
+    fn f(v) -> string {
+        match v {
+            case int x if x > 10 { return "big" }
+            case int x { return "small" }
+            case _ { return "other" }
+        }
+    }
+    assert(f(20) == "big")
+    assert(f(5) == "small")
+    assert(f("x") == "other")
+}
+
+test "no wildcard arm needed when all cases covered" {
+    fn f(v) -> string {
+        match v {
+            case int x { return "int" }
+            case string s { return "str" }
+        }
+        return ""
+    }
+    assert(f(1) == "int")
+    assert(f("a") == "str")
+}
+
+# ── 4. Generic constraints ──────────────────────────────────────────
+
+test "Comparable: ints and strings pass" {
+    fn biggest<T: Comparable>(a: T, b: T, c: T) -> T {
+        let m = a
+        if b > m { m = b }
+        if c > m { m = c }
+        return m
+    }
+    assert(biggest(3, 1, 4) == 4)
+    assert(biggest("a", "c", "b") == "c")
+}
+
+test "Comparable: array rejected" {
+    fn biggest<T: Comparable>(a: T, b: T, c: T) -> T {
+        if a > b { return a }
+        return b
+    }
+    let caught = false
+    try {
+        biggest([1], [2], [3])
+    } catch e {
+        caught = true
+    }
+    assert(caught)
+}
+
+test "Comparable: function rejected" {
+    fn biggest<T: Comparable>(a: T, b: T, c: T) -> T {
+        if a > b { return a }
+        return b
+    }
+    fn dummy() {}
+    let caught = false
+    try {
+        biggest(dummy, dummy, dummy)
+    } catch e {
+        caught = true
+    }
+    assert(caught)
+}
+
+test "Numeric: int and float pass" {
+    fn add_all<T: Numeric>(a: T, b: T, c: T) -> T {
+        return a + b + c
+    }
+    assert(add_all(1, 2, 3) == 6)
+    assert(add_all(1.5, 2.5, 3.0) == 7.0)
+}
+
+test "Numeric: string rejected" {
+    fn add_all<T: Numeric>(a: T, b: T, c: T) -> T {
+        return a + b + c
+    }
+    let caught = false
+    try {
+        add_all("a", "b", "c")
+    } catch e {
+        caught = true
+    }
+    assert(caught)
+}
+
+test "interface as constraint: Drawable Sprite passes" {
+    interface Drawable {
+        fn draw()
+    }
+    struct Sprite {
+        name: string = ""
+        fn draw() { }
+    }
+    fn render<T: Drawable>(item: T) {
+        item.draw()
+    }
+    render(Sprite{name: "hero"})
+    assert(true)
+}
+
+test "interface as constraint: non-implementing struct rejected" {
+    interface Drawable { fn draw() }
+    struct Plain { x: int = 0 }
+    fn render<T: Drawable>(item: T) { }
+    let caught = false
+    try {
+        render(Plain{x: 1})
+    } catch e {
+        caught = true
+    }
+    assert(caught)
+}
+
+# ── 5. Regression ────────────────────────────────────────────────────
+
+test "regression: str() builtin" {
+    assert(str(42) == "42")
+}
+
+test "regression: closures" {
+    fn mk(n) {
+        fn f() { return n }
+        return f
+    }
+    assert(mk(7)() == 7)
+}
+
+test "regression: TCO recursion" {
+    fn f(n) {
+        if n <= 0 { return 0 }
+        return f(n - 1)
+    }
+    assert(f(5000) == 0)
+}
+
+test "regression: mat4 identity determinant" {
+    import "mat4" as m
+    let r = m.det(m.identity())
+    assert(r == 1.0)
+}
+
+test "regression: generic Stack" {
+    struct Stack<T> {
+        items: [] = []
+        fn push(v: T) {
+            self.items = self.items + [v]
+        }
+    }
+    let s = Stack<int>{}
+    s.push(1)
+    assert(s.items == [1])
+}
+
+test "regression: existing match" {
+    fn f(n) -> string {
+        match n {
+            case 1 { return "a" }
+            case 2 { return "b" }
+            case _ { return "c" }
+        }
+    }
+    assert(f(2) == "b")
+}
+
+test "regression: ADT match enum variant" {
+    enum S { A(n: int), B }
+    let v = S.A(n: 5)
+    match v {
+        case S.A { }
+        case S.B { }
+    }
+    assert(true)
+}

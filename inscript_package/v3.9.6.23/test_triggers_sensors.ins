@@ -1,53 +1,117 @@
 # v3.9.6.23 — Physics: triggers + sensors (.ins tests)
+# Uses the stdlib_game physics module (import "physics" as p)
+# Note: _P2DBody does not support set_attr("x", val) — use apply_impulse to move
 # Run: python inscript.py --test v3.9.6.23/test_triggers_sensors.ins
 
-test "physics module has area" {
+test "on_overlap fires when dynamic body overlaps area" {
     import "physics" as p
-    assert(p.area != nil)
+    let w = p.world(0, 0)
+    let area = p.area(p.Rect(50, 50), "zone")
+    let box = p.body(1.0, p.Rect(16, 16), "box")
+    w.add(area)
+    w.add(box)
+    let hit = false
+    area.on_overlap(|a, b| { hit = true })
+    w.step(0.016)
+    assert(hit)
 }
 
-test "physics module has shape_cast" {
+test "on_overlap fires specific body tag" {
     import "physics" as p
-    assert(p.shape_cast != nil)
+    let w = p.world(0, 0)
+    let area = p.area(p.Rect(50, 50), "zone")
+    let box = p.body(1.0, p.Rect(16, 16), "box")
+    w.add(area)
+    w.add(box)
+    let tag = ""
+    area.on_overlap(|a, b| { tag = b.tag })
+    w.step(0.016)
+    assert(tag == "box")
 }
 
-test "area has on_trigger_enter" {
+test "on_trigger_enter fires when body enters area" {
     import "physics" as p
-    let a = p.area(p.Rect(32, 32))
-    assert(a.on_trigger_enter != nil)
+    let w = p.world(0, 0)
+    let area = p.area(p.Rect(50, 50), "zone")
+    let box = p.body(1.0, p.Rect(16, 16), "box")
+    w.add(area)
+    w.add(box)
+    let entered = ""
+    area.on_trigger_enter(|a, b| { entered = b.tag })
+    w.step(0.016)
+    assert(entered == "box")
 }
 
-test "area has on_trigger_exit" {
+test "on_trigger_exit fires when body leaves area" {
     import "physics" as p
-    let a = p.area(p.Rect(32, 32))
-    assert(a.on_trigger_exit != nil)
+    let w = p.world(0, 0)
+    let area = p.area(p.Rect(50, 50), "zone")
+    let box = p.body(1.0, p.Rect(16, 16), "box")
+    w.add(area)
+    w.add(box)
+    let entered = false
+    let exited = false
+    area.on_trigger_enter(|a, b| { entered = true })
+    area.on_trigger_exit(|a, b| { exited = true })
+    w.step(0.016)
+    box.apply_impulse(100000, 0)
+    w.step(0.016)
+    assert(entered)
+    assert(exited)
 }
 
-test "area has on_overlap (backward compat)" {
+test "on_trigger_enter fires for static body overlapping area" {
     import "physics" as p
-    let a = p.area(p.Rect(32, 32))
-    assert(a.on_overlap != nil)
+    let w = p.world(0, 0)
+    let area = p.area(p.Rect(50, 50), "zone")
+    let wall = p.static_body(p.Rect(16, 16), "wall")
+    w.add(area)
+    w.add(wall)
+    let entered = ""
+    area.on_trigger_enter(|a, b| { entered = b.tag })
+    w.step(0.016)
+    assert(entered == "wall")
 }
 
-test "area is a sensor (overlap without collision)" {
+test "area tag accessible via property" {
     import "physics" as p
-    let w = p.world()
-    let a = p.area(p.Rect(50, 50))
-    let b = p.body(1.0, p.Rect(16, 16))
-    assert(true)
+    let area = p.area(p.Rect(32, 32), "sensor_1")
+    assert(area.tag == "sensor_1")
 }
 
-test "shape_cast function exists" {
+test "world query_area returns overlapping bodies" {
     import "physics" as p
-    assert(p.shape_cast != nil)
-    let w = p.world()
-    let s = p.Rect(8, 8)
-    let r = p.shape_cast(w, s, 0.0, 0.0, 1.0, 0.0, 100.0)
+    let w = p.world(0, 0)
+    let area = p.area(p.Rect(50, 50), "zone")
+    let box = p.body(1.0, p.Rect(16, 16), "box")
+    w.add(area)
+    w.add(box)
+    w.step(0.016)
+    let result = w.query_area(area)
+    assert(len(result) == 1)
 }
 
-test "world has no query_area from physics namespace" {
+test "world query_area returns body tag" {
     import "physics" as p
-    # world.query_area is a Python method on _P2DWorld,
-    # not directly exposed through InScript physics module
-    assert(true)
+    let w = p.world(0, 0)
+    let area = p.area(p.Rect(50, 50), "zone")
+    let box = p.body(1.0, p.Rect(16, 16), "box")
+    w.add(area)
+    w.add(box)
+    w.step(0.016)
+    let result = w.query_area(area)
+    assert(result[0].tag == "box")
+}
+
+test "on_trigger_enter fires with correct area tag" {
+    import "physics" as p
+    let w = p.world(0, 0)
+    let area = p.area(p.Rect(50, 50), "zone")
+    let box = p.body(1.0, p.Rect(16, 16), "box")
+    w.add(area)
+    w.add(box)
+    let area_tag = ""
+    area.on_trigger_enter(|a, b| { area_tag = a.tag })
+    w.step(0.016)
+    assert(area_tag == "zone")
 }

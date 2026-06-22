@@ -1,0 +1,164 @@
+# v1.3 — Dispatch cache, fast-path arithmetic, TCO, bytecode folding,
+#          dead code elimination, str(), --profile (.ins tests)
+# Run: python inscript.py --test v1.3/test_v13.ins
+
+# Note: Dispatch cache, bytecode ops inspection, and --profile require
+# Python-level access and remain in test_v130.py.
+
+# ── 2. Fast-path arithmetic ──────────────────────────────────────────
+
+test "fast-path int + int" { assert(3 + 4 == 7) }
+test "fast-path int - int" { assert(10 - 3 == 7) }
+test "fast-path int * int" { assert(3 * 4 == 12) }
+test "fast-path int / int" { assert(10 / 4 == 2.5) }
+test "fast-path int // int" { assert(10//3 == 3) }
+test "fast-path int % int" { assert(10 % 3 == 1) }
+test "fast-path float + float" { assert(1.5 + 2.5 == 4.0) }
+test "fast-path int < int" { assert(3 < 5) }
+test "fast-path int > int" { assert(5 > 3) }
+test "fast-path int == int" { assert(4 == 4) }
+test "fast-path int != int" { assert(4 != 5) }
+test "fast-path int <= int" { assert(3 <= 3) }
+test "fast-path int >= int" { assert(5 >= 5) }
+test "fast-path int + float" { assert(1 + 0.5 == 1.5) }
+test "fast-path float * int" { assert(2.0 * 3 == 6.0) }
+test "fast-path int // 0 errors" {
+    let ok = false
+    try { let x = 1//0 } catch e { ok = true }
+    assert(ok)
+}
+
+# ── 3. Tail Call Optimization (TCO) ───────────────────────────────────
+
+test "TCO countdown(10000) no overflow" {
+    fn count(n) { if n <= 0 { return 0 } return count(n - 1) }
+    assert(count(10000) == 0)
+}
+
+test "TCO sum_to(1000) = 500500" {
+    fn sum_to(n, acc) {
+        if n <= 0 { return acc }
+        return sum_to(n - 1, acc + n)
+    }
+    assert(sum_to(1000, 0) == 500500)
+}
+
+test "TCO fib_iter(10) = 55" {
+    fn fib_iter(n, a, b) {
+        if n == 0 { return a }
+        return fib_iter(n - 1, b, a + b)
+    }
+    assert(fib_iter(10, 0, 1) == 55)
+}
+
+test "non-tail fib(15) = 610" {
+    fn fib(n) { if n <= 1 { return n } return fib(n - 1) + fib(n - 2) }
+    assert(fib(15) == 610)
+}
+
+test "mutual recursion works" {
+    fn is_even(n) { if n == 0 { return true } return is_odd(n - 1) }
+    fn is_odd(n)  { if n == 0 { return false } return is_even(n - 1) }
+    assert(is_even(10))
+    assert(is_odd(7))
+}
+
+test "non-self tail call not intercepted" {
+    fn double(n) { return n * 2 }
+    fn inc(n) { return double(n) + 1 }
+    assert(inc(5) == 11)
+}
+
+test "TCO respects type-annotated params" {
+    fn countdown(n: int) -> int {
+        if n <= 0 { return 0 }
+        return countdown(n - 1)
+    }
+    assert(countdown(5000) == 0)
+}
+
+test "_current_fn resets between functions" {
+    fn a(n) { if n <= 0 { return 0 } return a(n - 1) }
+    fn b(n) { if n <= 0 { return 0 } return b(n - 1) }
+    assert(a(100) == 0)
+    assert(b(100) == 0)
+}
+
+test "try/catch inside TCO function" {
+    fn safe(x) {
+        try { return 100 // x } catch e { return -1 }
+    }
+    assert(safe(0) == -1)
+    assert(safe(5) == 20)
+}
+
+# ── 5. Dead code elimination (runtime correctness) ───────────────────
+
+test "DCE if/else still correct" {
+    let x = 5
+    if x > 3 { assert(true) } else { assert(false) }
+}
+test "DCE while still correct" {
+    let s = 0
+    let i = 0
+    while i < 4 { s += i; i += 1 }
+    assert(s == 6)
+}
+test "DCE match still correct" {
+    let x = 2
+    let r = ""
+    match x { case 1 { r = "a" } case 2 { r = "b" } case _ { r = "c" } }
+    assert(r == "b")
+}
+test "DCE nested fn still correct" {
+    fn add(a, b) { return a + b }
+    assert(add(3, 4) == 7)
+}
+
+# ── 6. str() builtin alias ────────────────────────────────────────────
+
+# str() builtin alias tested via Python-level introspection in test_v130.py
+# InScript-level: string() works as standard conversion
+
+# ── 8. Regression checks ─────────────────────────────────────────────
+
+test "regression generic enforcement" {
+    struct Stack<T> {
+        items: [] = []
+        fn push(val: T) { self.items = self.items + [val] }
+    }
+    let s = Stack<int>{}
+    s.push(1)
+    s.push(2)
+    assert(s.items == [1, 2])
+}
+
+test "regression closures" {
+    fn mk(n) { fn f() { return n } return f }
+    let f = mk(7)
+    assert(f() == 7)
+}
+
+test "regression structs" {
+    struct P { x: int = 0; y: int = 0 }
+    let p = P { x: 3, y: 4 }
+    assert(p.x + p.y == 7)
+}
+
+test "regression match" {
+    let x = 2
+    let r = ""
+    match x { case 1 { r = "a" } case 2 { r = "b" } case _ { r = "c" } }
+    assert(r == "b")
+}
+
+test "regression nil-safe chaining" {
+    let x = nil
+    assert(x?.y == nil)
+}
+
+test "regression mat4 module" {
+    import "mat4" as m
+    let I = m.identity()
+    assert(m.det(I) == 1.0)
+}

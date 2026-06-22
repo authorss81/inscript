@@ -1,0 +1,22 @@
+# v1.9.8 — Type inference hardening (.ins tests)
+# Run: python inscript.py --test v1.9.8/test_v198.ins
+#
+# Note: Type inference tests (Array<T>, Dict<K,V>, infer-types CLI)
+# require Python-level Analyzer access and remain in test_v198.py.
+
+test "array_runtime_values" {
+    let r = [1, 2, 3]
+    assert(r == [1, 2, 3])
+}
+
+test "mixed_array_runtime" {
+    let r = [1, "two", 3]
+    assert(r[0] == 1)
+    assert(r[1] == "two")
+    assert(r[2] == 3)
+}
+
+test "floor_div_runtime" {
+    assert(10 // 3 == 3)
+    assert(7 // 2 == 3)
+}

@@ -1,0 +1,132 @@
+# v2.0.2 — Match as expression, f-string nested braces (.ins tests)
+# Run: python inscript.py --test v2.0.2/test_v202.ins
+
+# ── 1. Match as expression — basic ───────────────────────────────────
+
+test "match expr int" {
+    let x = 2
+    let r = match x { case 1 { "one" } case 2 { "two" } case _ { "?" } }
+    assert(r == "two")
+}
+
+test "match expr wildcard" {
+    let x = 99
+    let r = match x { case 1 { "one" } case _ { "other" } }
+    assert(r == "other")
+}
+
+test "match expr arithmetic" {
+    let x = 4
+    let r = match x { case 2 { x * 10 } case 4 { x * x } case _ { 0 } }
+    assert(r == 16)
+}
+
+test "match expr in let" {
+    fn get() { return 3 }
+    let r = match get() { case 1 { 10 } case 3 { 30 } case _ { 0 } }
+    assert(r == 30)
+}
+
+test "match expr string" {
+    let s = "hello"
+    let r = match s { case "hi" { 1 } case "hello" { 2 } case _ { 0 } }
+    assert(r == 2)
+}
+
+test "match expr bool" {
+    let b = true
+    let r = match b { case true { 1 } case false { 0 } }
+    assert(r == 1)
+}
+
+# ── 2. Match as expression — type narrowing ──────────────────────────
+
+test "match expr type narrowing" {
+    fn describe(v) {
+        return match v {
+            case int x { "int:" ++ str(x) }
+            case string s { "str:" ++ s }
+            case _ { "other" }
+        }
+    }
+    assert(describe(42) == "int:42")
+    assert(describe("hi") == "str:hi")
+    assert(describe(true) == "other")
+}
+
+test "match expr with guard" {
+    let x = 15
+    let r = match x {
+        case n if n > 10 { "big" }
+        case n { "small" }
+    }
+    assert(r == "big")
+}
+
+test "match expr nested" {
+    let x = 2
+    let y = 3
+    let r = match x {
+        case 1 { y * 10 }
+        case 2 {
+            match y {
+                case 3 { 100 }
+                case _ { 0 }
+            }
+        }
+        case _ { 0 }
+    }
+    assert(r == 100)
+}
+
+# ── 3. F-string with nested braces ───────────────────────────────────
+
+test "fstring with match expression" {
+    let x = 2
+    let r = $"value: {match x { case 1 { "one" } case 2 { "two" } case _ { "?" } }}"
+    assert(r == "value: two")
+}
+
+test "fstring with arithmetic" {
+    let a = 3
+    let b = 4
+    let r = $"{a} + {b} = {a + b}"
+    assert(r == "3 + 4 = 7")
+}
+
+test "fstring with expression" {
+    let r = $"value: {42}"
+    assert(r == "value: 42")
+}
+
+test "fstring multiple interpolations" {
+    let name = "item"
+    let val = 42
+    let r = $"{name}={val}"
+    assert(r == "item=42")
+}
+
+# ── 4. Match as expression edge cases ────────────────────────────────
+
+test "match expr single arm" {
+    let x = 1
+    let r = match x { case 1 { 42 } }
+    assert(r == 42)
+}
+
+test "match expr used in arithmetic" {
+    let x = 3
+    let r = match x { case 1 { 10 } case 3 { 30 } case _ { 0 } } * 2
+    assert(r == 60)
+}
+
+test "match expr with fn call" {
+    fn classify(v) {
+        return match v {
+            case int x { "int" }
+            case _ { "other" }
+        }
+    }
+    assert(classify(5) == "int")
+    assert(classify("x") == "other")
+}

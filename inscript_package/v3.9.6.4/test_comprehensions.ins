@@ -1,0 +1,97 @@
+# v3.9.6.4 — Comprehensions + nested fns (.ins tests)
+# Run: python inscript.py --test v3.9.6.4/test_comprehensions.ins
+
+test "basic list comp [x*x for x in arr]" {
+    let arr = [1, 2, 3, 4]
+    let result = [x*x for x in arr]
+    assert(result[0] == 1)
+    assert(result[1] == 4)
+    assert(result[2] == 9)
+    assert(result[3] == 16)
+}
+
+test "list comp with filter [x for x in items if x > 2]" {
+    let items = [1, 2, 3, 4, 5]
+    let result = [x for x in items if x > 2]
+    assert(result[0] == 3)
+    assert(result[1] == 4)
+    assert(result[2] == 5)
+}
+
+test "list comp with expression [x*10 for x in arr]" {
+    let arr = [1, 2, 3]
+    let result = [x*10 for x in arr]
+    assert(result[0] == 10)
+    assert(result[1] == 20)
+    assert(result[2] == 30)
+}
+
+test "list comp with empty iterable" {
+    let empty = []
+    let result = [x for x in empty]
+    assert(result.length == 0)
+}
+
+test "list comp with scene var iterable" {
+    let data = [10, 20, 30]
+    let result = [x*2 for x in data]
+    assert(result[0] == 20)
+    assert(result[1] == 40)
+    assert(result[2] == 60)
+}
+
+test "nested fn inside on_start" {
+    fn double(x: int) { return x * 2 }
+    let result = double(5)
+    assert(result == 10)
+}
+
+test "nested fn captures scene var" {
+    let scale = 3
+    fn mul(x: int) { return x * scale }
+    let result = mul(7)
+    assert(result == 21)
+}
+
+test "nested fn with multiple params" {
+    fn add3(a: int, b: int, c: int) { return a + b + c }
+    let result = add3(1, 2, 3)
+    assert(result == 6)
+}
+
+test "nested fn calls another nested fn" {
+    fn add(a: int, b: int) { return a + b }
+    fn double(x: int) { return add(x, x) }
+    let result = double(5)
+    assert(result == 10)
+}
+
+test "list comp with nested fn" {
+    fn double(x: int) { return x * 2 }
+    let arr = [1, 2, 3]
+    let result = [double(x) for x in arr]
+    assert(result[0] == 2)
+    assert(result[1] == 4)
+    assert(result[2] == 6)
+}
+
+test "list comp inside nested fn" {
+    fn squares(arr: [int]) { return [x*x for x in arr] }
+    let result = squares([1, 2, 3])
+    assert(result[0] == 1)
+    assert(result[1] == 4)
+    assert(result[2] == 9)
+}
+
+test "nested fn with scene var and param" {
+    let offset = 100
+    fn add_offset(x: int) { return x + offset }
+    let result = add_offset(5)
+    assert(result == 105)
+}
+
+test "multiple nested fns in same scope" {
+    fn inc(x: int) { return x + 1 }
+    let result = inc(5)
+    assert(result == 6)
+}

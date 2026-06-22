@@ -1,0 +1,71 @@
+# v1.8.4 — Type Inference for Method Chains (.ins tests)
+# Run: python inscript.py --test v1.8.4/test_v184.ins
+
+# Note: Static type inference tests require Python-level Analyzer access
+# and remain in test_v184.py.
+
+# ── 32. Runtime: map doubles correctly ───────────────────────────────
+
+test "map doubles correctly" {
+    let nums = [1, 2, 3, 4, 5]
+    let doubled = nums.map(fn(x) { return x * 2 })
+    assert(doubled == [2, 4, 6, 8, 10])
+}
+
+# ── 33. Runtime: filter keeps evens ──────────────────────────────────
+
+test "filter keeps evens" {
+    let nums = [1, 2, 3, 4, 5]
+    let evens = nums.filter(fn(x) { return x % 2 == 0 })
+    assert(evens == [2, 4])
+}
+
+# ── 34. Runtime: chained filter.map ──────────────────────────────────
+
+test "chained filter.map" {
+    let nums = [1, 2, 3, 4, 5]
+    let result = nums.filter(fn(x) { return x > 2 }).map(fn(x) { return x * 10 })
+    assert(result == [30, 40, 50])
+}
+
+# ── 35. v1.8.3 regression: enum matches at runtime ───────────────────
+
+test "enum match runtime" {
+    enum Color { Red; Green; Blue }
+    fn name(c: Color) {
+        match c {
+            case Color::Red   { return "red" }
+            case Color::Green { return "green" }
+            case Color::Blue  { return "blue" }
+        }
+    }
+    assert(name(Color::Green) == "green")
+}
+
+# ── 36. v1.8.3 regression: interface struct ──────────────────────────
+
+test "interface struct method works" {
+    interface Drawable { fn draw() -> void }
+    struct Sprite implements Drawable {
+        name: string = ""
+        fn draw() { return "drawing " + self.name }
+    }
+    let s = Sprite { name: "hero" }
+    assert(s.draw() == "drawing hero")
+}
+
+# ── 37. v1.8.2 regression: type alias ────────────────────────────────
+
+test "type alias runtime" {
+    type HP = int
+    let h: HP = 100
+    assert(h == 100)
+}
+
+# ── 38. v1.7.4 regression: null E0055 ───────────────────────────────
+
+test "null is error" {
+    let caught = false
+    try { let z = null } catch e { caught = true }
+    assert(caught)
+}

@@ -1,28 +1,49 @@
-# v3.9.6.27 — Physics: CCD (.ins tests)
+# v3.9.6.27 — Physics: continuous collision detection (.ins tests)
 # Run: python inscript.py --test v3.9.6.27/test_ccd.ins
 
-test "Body has ccd_enabled attr" {
+test "CCD off: fast rect passes through thin rect wall" {
     let w = PhysicsWorld()
-    let b = w.create_body(PhysicsShape.rect(10, 10), BODY_DYNAMIC, 1.0, "b", 0, 0)
-    assert(b.get_attr("is_dynamic") == true)
+    let b = w.create_body(PhysicsShape.rect(10, 10), BODY_DYNAMIC, 0.1, "bullet", 0, 50)
+    w.create_body(PhysicsShape.rect(10, 100), BODY_STATIC, 0.0, "wall", 50, 50)
+    b.set_attr("vx", 5000)
+    w.step(0.016)
+    assert(b.x > 55)
 }
 
-test "CCD prevents tunneling" {
+test "CCD on: fast rect stops at thin rect wall" {
     let w = PhysicsWorld()
-    let bullet = w.create_body(PhysicsShape.rect(4, 4), BODY_DYNAMIC, 1.0, "bullet", 50, 50)
-    bullet.set_attr("ccd_enabled", 1)
-    let wall = w.create_body(PhysicsShape.rect(4, 100), BODY_STATIC, 0.0, "wall", 105, 50)
-    bullet.set_attr("vx", 10000)
+    let b = w.create_body(PhysicsShape.rect(10, 10), BODY_DYNAMIC, 0.1, "bullet", 0, 50)
+    w.create_body(PhysicsShape.rect(10, 100), BODY_STATIC, 0.0, "wall", 50, 50)
+    b.ccd_enabled = true
+    b.set_attr("vx", 5000)
     w.step(0.016)
-    assert(bullet.x <= 105)
+    assert(b.x <= 55)
 }
 
-test "CCD can be disabled" {
+test "CCD off: fast rect passes through thin circle barrier" {
     let w = PhysicsWorld()
-    let bullet = w.create_body(PhysicsShape.rect(4, 4), BODY_DYNAMIC, 1.0, "bullet", 50, 50)
-    bullet.set_attr("ccd_enabled", 0)
-    let wall = w.create_body(PhysicsShape.rect(4, 100), BODY_STATIC, 0.0, "wall", 105, 50)
-    bullet.set_attr("vx", 10000)
+    let b = w.create_body(PhysicsShape.rect(10, 10), BODY_DYNAMIC, 0.1, "bullet", 0, 50)
+    w.create_body(PhysicsShape.circle(5), BODY_STATIC, 0.0, "ball", 50, 55)
+    b.set_attr("vx", 5000)
     w.step(0.016)
-    assert(bullet.x >= 200)
+    assert(b.x > 55)
+}
+
+test "CCD on: fast circle stops at thin rect wall" {
+    let w = PhysicsWorld()
+    let b = w.create_body(PhysicsShape.circle(8), BODY_DYNAMIC, 0.1, "ball", 0, 50)
+    w.create_body(PhysicsShape.rect(10, 100), BODY_STATIC, 0.0, "wall", 50, 50)
+    b.ccd_enabled = true
+    b.set_attr("vx", 5000)
+    w.step(0.016)
+    assert(b.x <= 58)
+}
+
+test "CCD off: fast circle passes through thin rect wall" {
+    let w = PhysicsWorld()
+    let b = w.create_body(PhysicsShape.circle(8), BODY_DYNAMIC, 0.1, "ball", 0, 50)
+    w.create_body(PhysicsShape.rect(10, 100), BODY_STATIC, 0.0, "wall", 50, 50)
+    b.set_attr("vx", 5000)
+    w.step(0.016)
+    assert(b.x > 55)
 }

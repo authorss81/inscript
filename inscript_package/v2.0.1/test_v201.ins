@@ -1,0 +1,162 @@
+# v2.0.1 — Range syntax: step, auto-descend, negative step (.ins tests)
+# Run: python inscript.py --test v2.0.1/test_v201.ins
+
+# ── 1. Basic step syntax ─────────────────────────────────────────────
+
+test "step 2" {
+    let a = []
+    for i in 0..10 step 2 { a = a + [i] }
+    assert(a == [0, 2, 4, 6, 8])
+}
+
+test "step 3" {
+    let a = []
+    for i in 0..12 step 3 { a = a + [i] }
+    assert(a == [0, 3, 6, 9])
+}
+
+test "step 5 inclusive" {
+    let a = []
+    for i in 0..=20 step 5 { a = a + [i] }
+    assert(a == [0, 5, 10, 15, 20])
+}
+
+test "step inclusive" {
+    let a = []
+    for i in 0..=9 step 3 { a = a + [i] }
+    assert(a == [0, 3, 6, 9])
+}
+
+test "step 1 explicit" {
+    let a = []
+    for i in 0..5 step 1 { a = a + [i] }
+    assert(a == [0, 1, 2, 3, 4])
+}
+
+# ── 2. Step as expression ────────────────────────────────────────────
+
+test "step variable" {
+    let s = 2
+    let a = []
+    for i in 0..8 step s { a = a + [i] }
+    assert(a == [0, 2, 4, 6])
+}
+
+test "step expression" {
+    let a = []
+    for i in 0..16 step 2 * 2 { a = a + [i] }
+    assert(a == [0, 4, 8, 12])
+}
+
+test "step fn result" {
+    fn get_step() { return 3 }
+    let a = []
+    for i in 0..9 step get_step() { a = a + [i] }
+    assert(a == [0, 3, 6])
+}
+
+# ── 3. Auto-descend (start > end, no step given) ─────────────────────
+
+test "auto descend basic" {
+    let a = []
+    for i in 5..1 { a = a + [i] }
+    assert(a == [5, 4, 3, 2])
+}
+
+test "auto descend inclusive" {
+    let a = []
+    for i in 5..=1 { a = a + [i] }
+    assert(a == [5, 4, 3, 2, 1])
+}
+
+test "auto descend sum" {
+    let s = 0
+    for i in 5..0 step -1 { s = s + i }
+    assert(s == 15)
+}
+
+test "auto descend to zero" {
+    let a = []
+    for i in 3..0 { a = a + [i] }
+    assert(a == [3, 2, 1])
+}
+
+test "auto descend large" {
+    let s = 0
+    for i in 100..=1 { s = s + i }
+    assert(s == 5050)
+}
+
+# ── 4. Explicit negative step ────────────────────────────────────────
+
+test "explicit negative step" {
+    let a = []
+    for i in 5..1 step -1 { a = a + [i] }
+    assert(a == [5, 4, 3, 2])
+}
+
+test "step minus 2" {
+    let a = []
+    for i in 10..0 step -2 { a = a + [i] }
+    assert(a == [10, 8, 6, 4, 2])
+}
+
+test "step minus 3 inclusive" {
+    let a = []
+    for i in 9..=0 step -3 { a = a + [i] }
+    assert(a == [9, 6, 3, 0])
+}
+
+# ── 5. Range stored in variable ──────────────────────────────────────
+
+test "range var with step" {
+    let r = 0..10 step 2
+    let a = []
+    for i in r { a = a + [i] }
+    assert(a == [0, 2, 4, 6, 8])
+}
+
+test "range var descend" {
+    let r = 5..1
+    let a = []
+    for i in r { a = a + [i] }
+    assert(a == [5, 4, 3, 2])
+}
+
+# ── 6. Backward compatibility ────────────────────────────────────────
+
+test "no step ascending" {
+    let a = []
+    for i in 0..5 { a = a + [i] }
+    assert(a == [0, 1, 2, 3, 4])
+}
+
+test "no step inclusive" {
+    let a = []
+    for i in 0..=3 { a = a + [i] }
+    assert(a == [0, 1, 2, 3])
+}
+
+test "step 1 inclusive range" {
+    let a = []
+    for i in 0..=5 step 1 { a = a + [i] }
+    assert(a == [0, 1, 2, 3, 4, 5])
+}
+
+test "same start end" {
+    let a = []
+    for i in 5..5 { a = a + [i] }
+    assert(a == [])
+}
+
+test "step larger than range" {
+    let a = []
+    for i in 0..10 step 100 { a = a + [i] }
+    assert(a == [0])
+}
+
+test "negative step large" {
+    let a = []
+    for i in 100..0 step -10 { a = a + [i] }
+    assert(a == [100, 90, 80, 70, 60, 50, 40, 30, 20, 10])
+}

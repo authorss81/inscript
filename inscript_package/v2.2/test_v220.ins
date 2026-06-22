@@ -1,0 +1,294 @@
+# v2.2 — Language enhancements (.ins tests)
+# ??=, with, destructuring params, named returns, regression
+# Run: python inscript.py --test v2.2/test_v220.ins
+
+# ── 1. ??=  null-coalescing assignment ───────────────────────────────
+
+test "??= writes when nil" {
+    let x = nil
+    x ??= 42
+    assert(x == 42)
+}
+
+test "??= skips when non-nil" {
+    let x = 10
+    x ??= 99
+    assert(x == 10)
+}
+
+test "??= treats 0 as non-nil" {
+    let x = 0
+    x ??= 99
+    assert(x == 0)
+}
+
+test "??= treats false as non-nil" {
+    let x = false
+    x ??= true
+    assert(x == false)
+}
+
+test "??= assigns string" {
+    let s = nil
+    s ??= "hello"
+    assert(s == "hello")
+}
+
+test "??= chain" {
+    let a = nil
+    let b = nil
+    let c = 7
+    a ??= 1
+    b ??= 2
+    c ??= 99
+    assert(a == 1)
+    assert(b == 2)
+    assert(c == 7)
+}
+
+test "??= evaluates rhs expr" {
+    let x = nil
+    let n = 5
+    x ??= n * n
+    assert(x == 25)
+}
+
+test "??= only assigns once" {
+    let x = nil
+    x ??= 10
+    x ??= 20
+    assert(x == 10)
+}
+
+# ── 2. with  clone-and-modify ────────────────────────────────────────
+
+test "with dict changes field" {
+    let p = {"x": 1.0, "y": 2.0}
+    let q = with p { .x = 99.0 }
+    assert(q["x"] == 99.0)
+}
+
+test "with dict keeps other fields" {
+    let p = {"x": 1.0, "y": 2.0}
+    let q = with p { .x = 99.0 }
+    assert(q["y"] == 2.0)
+}
+
+test "with dict does not mutate original" {
+    let p = {"x": 1.0, "y": 2.0}
+    let q = with p { .x = 99.0 }
+    assert(p["x"] == 1.0)
+}
+
+test "with dict multiple fields" {
+    let p = {"x": 1, "y": 2, "z": 3}
+    let q = with p { .x = 10, .z = 30 }
+    assert(q["x"] == 10)
+    assert(q["y"] == 2)
+    assert(q["z"] == 30)
+}
+
+test "with struct changes field" {
+    struct Vec { x: float = 0.0; y: float = 0.0 }
+    let v = Vec{x: 1.0, y: 2.0}
+    let w = with v { .x = 50.0 }
+    assert(w.x == 50.0)
+}
+
+test "with struct keeps field" {
+    struct Vec { x: float = 0.0; y: float = 0.0 }
+    let v = Vec{x: 1.0, y: 2.0}
+    let w = with v { .x = 50.0 }
+    assert(w.y == 2.0)
+}
+
+test "with struct original unchanged" {
+    struct Vec { x: float = 0.0; y: float = 0.0 }
+    let v = Vec{x: 1.0, y: 2.0}
+    let w = with v { .x = 50.0 }
+    assert(v.x == 1.0)
+}
+
+test "with chained" {
+    let p = {"a": 1, "b": 2}
+    let q = with (with p { .a = 10 }) { .b = 20 }
+    assert(q["a"] == 10)
+    assert(q["b"] == 20)
+}
+
+test "with can add new dict field" {
+    let p = {"x": 1}
+    let q = with p { .y = 42 }
+    assert(q["y"] == 42)
+}
+
+# ── 3. Destructuring params ──────────────────────────────────────────
+
+test "dict destruct basic" {
+    fn sq({x, y}: dict) -> float { return x * x + y * y }
+    let r = sq({"x": 3.0, "y": 4.0})
+    assert(r == 25.0)
+}
+
+test "dict destruct subset" {
+    fn greet({name}: dict) -> string { return "Hi " ++ name }
+    let r = greet({"name": "Ada", "age": 30})
+    assert(r == "Hi Ada")
+}
+
+test "dict destruct rest" {
+    fn first({name, ...rest}: dict) -> int { return rest["age"] }
+    let r = first({"name": "Ada", "age": 30})
+    assert(r == 30)
+}
+
+test "dict destruct three fields" {
+    fn vol({w, h, d}: dict) -> float { return w * h * d }
+    let r = vol({"w": 2.0, "h": 3.0, "d": 4.0})
+    assert(r == 24.0)
+}
+
+test "array destruct basic" {
+    fn add([a, b]: []) -> int { return a + b }
+    let r = add([3, 7])
+    assert(r == 10)
+}
+
+test "array destruct head" {
+    fn head([h, ...rest]: []) -> int { return h }
+    let r = head([42, 1, 2])
+    assert(r == 42)
+}
+
+test "array destruct rest" {
+    fn tail([h, ...rest]: []) -> [] { return rest }
+    let r = tail([1, 2, 3, 4])
+    assert(r == [2, 3, 4])
+}
+
+test "array destruct third element" {
+    fn third([a, b, c, ...rest]: []) -> int { return c }
+    let r = third([10, 20, 30, 40])
+    assert(r == 30)
+}
+
+test "array destruct no rest" {
+    fn pair([a, b]: []) -> [] { return [a, b] }
+    let r = pair([5, 6])
+    assert(r == [5, 6])
+}
+
+test "dict destruct into struct" {
+    struct Point { x: float = 0.0; y: float = 0.0 }
+    fn from_dict({x, y}: dict) -> Point {
+        return Point{x: x, y: y}
+    }
+    let p = from_dict({"x": 3.0, "y": 4.0})
+    assert(p.x == 3.0)
+    assert(p.y == 4.0)
+}
+
+# ── 4. Named return values ───────────────────────────────────────────
+
+test "named return basic" {
+    fn bounds() -> (lo: float, hi: float) { return (lo: 0.0, hi: 100.0) }
+    let r = bounds()
+    assert(r["lo"] == 0.0)
+    assert(r["hi"] == 100.0)
+}
+
+test "named return conditional" {
+    fn minmax(a: float, b: float) -> (mn: float, mx: float) {
+        if a < b { return (mn: a, mx: b) }
+        return (mn: b, mx: a)
+    }
+    let r = minmax(7.0, 3.0)
+    assert(r["mn"] == 3.0)
+    assert(r["mx"] == 7.0)
+}
+
+test "named return three fields" {
+    fn stats(a: float, b: float, c: float) -> (sum: float, avg: float, count: int) {
+        return (sum: a + b + c, avg: (a + b + c) / 3.0, count: 3)
+    }
+    let r = stats(1.0, 2.0, 3.0)
+    assert(r["sum"] == 6.0)
+    assert(r["avg"] == 2.0)
+    assert(r["count"] == 3)
+}
+
+test "named return used in expr" {
+    fn divmod(a: int, b: int) -> (q: int, rem: int) {
+        return (q: a // b, rem: a % b)
+    }
+    let r = divmod(17, 5)
+    let total = r["q"] * 5 + r["rem"]
+    assert(total == 17)
+}
+
+test "named return with with expression" {
+    fn origin() -> (x: float, y: float) {
+        return (x: 0.0, y: 0.0)
+    }
+    let p = origin()
+    let q = with p { .x = 5.0 }
+    assert(q["x"] == 5.0)
+    assert(q["y"] == 0.0)
+}
+
+# ── 5. Regression ────────────────────────────────────────────────────
+
+test "regression: impl operator overload" {
+    struct V2 { x: float = 0.0; y: float = 0.0 }
+    impl Add for V2 {
+        fn +(other: V2) -> V2 {
+            return V2{x: self.x + other.x, y: self.y + other.y}
+        }
+    }
+    let a = V2{x: 1.0, y: 2.0}
+    let b = V2{x: 3.0, y: 4.0}
+    let c = a + b
+    assert(c.x == 4.0)
+    assert(c.y == 6.0)
+}
+
+test "regression: const float" {
+    const TAU: float = 6.28318
+    let r = TAU / 2.0
+    assert(r == 3.14159)
+}
+
+test "regression: triple string" {
+    let s = """hello
+world"""
+    assert(s == "hello\nworld")
+}
+
+test "regression: chained comparison true" {
+    let x = 5
+    let r = 0 < x < 10
+    assert(r)
+}
+
+test "regression: chained comparison false" {
+    let x = 15
+    let r = 0 < x < 10
+    assert(!r)
+}
+
+test "regression: is type check" {
+    let x = 42
+    let r = x is int
+    assert(r)
+}
+
+test "regression: labeled loop break outer" {
+    let r = 0
+    outer: for j in 0..3 {
+        for k in 0..3 {
+            if k == 1 { break outer }
+            r = r + 1
+        }
+    }
+    assert(r == 1)
+}

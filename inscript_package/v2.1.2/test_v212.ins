@@ -1,0 +1,332 @@
+# v2.1.2 — vector2, tween, collision packages (.ins tests)
+# Run: python inscript.py --test v2.1.2/test_v212.ins
+
+# ── vector2 package ──────────────────────────────────────────────────
+
+test "vec2_len" {
+    import "./inscript-packages/packages/vector2/vector2.ins" as v2
+    let r = v2.vec2_len(3.0, 4.0)
+    assert(r == 5.0)
+}
+
+test "vec2_len_sq" {
+    import "./inscript-packages/packages/vector2/vector2.ins" as v2
+    let r = v2.vec2_len_sq(3.0, 4.0)
+    assert(r == 25.0)
+}
+
+test "vec2_norm" {
+    import "./inscript-packages/packages/vector2/vector2.ins" as v2
+    let r = v2.vec2_norm(3.0, 4.0)
+    assert(r["x"] == 0.6)
+    assert(r["y"] == 0.8)
+}
+
+test "vec2_norm zero" {
+    import "./inscript-packages/packages/vector2/vector2.ins" as v2
+    let r = v2.vec2_norm(0.0, 0.0)
+    assert(r["x"] == 0.0)
+    assert(r["y"] == 0.0)
+}
+
+test "vec2_dot perpendicular" {
+    import "./inscript-packages/packages/vector2/vector2.ins" as v2
+    let r = v2.vec2_dot(1.0, 0.0, 0.0, 1.0)
+    assert(r == 0.0)
+}
+
+test "vec2_dot parallel" {
+    import "./inscript-packages/packages/vector2/vector2.ins" as v2
+    let r = v2.vec2_dot(2.0, 0.0, 3.0, 0.0)
+    assert(r == 6.0)
+}
+
+test "vec2_cross" {
+    import "./inscript-packages/packages/vector2/vector2.ins" as v2
+    let r = v2.vec2_cross(1.0, 0.0, 0.0, 1.0)
+    assert(r == 1.0)
+}
+
+test "vec2_add" {
+    import "./inscript-packages/packages/vector2/vector2.ins" as v2
+    let r = v2.vec2_add(1.0, 2.0, 3.0, 4.0)
+    assert(r["x"] == 4.0)
+    assert(r["y"] == 6.0)
+}
+
+test "vec2_sub" {
+    import "./inscript-packages/packages/vector2/vector2.ins" as v2
+    let r = v2.vec2_sub(5.0, 3.0, 2.0, 1.0)
+    assert(r["x"] == 3.0)
+    assert(r["y"] == 2.0)
+}
+
+test "vec2_scale" {
+    import "./inscript-packages/packages/vector2/vector2.ins" as v2
+    let r = v2.vec2_scale(2.0, 3.0, 4.0)
+    assert(r["x"] == 8.0)
+    assert(r["y"] == 12.0)
+}
+
+test "vec2_dist" {
+    import "./inscript-packages/packages/vector2/vector2.ins" as v2
+    let r = v2.vec2_dist(0.0, 0.0, 3.0, 4.0)
+    assert(r == 5.0)
+}
+
+test "vec2_dist_sq" {
+    import "./inscript-packages/packages/vector2/vector2.ins" as v2
+    let r = v2.vec2_dist_sq(0.0, 0.0, 3.0, 4.0)
+    assert(r == 25.0)
+}
+
+test "vec2_lerp" {
+    import "./inscript-packages/packages/vector2/vector2.ins" as v2
+    let r = v2.vec2_lerp(0.0, 0.0, 10.0, 20.0, 0.5)
+    assert(r["x"] == 5.0)
+    assert(r["y"] == 10.0)
+}
+
+test "vec2_rotate_90" {
+    import "./inscript-packages/packages/vector2/vector2.ins" as v2
+    let r = v2.vec2_rotate(1.0, 0.0, 1.57079632679)  # π/2
+    assert(r["x"] > -0.001 && r["x"] < 0.001)
+    assert(r["y"] > 0.999 && r["y"] < 1.001)
+}
+
+test "vec2_angle right" {
+    import "./inscript-packages/packages/vector2/vector2.ins" as v2
+    let r = v2.vec2_angle(1.0, 0.0)
+    assert(r == 0.0)
+}
+
+test "vec2_reflect" {
+    import "./inscript-packages/packages/vector2/vector2.ins" as v2
+    let r = v2.vec2_reflect(1.0, -1.0, 0.0, 1.0)
+    assert(r["x"] == 1.0)
+    assert(r["y"] == 1.0)
+}
+
+test "vec2_project" {
+    import "./inscript-packages/packages/vector2/vector2.ins" as v2
+    let r = v2.vec2_project(3.0, 4.0, 1.0, 0.0)
+    assert(r["x"] == 3.0)
+    assert(r["y"] == 0.0)
+}
+
+# ── tween package ────────────────────────────────────────────────────
+
+test "tween_tick advance" {
+    import "./inscript-packages/packages/tween/tween.ins" as t
+    let r = t.tween_tick(0.2, 1.0, 0.3)
+    assert(r == 0.5)
+}
+
+test "tween_tick clamp" {
+    import "./inscript-packages/packages/tween/tween.ins" as t
+    let r = t.tween_tick(0.9, 1.0, 0.5)
+    assert(r == 1.0)
+}
+
+test "tween_done false" {
+    import "./inscript-packages/packages/tween/tween.ins" as t
+    let r = t.tween_done(0.5, 1.0)
+    assert(!r)
+}
+
+test "tween_done true" {
+    import "./inscript-packages/packages/tween/tween.ins" as t
+    let r = t.tween_done(1.0, 1.0)
+    assert(r)
+}
+
+test "tween_t mid" {
+    import "./inscript-packages/packages/tween/tween.ins" as t
+    let r = t.tween_t(0.5, 2.0)
+    assert(r == 0.25)
+}
+
+test "tween_t zero duration" {
+    import "./inscript-packages/packages/tween/tween.ins" as t
+    let r = t.tween_t(0.0, 0.0)
+    assert(r == 1.0)
+}
+
+test "tween_float" {
+    import "./inscript-packages/packages/tween/tween.ins" as t
+    let r = t.tween_float(0.0, 100.0, 0.25)
+    assert(r == 25.0)
+}
+
+test "tween_int" {
+    import "./inscript-packages/packages/tween/tween.ins" as t
+    let r = t.tween_int(0, 10, 0.5)
+    assert(r == 5)
+}
+
+test "tween_smooth endpoints" {
+    import "./inscript-packages/packages/tween/tween.ins" as t
+    let a = t.tween_smooth(0.0, 1.0, 0.0)
+    let b = t.tween_smooth(0.0, 1.0, 1.0)
+    assert(a == 0.0)
+    assert(b == 1.0)
+}
+
+test "tween_ease_in" {
+    import "./inscript-packages/packages/tween/tween.ins" as t
+    let r = t.tween_ease_in(0.0, 100.0, 0.5)
+    assert(r == 25.0)
+}
+
+test "tween_ease_out" {
+    import "./inscript-packages/packages/tween/tween.ins" as t
+    let r = t.tween_ease_out(0.0, 100.0, 0.5)
+    assert(r == 75.0)
+}
+
+test "tween_bounce" {
+    import "./inscript-packages/packages/tween/tween.ins" as t
+    let r = t.tween_bounce(0.0, 100.0, 0.5)
+    assert(r != 50.0)
+}
+
+test "tween_elastic" {
+    import "./inscript-packages/packages/tween/tween.ins" as t
+    let r = t.tween_elastic(0.0, 100.0, 0.5)
+    assert(r != 50.0)
+}
+
+test "tween_loop" {
+    import "./inscript-packages/packages/tween/tween.ins" as t
+    let r = t.tween_loop(2.5, 1.0)
+    assert(r == 0.5)
+}
+
+test "tween_pingpong forward" {
+    import "./inscript-packages/packages/tween/tween.ins" as t
+    let r = t.tween_pingpong(0.25, 1.0)
+    assert(r == 0.25)
+}
+
+test "tween_pingpong back" {
+    import "./inscript-packages/packages/tween/tween.ins" as t
+    let r = t.tween_pingpong(1.5, 1.0)
+    assert(r == 0.5)
+}
+
+# ── collision package ────────────────────────────────────────────────
+
+test "circle_circle hit" {
+    import "./inscript-packages/packages/collision/collision.ins" as col
+    let r = col.circle_circle(0.0, 0.0, 5.0, 3.0, 0.0, 3.0)
+    assert(r)
+}
+
+test "circle_circle miss" {
+    import "./inscript-packages/packages/collision/collision.ins" as col
+    let r = col.circle_circle(0.0, 0.0, 2.0, 10.0, 0.0, 2.0)
+    assert(!r)
+}
+
+test "circle_circle_depth hit" {
+    import "./inscript-packages/packages/collision/collision.ins" as col
+    let r = col.circle_circle_depth(0.0, 0.0, 5.0, 8.0, 0.0, 5.0)
+    assert(r == 2.0)
+}
+
+test "circle_circle_depth miss" {
+    import "./inscript-packages/packages/collision/collision.ins" as col
+    let r = col.circle_circle_depth(0.0, 0.0, 2.0, 10.0, 0.0, 2.0)
+    assert(r < 0.0)
+}
+
+test "aabb_aabb hit" {
+    import "./inscript-packages/packages/collision/collision.ins" as col
+    let r = col.aabb_aabb(0.0, 0.0, 10.0, 10.0, 5.0, 5.0, 10.0, 10.0)
+    assert(r)
+}
+
+test "aabb_aabb miss" {
+    import "./inscript-packages/packages/collision/collision.ins" as col
+    let r = col.aabb_aabb(0.0, 0.0, 5.0, 5.0, 10.0, 0.0, 5.0, 5.0)
+    assert(!r)
+}
+
+test "aabb_aabb touching" {
+    import "./inscript-packages/packages/collision/collision.ins" as col
+    let r = col.aabb_aabb(0.0, 0.0, 5.0, 5.0, 5.0, 0.0, 5.0, 5.0)
+    assert(!r)
+}
+
+test "aabb_aabb_mtv x" {
+    import "./inscript-packages/packages/collision/collision.ins" as col
+    let r = col.aabb_aabb_mtv(0.0, 0.0, 10.0, 10.0, 8.0, 0.0, 10.0, 10.0)
+    assert(r["dx"] != 0.0)
+    assert(r["dy"] == 0.0)
+}
+
+test "aabb_aabb_mtv miss" {
+    import "./inscript-packages/packages/collision/collision.ins" as col
+    let r = col.aabb_aabb_mtv(0.0, 0.0, 5.0, 5.0, 20.0, 0.0, 5.0, 5.0)
+    assert(r["dx"] == 0.0)
+}
+
+test "circle_aabb hit" {
+    import "./inscript-packages/packages/collision/collision.ins" as col
+    let r = col.circle_aabb(5.0, 5.0, 3.0, 0.0, 0.0, 10.0, 10.0)
+    assert(r)
+}
+
+test "circle_aabb miss" {
+    import "./inscript-packages/packages/collision/collision.ins" as col
+    let r = col.circle_aabb(20.0, 20.0, 3.0, 0.0, 0.0, 10.0, 10.0)
+    assert(!r)
+}
+
+test "circle_aabb corner hit" {
+    import "./inscript-packages/packages/collision/collision.ins" as col
+    let r = col.circle_aabb(11.0, 11.0, 2.0, 0.0, 0.0, 10.0, 10.0)
+    assert(r)
+}
+
+test "point_in_aabb inside" {
+    import "./inscript-packages/packages/collision/collision.ins" as col
+    let r = col.point_in_aabb(5.0, 5.0, 0.0, 0.0, 10.0, 10.0)
+    assert(r)
+}
+
+test "point_in_aabb outside" {
+    import "./inscript-packages/packages/collision/collision.ins" as col
+    let r = col.point_in_aabb(15.0, 5.0, 0.0, 0.0, 10.0, 10.0)
+    assert(!r)
+}
+
+test "point_in_circle inside" {
+    import "./inscript-packages/packages/collision/collision.ins" as col
+    let r = col.point_in_circle(3.0, 4.0, 0.0, 0.0, 6.0)
+    assert(r)
+}
+
+test "point_in_circle outside" {
+    import "./inscript-packages/packages/collision/collision.ins" as col
+    let r = col.point_in_circle(5.0, 0.0, 0.0, 0.0, 4.0)
+    assert(!r)
+}
+
+test "ray_aabb hit" {
+    import "./inscript-packages/packages/collision/collision.ins" as col
+    let r = col.ray_aabb(0.0, 5.0, 1.0, 0.0, 10.0, 0.0, 10.0, 10.0)
+    assert(r >= 0.0)
+}
+
+test "ray_aabb miss" {
+    import "./inscript-packages/packages/collision/collision.ins" as col
+    let r = col.ray_aabb(0.0, 5.0, -1.0, 0.0, 10.0, 0.0, 10.0, 10.0)
+    assert(r == -1.0)
+}
+
+test "ray_aabb distance" {
+    import "./inscript-packages/packages/collision/collision.ins" as col
+    let r = col.ray_aabb(0.0, 5.0, 1.0, 0.0, 10.0, 0.0, 10.0, 10.0)
+    assert(r == 10.0)
+}

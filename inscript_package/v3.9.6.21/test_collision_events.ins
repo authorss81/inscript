@@ -1,11 +1,93 @@
 # v3.9.6.21 — Physics collision events (.ins tests)
 # Run: python inscript.py --test v3.9.6.21/test_collision_events.ins
 
-test "basic collision concept" {
-    assert(true)
+test "rect vs rect collision detected via callback" {
+    let w = PhysicsWorld(0, 0)
+    let a = w.create_body(PhysicsShape.rect(32, 32), BODY_DYNAMIC, 1.0, "a", 0, 0)
+    let b = w.create_body(PhysicsShape.rect(32, 32), BODY_DYNAMIC, 1.0, "b", 10, 0)
+    let hit = false
+    w.on_begin_contact(|ab, bb, c| { hit = true })
+    w.step(0.016)
+    assert(hit)
 }
 
-test "contact concept" {
-    let w = PhysicsWorld()
-    assert(w != nil)
+test "circle vs circle collision detected" {
+    let w = PhysicsWorld(0, 0)
+    let a = w.create_body(PhysicsShape.circle(16), BODY_DYNAMIC, 1.0, "a", 0, 0)
+    let b = w.create_body(PhysicsShape.circle(16), BODY_DYNAMIC, 1.0, "b", 20, 0)
+    let hit = false
+    w.on_begin_contact(|ab, bb, c| { hit = true })
+    w.step(0.016)
+    assert(hit)
+}
+
+test "rect vs circle collision detected" {
+    let w = PhysicsWorld(0, 0)
+    let a = w.create_body(PhysicsShape.rect(32, 32), BODY_DYNAMIC, 1.0, "rect", 0, 0)
+    let b = w.create_body(PhysicsShape.circle(16), BODY_DYNAMIC, 1.0, "circle", 15, 0)
+    let hit = false
+    w.on_begin_contact(|ab, bb, c| { hit = true })
+    w.step(0.016)
+    assert(hit)
+}
+
+test "contact info has normal and penetration" {
+    let w = PhysicsWorld(0, 0)
+    let a = w.create_body(PhysicsShape.rect(32, 32), BODY_DYNAMIC, 1.0, "a", 0, 0)
+    let b = w.create_body(PhysicsShape.rect(32, 32), BODY_DYNAMIC, 1.0, "b", 10, 0)
+    let nx = nil
+    let ny = nil
+    let pen = nil
+    w.on_begin_contact(|ab, bb, c| {
+        nx = c.normal_x
+        ny = c.normal_y
+        pen = c.penetration
+    })
+    w.step(0.016)
+    assert(nx != nil)
+    assert(ny != nil)
+    assert(pen != nil)
+    assert(pen > 0)
+}
+
+test "no collision when bodies far apart" {
+    let w = PhysicsWorld(0, 0)
+    let a = w.create_body(PhysicsShape.rect(16, 16), BODY_DYNAMIC, 1.0, "a", 0, 0)
+    let b = w.create_body(PhysicsShape.rect(16, 16), BODY_DYNAMIC, 1.0, "b", 500, 0)
+    let hit = false
+    w.on_begin_contact(|ab, bb, c| { hit = true })
+    w.step(0.016)
+    assert(!hit)
+}
+
+test "on_end_contact fires when bodies separate" {
+    let w = PhysicsWorld(0, 0)
+    let a = w.create_body(PhysicsShape.rect(32, 32), BODY_DYNAMIC, 1.0, "a", 0, 0)
+    let b = w.create_body(PhysicsShape.rect(32, 32), BODY_DYNAMIC, 1.0, "b", 10, 0)
+    let ended = false
+    w.on_end_contact(|ab, bb| { ended = true })
+    w.step(0.016)
+    a.set_attr("x", -100)
+    b.set_attr("x", 100)
+    w.step(0.016)
+    assert(ended)
+}
+
+test "on_pre_solve fires before collision" {
+    let w = PhysicsWorld(0, 0)
+    let a = w.create_body(PhysicsShape.rect(32, 32), BODY_DYNAMIC, 1.0, "a", 0, 0)
+    let b = w.create_body(PhysicsShape.rect(32, 32), BODY_DYNAMIC, 1.0, "b", 10, 0)
+    let pre = false
+    w.on_pre_solve(|ab, bb, c| { pre = true })
+    w.step(0.016)
+    assert(pre)
+}
+
+test "dynamic body bounces off static floor" {
+    let w = PhysicsWorld(0, 500)
+    let floor = w.create_body(PhysicsShape.rect(64, 16), BODY_STATIC, 0.0, "floor", 0, 0)
+    let ball = w.create_body(PhysicsShape.circle(8), BODY_DYNAMIC, 1.0, "ball", 0, -20)
+    ball.set_attr("vy", 50)
+    w.step(0.016)
+    assert(ball.get_attr("vy") >= 0)
 }

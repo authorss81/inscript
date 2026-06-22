@@ -1,0 +1,13 @@
+# test_v160.ins — v1.6: Tooling & Developer Experience
+#
+# NOTE: All v1.6 tests remain in test_v160.py because they test
+# CLI flags and infrastructure: --check-all, --fmt-all, --strict,
+# REPL .lint/.strict commands, and helper functions (_check_all_files,
+# _fmt_all_files). These involve subprocess calls and source code
+# inspection that cannot be expressed as InScript execution tests.
+#
+# The regression tests (defer, repeat-until, type-narrow, constraints,
+# module APIs) are already covered by v1.4/test_v140.ins and
+# v1.5/test_v150.ins.
+#
+# See test_v160.py for the full test suite.

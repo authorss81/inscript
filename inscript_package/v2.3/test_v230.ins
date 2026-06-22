@@ -1,0 +1,288 @@
+# v2.3 — Concurrency & Async (.ins tests)
+# async/await, spawn, channel, select, async for, mutex, rwlock, timer
+# Run: python inscript.py --test v2.3/test_v230.ins
+
+# ── 1. async / await ─────────────────────────────────────────────────
+
+test "async fn basic" {
+    async fn add(a: int, b: int) -> int { return a + b }
+    let r = await add(3, 4)
+    assert(r == 7)
+}
+
+test "async chain double" {
+    async fn double(n: int) -> int { return n * 2 }
+    async fn quad(n: int) -> int {
+        let d = await double(n)
+        return await double(d)
+    }
+    let r = await quad(5)
+    assert(r == 20)
+}
+
+test "async conditional" {
+    async fn max_of(a: int, b: int) -> int {
+        if a > b { return a }
+        return b
+    }
+    let r = await max_of(3, 7)
+    assert(r == 7)
+}
+
+test "await plain value passthrough" {
+    let r = await 42
+    assert(r == 42)
+}
+
+test "async string result" {
+    async fn greet(name: string) -> string { return "Hi " ++ name }
+    let r = await greet("Ada")
+    assert(r == "Hi Ada")
+}
+
+# ── 2. spawn + InScriptTask ──────────────────────────────────────────
+
+test "spawn + join result" {
+    let t = spawn fn() -> int { return 21 + 21 }()
+    let r = t.join()
+    assert(r == 42)
+}
+
+test "spawn done after join" {
+    let t = spawn fn() -> int { return 1 }()
+    t.join()
+    assert(t.done)
+}
+
+test "spawn async fn" {
+    async fn compute() -> int { return 7 * 6 }
+    let t = spawn compute()
+    let r = t.join()
+    assert(r == 42)
+}
+
+test "spawn string" {
+    let t = spawn fn() -> string { return "hello" }()
+    let r = t.join()
+    assert(r == "hello")
+}
+
+test "spawn multiple" {
+    let t1 = spawn fn() -> int { return 10 }()
+    let t2 = spawn fn() -> int { return 20 }()
+    let r = t1.join() + t2.join()
+    assert(r == 30)
+}
+
+# ── 3. channel ───────────────────────────────────────────────────────
+
+test "channel send/recv" {
+    let ch = channel(10)
+    ch.send(42)
+    let v = ch.recv()
+    assert(v == 42)
+}
+
+test "channel generic syntax" {
+    let ch = channel<int>(10)
+    ch.send(99)
+    let v = ch.recv()
+    assert(v == 99)
+}
+
+test "channel string" {
+    let ch = channel<string>(5)
+    ch.send("hello")
+    let v = ch.recv()
+    assert(v == "hello")
+}
+
+test "try_recv empty = nil" {
+    let ch = channel(5)
+    let v = ch.try_recv()
+    assert(v == nil)
+}
+
+test "try_recv with value" {
+    let ch = channel(5)
+    ch.send(7)
+    let v = ch.try_recv()
+    assert(v == 7)
+}
+
+test "channel size" {
+    let ch = channel(10)
+    ch.send(1)
+    ch.send(2)
+    let s = ch.size
+    assert(s == 2)
+}
+
+test "channel is_empty" {
+    let ch = channel(5)
+    assert(ch.is_empty)
+}
+
+test "channel close" {
+    let ch = channel(5)
+    ch.close()
+    assert(ch.closed)
+}
+
+test "channel multiple messages" {
+    let ch = channel(10)
+    ch.send(10)
+    ch.send(20)
+    ch.send(30)
+    let a = ch.recv()
+    let b = ch.recv()
+    let c = ch.recv()
+    let total = a + b + c
+    assert(total == 60)
+}
+
+test "channel FIFO order" {
+    let ch = channel(10)
+    ch.send(1)
+    ch.send(2)
+    ch.send(3)
+    let first = ch.recv()
+    assert(first == 1)
+}
+
+# ── 4. select ────────────────────────────────────────────────────────
+
+test "select recv branch" {
+    let ch = channel(5)
+    ch.send(42)
+    let result = 0
+    select {
+        case x = ch.recv() { result = x }
+        case timeout(0) { result = -1 }
+    }
+    assert(result == 42)
+}
+
+test "select timeout fallback" {
+    let ch = channel(5)
+    let result = 0
+    select {
+        case x = ch.recv() { result = x }
+        case timeout(0) { result = -1 }
+    }
+    assert(result == -1)
+}
+
+test "select send" {
+    let ch = channel(10)
+    let sent = false
+    select {
+        case ch.send(99) { sent = true }
+        case timeout(0) { sent = false }
+    }
+    let v = ch.recv()
+    assert(sent)
+    assert(v == 99)
+}
+
+# ── 5. async for ─────────────────────────────────────────────────────
+
+test "async for sum" {
+    let ch = channel(10)
+    ch.send(1)
+    ch.send(2)
+    ch.send(3)
+    ch.close()
+    let total = 0
+    async for v in ch {
+        total = total + v
+    }
+    assert(total == 6)
+}
+
+test "async for count" {
+    let ch = channel(10)
+    ch.send(10)
+    ch.send(20)
+    ch.send(30)
+    ch.close()
+    let count = 0
+    async for v in ch {
+        count = count + 1
+    }
+    assert(count == 3)
+}
+
+test "async for empty channel" {
+    let ch = channel(10)
+    ch.close()
+    let count = 0
+    async for v in ch {
+        count = count + 1
+    }
+    assert(count == 0)
+}
+
+# ── 6. mutex ─────────────────────────────────────────────────────────
+
+test "mutex set + value" {
+    let m = mutex(0)
+    m.set(42)
+    let v = m.value
+    assert(v == 42)
+}
+
+test "mutex initial value" {
+    let m = mutex(100)
+    let v = m.value
+    assert(v == 100)
+}
+
+test "mutex nil value" {
+    let m = mutex(nil)
+    let v = m.value
+    assert(v == nil)
+}
+
+# ── 7. rwlock ────────────────────────────────────────────────────────
+
+test "rwlock initial value" {
+    let rw = rwlock(10)
+    let v = rw.value
+    assert(v == 10)
+}
+
+test "rwlock string value" {
+    let rw = rwlock("hello")
+    let v = rw.value
+    assert(v == "hello")
+}
+
+# ── 8. timer namespace ───────────────────────────────────────────────
+
+test "timer.after returns cancellable handle" {
+    import "timer" as timer
+    let h = timer.after(10000, fn() { })
+    assert(h.cancel != nil)
+}
+
+test "timer.after cancel no error" {
+    import "timer" as timer
+    let h = timer.after(10000, fn() { })
+    h.cancel()
+    assert(true)
+}
+
+test "timer.every cancel no error" {
+    import "timer" as timer
+    let h = timer.every(10000, fn() { })
+    h.cancel()
+    assert(true)
+}
+
+test "timer.now returns positive int" {
+    import "timer" as timer
+    let t = timer.now()
+    assert(t is int)
+    assert(t > 0)
+}

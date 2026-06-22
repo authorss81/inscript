@@ -1,0 +1,12 @@
+# test_v2130.ins — v2.13.0: Studio Bridge v2 + iOS Export
+#
+# NOTE: All Studio Bridge v2 and iOS export tests remain in test_v2130.py
+# because they test Python-level infrastructure: _InputManager emulation,
+# _GameProcess subprocess management, Bridge HTTP RPC (start_game,
+# stop_game, game_status, set_node_prop, add_node, remove_node,
+# get_live_scene, set_breakpoints, debug_stop, emulate_input), and
+# build_ios export scaffolding. These involve subprocess management,
+# HTTP servers, file I/O, and TOML parsing that cannot be expressed
+# as InScript execution tests.
+#
+# See test_v2130.py for the full test suite.

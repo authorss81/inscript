@@ -1,0 +1,76 @@
+# v1.9.7 — True async/await via asyncio (.ins tests)
+# Run: python inscript.py --test v1.9.7/test_v197.ins
+#
+# Note: InScriptCoroutine type/repr/Promise<T> type tests require Python-level
+# access and remain in test_v197.py.
+
+test "await_string_return" {
+    async fn greet() -> string { return "hello" }
+    assert(await greet() == "hello")
+}
+
+test "await_int_return" {
+    async fn double(n: int) -> int { return n * 2 }
+    assert(await double(5) == 10)
+}
+
+test "await_bool_return" {
+    async fn is_even(n: int) -> bool { return n % 2 == 0 }
+    assert(await is_even(4) == true)
+}
+
+test "await_with_local_var" {
+    async fn compute() -> int {
+        let x = 10
+        let y = x * 3
+        return y
+    }
+    assert(await compute() == 30)
+}
+
+test "await_stored_in_var" {
+    async fn fetch() -> int { return 42 }
+    let result = await fetch()
+    assert(result == 42)
+}
+
+test "two_sequential_awaits" {
+    async fn one() -> int { return 1 }
+    async fn two() -> int { return 2 }
+    let a = await one()
+    let b = await two()
+    assert(a + b == 3)
+}
+
+test "three_sequential_awaits" {
+    async fn val(n: int) -> int { return n }
+    let x = await val(10)
+    let y = await val(20)
+    let z = await val(30)
+    assert(x + y + z == 60)
+}
+
+test "inner_async await" {
+    async fn inner() -> int { return 99 }
+    async fn outer() -> int { return await inner() }
+    assert(await outer() == 99)
+}
+
+test "nested_async_chain" {
+    async fn base() -> int { return 5 }
+    async fn mid() -> int { return (await base()) * 2 }
+    async fn top() -> int { return (await mid()) + 1 }
+    assert(await top() == 11)
+}
+
+test "nested_async_with_arg" {
+    async fn square(n: int) -> int { return n * n }
+    async fn sum_squares(a: int, b: int) -> int {
+        return (await square(a)) + (await square(b))
+    }
+    assert(await sum_squares(3, 4) == 25)
+}
+
+test "await_plain_int" { assert(await 42 == 42) }
+test "await_plain_string" { assert(await "hello" == "hello") }
+test "await_plain_bool" { assert(await true == true) }

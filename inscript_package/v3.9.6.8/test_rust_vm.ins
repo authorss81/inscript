@@ -1,0 +1,58 @@
+# v3.9.6.8 — Rust VM benchmarks (.ins tests)
+# Tests that the Rust inscript_parser extension works correctly
+# Run: python inscript.py --test v3.9.6.8/test_rust_vm.ins
+
+test "inscript_parser module is importable" {
+    import "py:inscript_parser" as rp
+    assert(rp != nil)
+}
+
+test "inscript_parser lex function works" {
+    import "py:inscript_parser" as rp
+    let toks = rp.lex("let x = 42")
+    assert(len(toks) >= 4)
+}
+
+test "inscript_parser lex handles keywords" {
+    import "py:inscript_parser" as rp
+    let toks = rp.lex("if true { let x = 1 } else { let x = 2 }")
+    assert(len(toks) >= 10)
+}
+
+test "inscript_parser lex handles f-strings" {
+    import "py:inscript_parser" as rp
+    let toks = rp.lex("let s = \"hello {name}\"")
+    assert(len(toks) >= 4)
+}
+
+test "inscript_parser compile function exists" {
+    import "py:inscript_parser" as rp
+    assert(rp.compile != nil)
+}
+
+test "inscript_parser compile_and_run function exists" {
+    import "py:inscript_parser" as rp
+    assert(rp.compile_and_run != nil)
+}
+
+test "inscript_parser PyParser class exists" {
+    import "py:inscript_parser" as rp
+    assert(rp.PyParser != nil)
+}
+
+test "inscript_parser parse_tokens function exists" {
+    import "py:inscript_parser" as rp
+    assert(rp.parse_tokens != nil)
+}
+
+test "inscript_parser lex handles math expressions" {
+    import "py:inscript_parser" as rp
+    let toks = rp.lex("1 + 2 * 3 / 4")
+    assert(len(toks) >= 7)
+}
+
+test "inscript_parser lex handles string literals" {
+    import "py:inscript_parser" as rp
+    let toks = rp.lex("\"hello world\"")
+    assert(len(toks) >= 1)
+}

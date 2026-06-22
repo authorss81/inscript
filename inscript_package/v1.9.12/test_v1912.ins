@@ -1,0 +1,116 @@
+# v1.9.12 — Bootstrap registry + packages (.ins tests)
+# Run: python inscript.py --test v1.9.12/test_v1912.ins
+#
+# Note: Registry JSON and install_package infrastructure tests require
+# Python-level access and remain in test_v1912.py.
+# Package functions are tested via path imports below.
+
+# ── math-utils package ──────────────────────────────────────────────
+
+test "math gcd" {
+    import "./inscript-packages/packages/math-utils/math-utils.ins" as mu
+    assert(mu.gcd(12, 8) == 4)
+}
+
+test "math lcm" {
+    import "./inscript-packages/packages/math-utils/math-utils.ins" as mu
+    assert(mu.lcm(4, 6) == 12)
+}
+
+test "math clamp mid" {
+    import "./inscript-packages/packages/math-utils/math-utils.ins" as mu
+    assert(mu.clamp(5.0, 0.0, 10.0) == 5.0)
+}
+
+test "math clamp lo" {
+    import "./inscript-packages/packages/math-utils/math-utils.ins" as mu
+    assert(mu.clamp(-3.0, 0.0, 10.0) == 0.0)
+}
+
+test "math clamp hi" {
+    import "./inscript-packages/packages/math-utils/math-utils.ins" as mu
+    assert(mu.clamp(15.0, 0.0, 10.0) == 10.0)
+}
+
+test "math lerp" {
+    import "./inscript-packages/packages/math-utils/math-utils.ins" as mu
+    assert(mu.lerp(0.0, 10.0, 0.5) == 5.0)
+}
+
+test "math is_prime 7" {
+    import "./inscript-packages/packages/math-utils/math-utils.ins" as mu
+    assert(mu.is_prime(7) == true)
+}
+
+test "math is_prime 9" {
+    import "./inscript-packages/packages/math-utils/math-utils.ins" as mu
+    assert(mu.is_prime(9) == false)
+}
+
+test "math factorial 5" {
+    import "./inscript-packages/packages/math-utils/math-utils.ins" as mu
+    assert(mu.factorial(5) == 120)
+}
+
+test "math fib 0-6" {
+    import "./inscript-packages/packages/math-utils/math-utils.ins" as mu
+    assert(mu.fib(0) == 0)
+    assert(mu.fib(1) == 1)
+    assert(mu.fib(2) == 1)
+    assert(mu.fib(3) == 2)
+    assert(mu.fib(4) == 3)
+    assert(mu.fib(5) == 5)
+    assert(mu.fib(6) == 8)
+}
+
+test "math sign positive" {
+    import "./inscript-packages/packages/math-utils/math-utils.ins" as mu
+    assert(mu.sign(5.0) == 1)
+}
+
+test "math sign negative" {
+    import "./inscript-packages/packages/math-utils/math-utils.ins" as mu
+    assert(mu.sign(-3.0) == -1)
+}
+
+test "math sign zero" {
+    import "./inscript-packages/packages/math-utils/math-utils.ins" as mu
+    assert(mu.sign(0.0) == 0)
+}
+
+# ── color-utils package ─────────────────────────────────────────────
+
+test "color rgb_to_hex" {
+    import "./inscript-packages/packages/color-utils/color-utils.ins" as cu
+    assert(cu.rgb_to_hex(255, 0, 128) == "#ff0080")
+}
+
+test "color brightness white" {
+    import "./inscript-packages/packages/color-utils/color-utils.ins" as cu
+    let r = cu.brightness(255, 255, 255)
+    assert(r > 254.0 && r < 256.0)
+}
+
+# ── easing package ──────────────────────────────────────────────────
+
+test "easing smooth endpoints" {
+    import "./inscript-packages/packages/easing/easing.ins" as e
+    assert(e.smooth(0.0) == 0.0)
+    assert(e.smooth(1.0) == 1.0)
+}
+
+test "easing ease_in midpoint" {
+    import "./inscript-packages/packages/easing/easing.ins" as e
+    assert(e.ease_in(0.5) == 0.25)
+}
+
+test "easing ease_out midpoint" {
+    import "./inscript-packages/packages/easing/easing.ins" as e
+    assert(e.ease_out(0.5) == 0.75)
+}
+
+test "easing bounce_out at one" {
+    import "./inscript-packages/packages/easing/easing.ins" as e
+    let r = e.bounce_out(1.0)
+    assert(r > 0.99 && r < 1.01)
+}

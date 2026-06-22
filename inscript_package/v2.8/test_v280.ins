@@ -1,0 +1,47 @@
+# test_v280.ins — v2.8.0: Asset Pipeline (InScript-executable subset)
+#
+# Tests: `asset` stdlib module, @texture/@sound/@tilemap/@font decorators,
+#   asset.registry proxy
+# Skipped (Python-only): AssetHandle/AssetRegistry API, headless load,
+#   check_for_changes, export_manifest, bundle, factory functions
+
+# ── 9. `asset` stdlib module ───────────────────────────────────────────────
+
+test "asset_module" {
+    import "asset" as asset
+    let t = asset.texture("sprites/player.png")
+    let s = asset.sound("sfx/hit.wav")
+    let m = asset.tilemap("maps/world.tmx")
+    let f = asset.font("fonts/mono.ttf", 14)
+    assert(t != nil)
+    assert(s != nil)
+    assert(m != nil)
+    assert(f != nil)
+}
+
+# ── 10. Decorator form @texture / @sound / @tilemap / @font ────────────────
+
+test "asset_decorators" {
+    @texture("sprites/hero.png")
+    let hero_tex
+    @sound("sfx/jump.wav")
+    let jump_sfx
+    @tilemap("maps/level1.tmx")
+    let level_map
+    @font("fonts/roboto.ttf", 16)
+    let ui_font
+    assert(hero_tex != nil)
+    assert(jump_sfx != nil)
+    assert(level_map != nil)
+    assert(ui_font != nil)
+}
+
+# ── 11. asset.registry proxy ───────────────────────────────────────────────
+
+test "asset_registry_proxy" {
+    import "asset" as asset
+    let t1 = asset.texture("a.png")
+    let t2 = asset.texture("b.png")
+    let c = asset.registry.count()
+    assert(c >= 2)
+}

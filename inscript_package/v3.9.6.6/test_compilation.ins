@@ -1,0 +1,57 @@
+# v3.9.6.6 — Compilation speed optimization (.ins tests)
+# Tests that the Python compilation pipeline modules are importable
+# Run: python inscript.py --test v3.9.6.6/test_compilation.ins
+
+test "py_compiler module is importable" {
+    import "py:py_compiler" as comp
+    assert(comp != nil)
+}
+
+test "compile_hook function exists" {
+    import "py:py_compiler" as comp
+    assert(comp.compile_hook != nil)
+}
+
+test "compile_scene_hooks function exists" {
+    import "py:py_compiler" as comp
+    assert(comp.compile_scene_hooks != nil)
+}
+
+test "names_cache_counter exists" {
+    import "py:py_compiler" as comp
+    assert(comp._names_cache_counter != nil)
+}
+
+test "lexer module tokenize function exists" {
+    import "py:lexer" as lex
+    assert(lex.tokenize != nil)
+}
+
+test "parser module parse function exists" {
+    import "py:parser" as par
+    assert(par.parse != nil)
+}
+
+test "analyzer module Analyzer class exists" {
+    import "py:analyzer" as ana
+    assert(ana.Analyzer != nil)
+}
+
+test "lexer produces at least one token" {
+    import "py:lexer" as lex
+    let toks = lex.tokenize("42")
+    assert(len(toks) >= 1)
+}
+
+test "lexer tokenizes arithmetic" {
+    import "py:lexer" as lex
+    let toks = lex.tokenize("1 + 2 * 3")
+    assert(len(toks) >= 5)
+}
+
+test "time module perf_counter works" {
+    import "py:time" as t
+    let start = t.perf_counter()
+    let end = t.perf_counter()
+    assert(end >= start)
+}

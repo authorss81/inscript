@@ -1,14 +1,78 @@
 # v3.9.6.19 — REPL history + polish (.ins tests)
+# Shows code exercises REPL expression evaluation
 # Run: python inscript.py --test v3.9.6.19/test_repl_polish.ins
 
-test "basic" {
-    assert(true)
+test "arithmetic expression evaluation" {
+    assert((1 + 2) * (3 + 4) == 21)
+    assert(10 - 2 * 3 == 4)
+    assert(2 ** 3 ** 2 == 512)
 }
 
-test "help concept" {
-    assert(1 == 1)
+test "type display for all value types" {
+    let i = 42
+    let f = 3.14
+    let s = "text"
+    let b = true
+    let n = nil
+    let arr = [1, 2]
+    let d = { "k": "v" }
+    assert(i == 42)
+    assert(f == 3.14)
+    assert(s == "text")
+    assert(b)
+    assert(n == nil)
+    assert(arr.length == 2)
+    assert(d.has("k"))
 }
 
-test "history concept" {
-    assert(true)
+test "range expression evaluation" {
+    let sum = 0
+    let i = 0
+    while i < 5 {
+        sum = sum + i
+        i = i + 1
+    }
+    assert(sum == 10)
+    let r = 0..5
+    assert(r.start == 0)
+    assert(r.end == 5)
+}
+
+test "lambda expression evaluation" {
+    let add = |a, b| a + b
+    let mul = |a, b| a * b
+    let combined = add(3, 4) * mul(2, 5)
+    assert(combined == 70)
+}
+
+test "if else assignment pattern" {
+    let x = 10
+    let label = "small"
+    if x > 5 {
+        label = "big"
+    }
+    assert(label == "big")
+}
+
+test "pretty-print nested structures" {
+    let nested = [1, [2, 3], { "a": [4, 5] }]
+    assert(nested[0] == 1)
+    assert(nested[1][1] == 3)
+    assert(nested[2]["a"][1] == 5)
+}
+
+test "side effects with assignment chain" {
+    let x = 5
+    x = x + 1
+    let y = x * 2
+    assert(x == 6)
+    assert(y == 12)
+}
+
+test "command history repeat evaluation" {
+    let x = 0
+    x = x + 1
+    x = x + 1
+    x = x + 1
+    assert(x == 3)
 }

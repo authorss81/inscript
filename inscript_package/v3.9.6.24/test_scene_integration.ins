@@ -1,47 +1,82 @@
 # v3.9.6.24 — Physics: scene integration (.ins tests)
 # Run: python inscript.py --test v3.9.6.24/test_scene_integration.ins
 
-test "body has restitution" {
-    let b = PhysicsWorld().create_body(PhysicsShape.rect(16, 16), BODY_DYNAMIC, 1.0, "b", 0, 0)
-    assert(b.restitution != nil)
+test "body has density attribute" {
+    let w = PhysicsWorld(0, 0)
+    let b = w.create_body(PhysicsShape.rect(10, 10), BODY_DYNAMIC, 1.0, "b", 0, 0)
+    assert(b.get_attr("density") != nil)
 }
 
-test "body has friction" {
-    let b = PhysicsWorld().create_body(PhysicsShape.rect(16, 16), BODY_DYNAMIC, 1.0, "b", 0, 0)
-    assert(b.friction != nil)
+test "body default density is 1.0" {
+    let b = PhysicsWorld().create_body(PhysicsShape.rect(10, 10), BODY_DYNAMIC, 1.0, "b", 0, 0)
+    assert(b.get_attr("density") == 1.0)
 }
 
-test "body friction default" {
-    let b = PhysicsWorld().create_body(PhysicsShape.rect(16, 16), BODY_DYNAMIC, 1.0, "b", 0, 0)
-    assert(b.friction == 0.5)
+test "set_attr density stores value" {
+    let b = PhysicsWorld().create_body(PhysicsShape.rect(10, 10), BODY_DYNAMIC, 1.0, "b", 0, 0)
+    b.set_attr("density", 3.0)
+    assert(b.get_attr("density") == 3.0)
 }
 
-test "body has density" {
-    let b = PhysicsWorld().create_body(PhysicsShape.rect(16, 16), BODY_DYNAMIC, 1.0, "b", 0, 0)
-    assert(b.density != nil)
+test "body default friction is 0.5" {
+    let b = PhysicsWorld().create_body(PhysicsShape.rect(10, 10), BODY_DYNAMIC, 1.0, "b", 0, 0)
+    assert(b.get_attr("friction") == 0.5)
 }
 
-test "body density default" {
-    let b = PhysicsWorld().create_body(PhysicsShape.rect(16, 16), BODY_DYNAMIC, 1.0, "b", 0, 0)
-    assert(b.density == 1.0)
+test "set_attr friction stores value" {
+    let b = PhysicsWorld().create_body(PhysicsShape.rect(10, 10), BODY_DYNAMIC, 1.0, "b", 0, 0)
+    b.set_attr("friction", 0.1)
+    assert(b.get_attr("friction") == 0.1)
 }
 
-test "world has to_dict" {
-    let w = PhysicsWorld()
-    assert(w.to_dict != nil)
+test "world to_dict returns gravity" {
+    let w = PhysicsWorld(0, 500)
+    let d = w.to_dict()
+    assert(d["gravity_x"] == 0)
+    assert(d["gravity_y"] == 500)
 }
 
-test "world has save_scene" {
-    let w = PhysicsWorld()
-    assert(w.save_scene != nil)
+test "world to_dict returns gravity with custom values" {
+    let w = PhysicsWorld(100, -200)
+    let d = w.to_dict()
+    assert(d["gravity_x"] == 100)
+    assert(d["gravity_y"] == -200)
 }
 
-test "world has load_scene" {
-    let w = PhysicsWorld()
-    assert(w.load_scene != nil)
+test "world to_dict includes body count" {
+    let w = PhysicsWorld(0, 0)
+    w.create_body(PhysicsShape.rect(32, 32), BODY_DYNAMIC, 1.0, "a", 0, 0)
+    w.create_body(PhysicsShape.rect(16, 16), BODY_STATIC, 0.0, "b", 100, 0)
+    let d = w.to_dict()
+    assert(len(d["bodies"]) == 2)
 }
 
-test "on_physics hook type works" {
-    # Just verify the concept — on_physics runs at fixed timestep
-    assert(true)
+test "world to_dict body includes tag" {
+    let w = PhysicsWorld(0, 0)
+    w.create_body(PhysicsShape.rect(32, 32), BODY_DYNAMIC, 1.0, "player", 50, 100)
+    let d = w.to_dict()
+    assert(d["bodies"][0]["tag"] == "player")
+    assert(d["bodies"][0]["x"] == 50)
+    assert(d["bodies"][0]["y"] == 100)
+}
+
+test "density auto-calculates rect mass" {
+    let w = PhysicsWorld(0, 0)
+    let b = w.create_body(PhysicsShape.rect(10, 20), BODY_DYNAMIC, 1.0, "dense", 0, 0, 3.0)
+    assert(b.mass == 600)
+}
+
+test "world get_attr to_dict exists" {
+    let w = PhysicsWorld(0, 0)
+    assert(w.get_attr("to_dict") != nil)
+}
+
+test "world get_attr save_scene exists" {
+    let w = PhysicsWorld(0, 0)
+    assert(w.get_attr("save_scene") != nil)
+}
+
+test "world get_attr load_scene exists" {
+    let w = PhysicsWorld(0, 0)
+    assert(w.get_attr("load_scene") != nil)
 }

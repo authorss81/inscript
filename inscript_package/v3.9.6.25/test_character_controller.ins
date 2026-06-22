@@ -1,84 +1,101 @@
 # v3.9.6.25 — Physics: character controller (.ins tests)
 # Run: python inscript.py --test v3.9.6.25/test_character_controller.ins
 
-test "CharacterBody exists" {
-    assert(CharacterBody != nil)
+test "is_on_floor false when airborne" {
+    let w = PhysicsWorld()
+    let b = w.create_body(PhysicsShape.rect(16, 32), BODY_DYNAMIC, 1.0, "p", 100, 0)
+    let c = CharacterBody(w, b)
+    c.move_and_slide(0, 0, 0.016)
+    assert(!c.is_on_floor())
 }
 
-test "CharacterBody can be created" {
+test "is_on_wall true when sliding into wall" {
     let w = PhysicsWorld()
-    let b = w.create_body(PhysicsShape.rect(16, 32), BODY_DYNAMIC, 1.0, "p", 0, 0)
+    let b = w.create_body(PhysicsShape.rect(16, 32), BODY_DYNAMIC, 1.0, "p", 150, 80)
+    w.create_body(PhysicsShape.rect(200, 20), BODY_STATIC, 0.0, "floor", 100, 100)
+    w.create_body(PhysicsShape.rect(20, 100), BODY_STATIC, 0.0, "wall", 200, 50)
     let c = CharacterBody(w, b)
+    let i = 0
+    while i < 6 {
+        c.move_and_slide(500, 0, 0.016)
+        i += 1
+    }
+    assert(c.is_on_wall())
+}
+
+test "wall_side 1 for right wall" {
+    let w = PhysicsWorld()
+    let b = w.create_body(PhysicsShape.rect(16, 32), BODY_DYNAMIC, 1.0, "p", 150, 80)
+    w.create_body(PhysicsShape.rect(200, 20), BODY_STATIC, 0.0, "floor", 100, 100)
+    w.create_body(PhysicsShape.rect(20, 100), BODY_STATIC, 0.0, "wall", 200, 50)
+    let c = CharacterBody(w, b)
+    let i = 0
+    while i < 6 {
+        c.move_and_slide(500, 0, 0.016)
+        i += 1
+    }
+    assert(c.get_wall_side() == 1)
+}
+
+test "is_on_ceiling true when jumping into ceiling" {
+    let w = PhysicsWorld()
+    let b = w.create_body(PhysicsShape.rect(16, 32), BODY_DYNAMIC, 1.0, "p", 100, 50)
+    w.create_body(PhysicsShape.rect(200, 20), BODY_STATIC, 0.0, "ceil", 100, 20)
+    let c = CharacterBody(w, b)
+    c.move_and_slide(0, -500, 0.016)
+    assert(c.is_on_ceiling())
+}
+
+test "apply_knockback moves character" {
+    let w = PhysicsWorld()
+    let b = w.create_body(PhysicsShape.rect(16, 32), BODY_DYNAMIC, 1.0, "p", 100, 0)
+    let c = CharacterBody(w, b)
+    c.apply_knockback(-50, 0)
+    c.move_and_slide(0, 0, 0.016)
+    assert(b.x < 100)
+}
+
+test "move_and_collide returns hit info when colliding" {
+    let w = PhysicsWorld()
+    let b = w.create_body(PhysicsShape.rect(16, 32), BODY_DYNAMIC, 1.0, "p", 100, 80)
+    w.create_body(PhysicsShape.rect(200, 20), BODY_STATIC, 0.0, "floor", 100, 100)
+    let c = CharacterBody(w, b)
+    let r = c.move_and_collide(0, 0, 0.016)
+    assert(r != nil)
+    assert(r.body != nil)
+    assert(r.body.tag == "floor")
+}
+
+test "move_and_collide nil when airborne" {
+    let w = PhysicsWorld()
+    let b = w.create_body(PhysicsShape.rect(16, 32), BODY_DYNAMIC, 1.0, "p", 100, 0)
+    let c = CharacterBody(w, b)
+    let r = c.move_and_collide(0, 0, 0.016)
+    assert(r == nil)
+}
+
+test "is_on_floor after landing on ground" {
+    let w = PhysicsWorld()
+    let b = w.create_body(PhysicsShape.rect(16, 32), BODY_DYNAMIC, 1.0, "p", 100, 80)
+    w.create_body(PhysicsShape.rect(200, 20), BODY_STATIC, 0.0, "floor", 100, 100)
+    let c = CharacterBody(w, b)
+    c.move_and_slide(0, 0, 0.016)
+    assert(c.is_on_floor())
+}
+
+test "one-way platform: pass through from below, stand on from above" {
+    let w = PhysicsWorld()
+    let b = w.create_body(PhysicsShape.rect(16, 32), BODY_DYNAMIC, 1.0, "p", 100, 50)
+    let plat = w.create_body(PhysicsShape.rect(200, 10), BODY_STATIC, 0.0, "plat", 100, 100)
+    let c = CharacterBody(w, b, true)
+    c.set_platforms([plat])
+    c.move_and_slide(0, -500, 0.016)
+    assert(b.y < 80)
+}
+
+test "world.create_character_body convenience" {
+    let w = PhysicsWorld()
+    let c = w.create_character_body(PhysicsShape.rect(16, 32), "hero", 100, 100, true)
     assert(c != nil)
-}
-
-test "CharacterBody has is_on_floor" {
-    let w = PhysicsWorld()
-    let b = w.create_body(PhysicsShape.rect(16, 32), BODY_DYNAMIC, 1.0, "p", 0, 0)
-    let c = CharacterBody(w, b)
-    assert(c.is_on_floor != nil)
-}
-
-test "CharacterBody has is_on_wall" {
-    let w = PhysicsWorld()
-    let b = w.create_body(PhysicsShape.rect(16, 32), BODY_DYNAMIC, 1.0, "p", 0, 0)
-    let c = CharacterBody(w, b)
-    assert(c.is_on_wall != nil)
-}
-
-test "CharacterBody has is_on_ceiling" {
-    let w = PhysicsWorld()
-    let b = w.create_body(PhysicsShape.rect(16, 32), BODY_DYNAMIC, 1.0, "p", 0, 0)
-    let c = CharacterBody(w, b)
-    assert(c.is_on_ceiling != nil)
-}
-
-test "CharacterBody has move_and_slide" {
-    let w = PhysicsWorld()
-    let b = w.create_body(PhysicsShape.rect(16, 32), BODY_DYNAMIC, 1.0, "p", 0, 0)
-    let c = CharacterBody(w, b)
-    assert(c.move_and_slide != nil)
-}
-
-test "CharacterBody has move_and_collide" {
-    let w = PhysicsWorld()
-    let b = w.create_body(PhysicsShape.rect(16, 32), BODY_DYNAMIC, 1.0, "p", 0, 0)
-    let c = CharacterBody(w, b)
-    assert(c.move_and_collide != nil)
-}
-
-test "CharacterBody has apply_knockback" {
-    let w = PhysicsWorld()
-    let b = w.create_body(PhysicsShape.rect(16, 32), BODY_DYNAMIC, 1.0, "p", 0, 0)
-    let c = CharacterBody(w, b)
-    assert(c.apply_knockback != nil)
-}
-
-test "CharacterBody has get_wall_side" {
-    let w = PhysicsWorld()
-    let b = w.create_body(PhysicsShape.rect(16, 32), BODY_DYNAMIC, 1.0, "p", 0, 0)
-    let c = CharacterBody(w, b)
-    assert(c.get_wall_side != nil)
-}
-
-test "CharacterBody has get_floor_normal" {
-    let w = PhysicsWorld()
-    let b = w.create_body(PhysicsShape.rect(16, 32), BODY_DYNAMIC, 1.0, "p", 0, 0)
-    let c = CharacterBody(w, b)
-    assert(c.get_floor_normal != nil)
-}
-
-test "CharacterBody has set_platforms" {
-    let w = PhysicsWorld()
-    let b = w.create_body(PhysicsShape.rect(16, 32), BODY_DYNAMIC, 1.0, "p", 0, 0)
-    let c = CharacterBody(w, b)
-    assert(c.set_platforms != nil)
-}
-
-test "move_and_slide changes position" {
-    let w = PhysicsWorld()
-    let b = w.create_body(PhysicsShape.rect(16, 32), BODY_DYNAMIC, 1.0, "p", 100, 100)
-    let c = CharacterBody(w, b)
-    c.move_and_slide(100, 0, 0.016)
-    assert(b.x > 100)
+    assert(c.body.tag == "hero")
 }

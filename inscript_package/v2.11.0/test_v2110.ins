@@ -1,0 +1,10 @@
+# test_v2110.ins — v2.11.0: Export Pipeline
+#
+# NOTE: All export pipeline tests remain in test_v2110.py because they
+# test Python-level infrastructure: scaffold_project, build_desktop,
+# build_web, build_android, _read_manifest, _collect_assets,
+# _collect_sources, _write_build_manifest, BuildResult, and run_build
+# routing. These involve temp directories, file I/O, and subprocess calls
+# that cannot be expressed as InScript execution tests.
+#
+# See test_v2110.py for the full test suite.

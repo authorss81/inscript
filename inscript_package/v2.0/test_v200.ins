@@ -1,0 +1,194 @@
+# test_v200.ins — v2.0.0 release smoke tests (InScript-executable subset)
+#
+# Tests: core language, type system, async, string interpolation, error system
+# Skipped (Python-only): package manager, game mocks, tooling, version checks
+
+# ── 1. Core language ────────────────────────────────────────────────────────
+
+test "let_and_arithmetic" {
+    let x = 2 + 3 * 4
+    assert(x == 14)
+}
+
+test "floor_division" {
+    assert(17 // 5 == 3)
+}
+
+test "string_concat_plusplus" {
+    assert("foo" ++ "bar" == "foobar")
+}
+
+test "array_literal" {
+    let a = [10, 20, 30]
+    assert(a[1] == 20)
+}
+
+test "dict_literal" {
+    let d = {"x": 1, "y": 2}
+    assert(d["x"] == 1)
+}
+
+test "if_else" {
+    let x = 10
+    let r = 0
+    if x > 5 { r = 1 } else { r = 2 }
+    assert(r == 1)
+}
+
+test "while_loop" {
+    let i = 0
+    let s = 0
+    while i < 5 { s = s + i; i = i + 1 }
+    assert(s == 10)
+}
+
+test "for_in" {
+    let nums = [1, 2, 3, 4, 5]
+    let total = 0
+    for n in nums { total = total + n }
+    assert(total == 15)
+}
+
+test "fn_call" {
+    fn square(x: int) -> int { return x * x }
+    assert(square(7) == 49)
+}
+
+test "recursion" {
+    fn fact(n: int) -> int { if n <= 1 { return 1 }; return n * fact(n - 1) }
+    assert(fact(6) == 720)
+}
+
+test "closures" {
+    fn make_adder(n: int) { return fn(x: int) -> int { return x + n } }
+    let add5 = make_adder(5)
+    assert(add5(3) == 8)
+}
+
+test "array_map" {
+    let a = [1, 2, 3]
+    let b = a.map(fn(x: int) -> int { return x * 2 })
+    assert(b == [2, 4, 6])
+}
+
+test "array_filter" {
+    let a = [1, 2, 3, 4, 5]
+    let b = a.filter(fn(x: int) -> bool { return x > 2 })
+    assert(b == [3, 4, 5])
+}
+
+test "string_upper" {
+    assert("hello".upper() == "HELLO")
+}
+
+test "string_split" {
+    assert("a,b,c".split(",") == ["a", "b", "c"])
+}
+
+# ── 2. Type system ─────────────────────────────────────────────────────────
+
+test "union_types" {
+    fn id(x: int|string) -> int|string { return x }
+    let v = id(42)
+    assert(v == 42)
+}
+
+test "optional_shorthand" {
+    fn maybe(x: int?) -> int { if x == nil { return 0 }; return x }
+    assert(maybe(5) == 5)
+}
+
+test "type_alias" {
+    type ID = int
+    let id: ID = 42
+    assert(id == 42)
+}
+
+test "enum" {
+    enum Dir { North, South, East, West }
+    let d = Dir::North
+    assert(d == Dir::North)
+}
+
+test "struct" {
+    struct Point { x: float = 0.0; y: float = 0.0 }
+    let p = Point { x: 3.0, y: 4.0 }
+    assert(p.x == 3.0)
+}
+
+test "interface" {
+    interface Drawable { fn draw() -> nil }
+    struct Box implements Drawable { fn draw() {} }
+    let b = Box {}
+    assert(true)
+}
+
+# ── 3. Async / await ───────────────────────────────────────────────────────
+
+test "async_fn_returns_coroutine" {
+    async fn fetch() -> string { return "data" }
+    async fn main() -> string { return await fetch() }
+    let r = await main()
+    assert(r == "data")
+}
+
+test "await_drives_coroutine" {
+    async fn double(x: int) -> int { return x * 2 }
+    async fn main() -> int { return await double(5) }
+    let r = await main()
+    assert(r == 10)
+}
+
+# ── 4. String interpolation ($"...") ───────────────────────────────────────
+
+test "interp_simple" {
+    let name = "World"
+    let s = $"Hello {name}!"
+    assert(s == "Hello World!")
+}
+
+test "interp_expr" {
+    let x = 6
+    let y = 7
+    let s = $"{x} * {y} = {x * y}"
+    assert(s == "6 * 7 = 42")
+}
+
+test "interp_format_spec" {
+    let pi = 3.14159
+    let s = $"pi = {pi:.2f}"
+    assert(s == "pi = 3.14")
+}
+
+test "fstring_compat" {
+    let x = 99
+    let s = f"score={x}"
+    assert(s == "score=99")
+}
+
+# ── 5. Error system ────────────────────────────────────────────────────────
+
+test "stack_trace_on_error" {
+    fn a() {
+        fn b() {
+            let x = 1 / 0
+        }
+        b()
+    }
+    let ok = false
+    try {
+        a()
+    } catch e {
+        ok = true
+    }
+    assert(ok)
+}
+
+# div_hard_error: the 'div' keyword was removed in v1.9.5 (E0056 parse error)
+# Parse errors cannot be caught by try/catch; test remains in test_v200.py
+
+test "null_hard_error" {
+    let ok = false
+    try { let x = null } catch e { ok = true }
+    assert(ok)
+}

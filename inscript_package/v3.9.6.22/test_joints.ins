@@ -1,11 +1,89 @@
 # v3.9.6.22 — Physics joints (.ins tests)
 # Run: python inscript.py --test v3.9.6.22/test_joints.ins
 
-test "basic joint concept" {
-    assert(true)
-}
-
 test "joint constants" {
     assert(JOINT_DISTANCE == 0)
+    assert(JOINT_REVOLUTE == 1)
+    assert(JOINT_PRISMATIC == 2)
+    assert(JOINT_WELD == 3)
     assert(JOINT_MOUSE == 4)
+}
+
+test "distance joint creation" {
+    let w = PhysicsWorld(0, 0)
+    let a = w.create_body(PhysicsShape.rect(16, 16), BODY_DYNAMIC, 1.0, "a", 0, 0)
+    let b = w.create_body(PhysicsShape.rect(16, 16), BODY_DYNAMIC, 1.0, "b", 100, 0)
+    let j = w.create_joint(JOINT_DISTANCE, a, b, length: 100.0, stiffness: 1.0, damping: 0.1)
+    assert(j != nil)
+    assert(j.get_attr("joint_type") == 0)
+    assert(j.get_attr("length") == 100.0)
+}
+
+test "distance joint pulls bodies together" {
+    let w = PhysicsWorld(0, 0)
+    let a = w.create_body(PhysicsShape.rect(16, 16), BODY_DYNAMIC, 10.0, "a", 0, 0)
+    let b = w.create_body(PhysicsShape.rect(16, 16), BODY_DYNAMIC, 10.0, "b", 100, 0)
+    let j = w.create_joint(JOINT_DISTANCE, a, b, length: 50.0, stiffness: 5.0, damping: 0.1)
+    let d1 = a.x - b.x
+    if d1 < 0 { d1 = -d1 }
+    w.step(0.016)
+    w.step(0.016)
+    let d2 = a.x - b.x
+    if d2 < 0 { d2 = -d2 }
+    assert(d2 < d1)
+}
+
+test "revolute joint creation" {
+    let w = PhysicsWorld(0, 0)
+    let a = w.create_body(PhysicsShape.rect(16, 16), BODY_DYNAMIC, 1.0, "a", 0, 0)
+    let b = w.create_body(PhysicsShape.rect(16, 16), BODY_DYNAMIC, 1.0, "b", 50, 0)
+    let j = w.create_joint(JOINT_REVOLUTE, a, b, anchor_x: 0.0, anchor_y: 0.0, lower_angle: -1.0, upper_angle: 1.0, enable_motor: false)
+    assert(j != nil)
+    assert(j.get_attr("joint_type") == 1)
+}
+
+test "prismatic joint creation" {
+    let w = PhysicsWorld(0, 0)
+    let a = w.create_body(PhysicsShape.rect(16, 16), BODY_DYNAMIC, 1.0, "a", 0, 0)
+    let b = w.create_body(PhysicsShape.rect(16, 16), BODY_DYNAMIC, 1.0, "b", 0, 50)
+    let j = w.create_joint(JOINT_PRISMATIC, a, b, axis_x: 0.0, axis_y: 1.0, lower_limit: 0.0, upper_limit: 100.0)
+    assert(j != nil)
+    assert(j.get_attr("joint_type") == 2)
+}
+
+test "weld joint creation" {
+    let w = PhysicsWorld(0, 0)
+    let a = w.create_body(PhysicsShape.rect(16, 16), BODY_DYNAMIC, 1.0, "a", 0, 0)
+    let b = w.create_body(PhysicsShape.rect(16, 16), BODY_DYNAMIC, 1.0, "b", 0, 50)
+    let j = w.create_joint(JOINT_WELD, a, b, stiffness: 10.0, damping: 0.5)
+    assert(j != nil)
+    assert(j.get_attr("joint_type") == 3)
+}
+
+test "mouse joint creation" {
+    let w = PhysicsWorld(0, 0)
+    let a = w.create_body(PhysicsShape.rect(16, 16), BODY_DYNAMIC, 1.0, "anchor", 0, 0)
+    let b = w.create_body(PhysicsShape.rect(16, 16), BODY_DYNAMIC, 1.0, "target", 100, 0)
+    let j = w.create_joint(JOINT_MOUSE, a, b, stiffness: 10.0, damping: 1.0, max_force: 100.0)
+    assert(j != nil)
+    assert(j.get_attr("joint_type") == 4)
+}
+
+test "destroy joint removes from world" {
+    let w = PhysicsWorld(0, 0)
+    let a = w.create_body(PhysicsShape.rect(16, 16), BODY_DYNAMIC, 1.0, "a", 0, 0)
+    let b = w.create_body(PhysicsShape.rect(16, 16), BODY_DYNAMIC, 1.0, "b", 100, 0)
+    let j = w.create_joint(JOINT_DISTANCE, a, b, length: 100.0)
+    w.destroy_joint(j)
+    assert(j.get_attr("joint_type") == 0)
+}
+
+test "joint get_attr returns body references" {
+    let w = PhysicsWorld(0, 0)
+    let a = w.create_body(PhysicsShape.rect(16, 16), BODY_DYNAMIC, 1.0, "a", 0, 0)
+    let b = w.create_body(PhysicsShape.rect(16, 16), BODY_DYNAMIC, 1.0, "b", 100, 0)
+    let j = w.create_joint(JOINT_DISTANCE, a, b, length: 80.0, stiffness: 2.0, damping: 0.1)
+    assert(j.get_attr("stiffness") == 2.0)
+    assert(j.get_attr("length") == 80.0)
+    assert(j.get_attr("damping") == 0.1)
 }

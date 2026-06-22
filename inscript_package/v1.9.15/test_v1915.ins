@@ -1,0 +1,164 @@
+# v1.9.15 — String interpolation ($"...") (.ins tests)
+# Run: python inscript.py --test v1.9.15/test_v1915.ins
+
+# ── 1. Basic variable interpolation ──────────────────────────────────
+
+test "simple variable" {
+    let name = "World"
+    let r = $"Hello {name}"
+    assert(r == "Hello World")
+}
+
+test "two variables" {
+    let a = "foo"
+    let b = "bar"
+    let r = $"{a} and {b}"
+    assert(r == "foo and bar")
+}
+
+test "variable at start" {
+    let x = "hi"
+    let r = $"{x} there"
+    assert(r == "hi there")
+}
+
+test "variable at end" {
+    let x = "end"
+    let r = $"the {x}"
+    assert(r == "the end")
+}
+
+test "only variable" {
+    let s = "solo"
+    let r = $"{s}"
+    assert(r == "solo")
+}
+
+# ── 2. Expression interpolation ──────────────────────────────────────
+
+test "arithmetic expr" {
+    let r = $"result={2 + 3}"
+    assert(r == "result=5")
+}
+
+test "comparison expr" {
+    let x = 10
+    let r = $"big={x > 5}"
+    assert(r == "big=true")
+}
+
+test "nested call" {
+    fn double(n) { return n * 2 }
+    let x = 4
+    let r = $"doubled: {double(x)}"
+    assert(r == "doubled: 8")
+}
+
+# ── 3. Type auto-conversion ──────────────────────────────────────────
+
+test "int converted" {
+    let score = 42
+    let r = $"score: {score}"
+    assert(r == "score: 42")
+}
+
+test "float converted" {
+    let pi = 3.14
+    let r = $"pi={pi}"
+    assert(r == "pi=3.14")
+}
+
+test "bool true converted" {
+    let b = true
+    let r = $"flag={b}"
+    assert(r == "flag=true")
+}
+
+test "bool false converted" {
+    let b = false
+    let r = $"flag={b}"
+    assert(r == "flag=false")
+}
+
+test "nil converted" {
+    let r = $"val={nil}"
+    assert(r == "val=nil")
+}
+
+# ── 4. Format specs ──────────────────────────────────────────────────
+
+test "float format spec" {
+    let pi = 3.14159
+    let r = $"pi={pi:.2f}"
+    assert(r == "pi=3.14")
+}
+
+test "int zero pad" {
+    let n = 7
+    let r = $"n={n:04d}"
+    assert(r == "n=0007")
+}
+
+test "string right align" {
+    let s = "hi"
+    let r = $"[{s:>6}]"
+    assert(r == "[    hi]")
+}
+
+# ── 5. Brace escapes ─────────────────────────────────────────────────
+
+test "escaped open brace" {
+    let r = $"literal {{brace}}"
+    assert(r == "literal {brace}")
+}
+
+test "escaped both braces" {
+    let r = $"set: {{1, 2}}"
+    assert(r == "set: {1, 2}")
+}
+
+# ── 6. Adjacent literals and empty segments ──────────────────────────
+
+test "empty interpolated" {
+    let x = ""
+    let r = $"[{x}]"
+    assert(r == "[]")
+}
+
+# ── 7. $"..." in fn args and return ──────────────────────────────────
+
+test "in function return" {
+    fn greet(name) { return $"Hello {name}" }
+    let r = greet("World")
+    assert(r == "Hello World")
+}
+
+# ── 8. Chaining ──────────────────────────────────────────────────────
+
+test "chain upper" {
+    let s = $"hello"
+    let r = s.upper()
+    assert(r == "HELLO")
+}
+
+test "chain len" {
+    let name = "test"
+    let r = $"prefix-{name}"
+    assert(len(r) == 11)
+}
+
+# ── 9. f-string backward compat ──────────────────────────────────────
+
+test "fstring still works" {
+    let name = "World"
+    let r = f"Hello {name}"
+    assert(r == "Hello World")
+}
+
+test "multi-expression string" {
+    let a = 1
+    let b = 2
+    let c = 3
+    let r = $"{a} + {b} + {c} = {a + b + c}"
+    assert(r == "1 + 2 + 3 = 6")
+}

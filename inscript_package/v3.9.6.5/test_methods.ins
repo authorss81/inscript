@@ -1,0 +1,107 @@
+# v3.9.6.5 — Method calls + named args (.ins tests)
+# Run: python inscript.py --test v3.9.6.5/test_methods.ins
+
+test "struct method call" {
+    struct C { n: int = 0; fn get() { return self.n } }
+    let c = C {}
+    let r = c.get()
+    assert(r == 0)
+}
+
+test "struct method with args" {
+    struct C { n: int = 0; fn add(x: int) { return self.n + x } }
+    let c = C { n: 5 }
+    let r = c.add(3)
+    assert(r == 8)
+}
+
+test "struct method with side effect" {
+    struct C { n: int = 0; fn set(v: int) { self.n = v } }
+    let c = C {}
+    c.set(42)
+    assert(c.n == 42)
+}
+
+test "chained struct method calls" {
+    struct C { v: int = 0; fn add(x: int) { self.v = self.v + x; return self } }
+    let c = C {}
+    c.add(3).add(4)
+    assert(c.v == 7)
+}
+
+test "struct named args construction" {
+    struct Point { x: int; y: int }
+    let p = Point(x: 3, y: 4)
+    assert(p.x == 3)
+    assert(p.y == 4)
+}
+
+test "struct named args with scene vars" {
+    struct Point { x: int; y: int }
+    let a_val = 10
+    let b_val = 20
+    let p = Point(x: a_val, y: b_val)
+    assert(p.x == 10)
+    assert(p.y == 20)
+}
+
+test "string .upper() method call" {
+    let s = "hello"
+    let r = s.upper()
+    assert(r == "HELLO")
+}
+
+test "string .lower() method call" {
+    let s = "HELLO"
+    let r = s.lower()
+    assert(r == "hello")
+}
+
+test "string .length property" {
+    let s = "hello"
+    assert(s.length == 5)
+}
+
+test "string .contains() method" {
+    let s = "hello world"
+    assert(s.contains("world"))
+    assert(!s.contains("xyz"))
+}
+
+test "array .push() method" {
+    let arr = [1, 2, 3]
+    arr.push(4)
+    assert(arr.length == 4)
+    assert(arr[3] == 4)
+}
+
+test "array .pop() method" {
+    let arr = [1, 2, 3]
+    let v = arr.pop()
+    assert(v == 3)
+    assert(arr.length == 2)
+}
+
+test "array .map() with lambda" {
+    let arr = [1, 2, 3]
+    let r = arr.map(|x| x * 2)
+    assert(r[0] == 2)
+    assert(r[1] == 4)
+    assert(r[2] == 6)
+}
+
+test "array .filter() with lambda" {
+    let arr = [1, 2, 3, 4, 5]
+    let r = arr.filter(|x| x > 3)
+    assert(r.length == 2)
+    assert(r[0] == 4)
+    assert(r[1] == 5)
+}
+
+test "nested fn returns struct with method call" {
+    struct C { v: int = 0; fn get() { return self.v } }
+    fn make_c() { return C { v: 42 } }
+    let c = make_c()
+    let r = c.get()
+    assert(r == 42)
+}

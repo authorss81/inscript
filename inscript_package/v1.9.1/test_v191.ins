@@ -1,0 +1,18 @@
+# v1.9.1 — Deprecation & null E0055 regression (.ins tests)
+# Run: python inscript.py --test v1.9.1/test_v191.ins
+
+test "null raises error in v1.9.1" {
+    let caught = false
+    try {
+        let x = null
+    } catch e {
+        caught = true
+    }
+    assert(caught)
+}
+
+test "nil is valid value" {
+    assert(nil == nil)
+    let x = nil
+    assert(x == nil)
+}

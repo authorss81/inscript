@@ -1,0 +1,69 @@
+# v3.9.6.2 — F-strings (.ins tests)
+# Run: python inscript.py --test v3.9.6.2/test_fstrings.ins
+
+test "basic f-string with variable" {
+    let name = "world"
+    let msg = f"hello {name}"
+    assert(msg == "hello world")
+}
+
+test "f-string with expression" {
+    let a = 10
+    let b = 20
+    let msg = f"sum = {a + b}"
+    assert(msg == "sum = 30")
+}
+
+test "f-string with format spec" {
+    let pi = 3.14159
+    let msg = f"pi = {pi:.2f}"
+    assert(msg == "pi = 3.14")
+}
+
+test "f-string with escaped braces" {
+    let name = "world"
+    let msg = f"{{hello}} {name}"
+    assert(msg == "{hello} world")
+}
+
+test "f-string with multiple expressions" {
+    let a = 3
+    let b = 5
+    let msg = f"{a} + {b} = {a + b}"
+    assert(msg == "3 + 5 = 8")
+}
+
+test "f-string with bool" {
+    let flag = true
+    let msg = f"flag = {flag}"
+    assert(msg == "flag = true")
+}
+
+test "f-string with nil" {
+    let val = nil
+    let msg = f"val = {val}"
+    assert(msg == "val = nil")
+}
+
+test "f-string with no expressions (literal only)" {
+    let msg = f"hello world"
+    assert(msg == "hello world")
+}
+
+test "empty f-string" {
+    let msg = f""
+    assert(msg == "")
+}
+
+test "f-string with method call on string" {
+    let name = "hello"
+    let msg = f"{name.upper()} world"
+    assert(msg == "HELLO world")
+}
+
+test "f-string with nested expression" {
+    let x = 5
+    let y = 3
+    let msg = f"result = {(x + y) * 2}"
+    assert(msg == "result = 16")
+}

@@ -1,0 +1,257 @@
+# v1.7 — Float/int display, recursive types, stack traces, null E0055 (.ins tests)
+# Run: python inscript.py --test v1.7/test_v170.ins
+
+# ── v1.7.1 — Float & Integer Display ─────────────────────────────────
+
+test "float arithmetic" {
+    let r = 1.0 / 3.0
+    assert(r > 0.333 && r < 0.334)
+}
+
+test "sqrt 2" {
+    let r = 2.0 ** 0.5
+    assert(r > 1.414 && r < 1.415)
+}
+
+test "large float" {
+    let r = 1.0e15
+    assert(r == 1000000000000000.0)
+}
+
+test "float div yields float" {
+    let r = 4.0 / 2.0
+    assert(r == 2.0)
+}
+
+test "negative float" {
+    let r = -0.1 - 0.2
+    assert(r < -0.299 && r > -0.301)
+}
+
+test "zero float" {
+    let r = 0.0
+    assert(r == 0.0)
+}
+
+test "float literal" {
+    let r = 1.0
+    assert(r == 1.0)
+}
+
+test "floor division 10 // 3" {
+    assert(10 // 3 == 3)
+}
+
+test "floor division -7 // 2" {
+    assert(-7 // 2 == -4)
+}
+
+test "floor division 15 // 5" {
+    assert(15 // 5 == 3)
+}
+
+test "comment with #" {
+    let x = 5
+    assert(x == 5)
+}
+
+test "null raises error" {
+    let caught = false
+    try {
+        let x = null
+    } catch e {
+        caught = true
+    }
+    assert(caught)
+}
+
+test "nil works" {
+    assert(nil == nil)
+}
+
+# ── v1.7.2 — Recursive & Self-Referential Types ──────────────────────
+
+test "nil type annotation" {
+    struct Node { value: int = 0; next: nil = nil }
+    let n = Node{value: 5}
+    assert(n.value == 5)
+    assert(n.next == nil)
+}
+
+test "2-node list" {
+    struct Node { value: int = 0; next: nil = nil }
+    let n2 = Node{value: 2}
+    let n1 = Node{value: 1, next: n2}
+    assert(n1.next.value == 2)
+}
+
+test "3-level chain" {
+    struct Node { value: int = 0; next: nil = nil }
+    let n3 = Node{value: 3}
+    let n2 = Node{value: 2, next: n3}
+    let n1 = Node{value: 1, next: n2}
+    assert(n1.next.next.value == 3)
+}
+
+test "list sum via while" {
+    struct Node { value: int = 0; next: nil = nil }
+    let n3 = Node{value: 30}
+    let n2 = Node{value: 20, next: n3}
+    let n1 = Node{value: 10, next: n2}
+    let curr = n1
+    let s = 0
+    while curr != nil {
+        s = s + curr.value
+        curr = curr.next
+    }
+    assert(s == 60)
+}
+
+test "recursive list_len" {
+    struct Node { value: int = 0; next: nil = nil }
+    fn list_len(node) -> int {
+        if node == nil { return 0 }
+        return 1 + list_len(node.next)
+    }
+    let n3 = Node{value: 3}
+    let n2 = Node{value: 2, next: n3}
+    let n1 = Node{value: 1, next: n2}
+    assert(list_len(n1) == 3)
+}
+
+test "tree 3 nodes" {
+    struct TreeNode { val: int = 0; left: nil = nil; right: nil = nil }
+    let root = TreeNode{val: 10, left: TreeNode{val: 5}, right: TreeNode{val: 15}}
+    assert(root.val == 10)
+    assert(root.left.val == 5)
+    assert(root.right.val == 15)
+}
+
+test "tree sum = 15" {
+    struct TreeNode { val: int = 0; left: nil = nil; right: nil = nil }
+    fn tree_sum(node) -> int {
+        if node == nil { return 0 }
+        return node.val + tree_sum(node.left) + tree_sum(node.right)
+    }
+    let root = TreeNode{val: 1,
+        left: TreeNode{val: 2, left: TreeNode{val: 4}, right: TreeNode{val: 5}},
+        right: TreeNode{val: 3}}
+    assert(tree_sum(root) == 15)
+}
+
+test "tree depth = 3" {
+    struct TreeNode { val: int = 0; left: nil = nil; right: nil = nil }
+    fn tree_depth(node) -> int {
+        if node == nil { return 0 }
+        let l = tree_depth(node.left)
+        let r = tree_depth(node.right)
+        if l > r { return 1 + l }
+        return 1 + r
+    }
+    let root = TreeNode{val: 1, left: TreeNode{val: 2, left: TreeNode{val: 4}}, right: TreeNode{val: 3}}
+    assert(tree_depth(root) == 3)
+}
+
+test "optional chaining on recursive" {
+    struct Node { value: int = 0; next: nil = nil }
+    let n = Node{value: 1, next: Node{value: 2}}
+    assert(n.next?.value == 2)
+    assert(n.next?.next?.value == nil)
+}
+
+# ── v1.7.3 — Stack Traces ────────────────────────────────────────────
+
+test "call stack in 3-level chain" {
+    let caught = false
+    fn inner() { throw "oops" }
+    fn middle() { inner() }
+    fn outer() { middle() }
+    try {
+        outer()
+    } catch e {
+        caught = true
+    }
+    assert(caught)
+}
+
+test "source snippet in error" {
+    let caught = false
+    fn alpha() { throw "source test" }
+    fn beta() { alpha() }
+    try {
+        beta()
+    } catch e {
+        caught = true
+    }
+    assert(caught)
+}
+
+test "5-level chain" {
+    let caught = false
+    fn l5() { throw "deep" }
+    fn l4() { l5() }
+    fn l3() { l4() }
+    fn l2() { l3() }
+    fn l1() { l2() }
+    try {
+        l1()
+    } catch e {
+        caught = true
+    }
+    assert(caught)
+}
+
+test "closure frame in error" {
+    let caught = false
+    fn make_adder(n) {
+        fn adder(x) { throw "in closure" }
+        return adder
+    }
+    let f = make_adder(5)
+    try {
+        f(3)
+    } catch e {
+        caught = true
+    }
+    assert(caught)
+}
+
+test "top-level error" {
+    let caught = false
+    try {
+        let y = 1 / 0
+    } catch e {
+        caught = true
+    }
+    assert(caught)
+}
+
+test "recursive frames" {
+    let caught = false
+    fn count(n) {
+        if n == 0 { throw "zero" }
+        count(n - 1)
+    }
+    try {
+        count(3)
+    } catch e {
+        caught = true
+    }
+    assert(caught)
+}
+
+# ── v1.7.4 — null E0055 & nil ────────────────────────────────────────
+
+test "null raises E0055" {
+    let caught = false
+    try {
+        let x = null
+    } catch e {
+        caught = true
+    }
+    assert(caught)
+}
+
+test "nil is valid" {
+    assert(nil == nil)
+}

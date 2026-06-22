@@ -1,0 +1,12 @@
+# v1.9.11 — Real async I/O stdlib (.ins tests)
+# Run: python inscript.py --test v1.9.11/test_v1911.ins
+#
+# Note: http.get_async/file.read_async/file.write_async/timer.sleep tests
+# require real file I/O and network access, and are tested via Python-level
+# Interpreter in test_v1911.py. Those remain in test_v1911.py.
+
+# The timer module should work in .ins via import:
+test "timer module available" {
+    import "timer" as timer
+    assert(timer != nil)
+}

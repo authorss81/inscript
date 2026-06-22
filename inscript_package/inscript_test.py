@@ -72,24 +72,55 @@ def _run_inscript(source: str, path: str = "<test>") -> tuple[str, str]:
 
 def _extract_tests(source: str) -> list[dict]:
     """
-    Extract named test blocks from source.
+    Extract named test blocks from source using balanced-brace parsing.
     Returns list of {"name": str, "body": str, "line": int}
     Also extracts anonymous top-level asserts as a single test.
     """
     tests = []
-    # Match: test "name" { ... } blocks (possibly multiline)
-    pattern = _re.compile(
-        r'test\s+"([^"]+)"\s*\{(.*?)\}',
-        _re.DOTALL
-    )
-    for m in pattern.finditer(source):
+    # First pass: find test "name" { ... } using balanced-brace matching
+    idx = 0
+    test_pattern = _re.compile(r'test\s+"([^"]+)"\s*\{')
+    while idx < len(source):
+        m = test_pattern.search(source, idx)
+        if not m:
+            break
+        name = m.group(1)
+        start = m.end()  # position after the opening {
+        depth = 1
+        pos = start
+        while pos < len(source) and depth > 0:
+            ch = source[pos]
+            if ch == '{':
+                depth += 1
+            elif ch == '}':
+                depth -= 1
+            pos += 1
+        body = source[start:pos - 1].strip()
         tests.append({
-            "name": m.group(1),
-            "body": m.group(2).strip(),
+            "name": name,
+            "body": body,
             "line": source[:m.start()].count('\n') + 1
         })
-    # Remaining source without test blocks = anonymous asserts
-    anon = pattern.sub('', source).strip()
+        idx = pos  # continue after the closing }
+    # Remove all matched test blocks (including bodies and closing braces)
+    anon = source
+    for t in tests:
+        # Find and remove from 'test "name" {' through the matching '}'
+        marker = f'test "{t["name"]}" {{'
+        pos = anon.find(marker)
+        if pos >= 0:
+            depth = 0
+            end = pos
+            for end in range(pos, len(anon)):
+                if anon[end] == '{':
+                    depth += 1
+                elif anon[end] == '}':
+                    depth -= 1
+                    if depth == 0:
+                        end += 1
+                        break
+            anon = anon[:pos] + anon[end:]
+    anon = anon.strip()
     if anon:
         tests.append({
             "name": "(top-level)",

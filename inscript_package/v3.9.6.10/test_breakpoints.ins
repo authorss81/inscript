@@ -1,36 +1,122 @@
-# v3.9.6.10 — Debugger breakpoint infrastructure (.ins tests)
+# v3.9.6.10 — Debugger breakpoints (.ins tests)
+# Shows realistic code where breakpoints would be useful
 # Run: python inscript.py --test v3.9.6.10/test_breakpoints.ins
 
-test "simple assert" {
-    assert(true)
+test "dbg at each step of a loop" {
+    let sum = 0
+    let i = 0
+    while i < 5 {
+        sum = sum + i
+        dbg(i)
+        dbg(sum)
+        i = i + 1
+    }
+    assert(sum == 10)
 }
 
-test "dbg prints value" {
-    dbg(42)
-    assert(true)
+test "dbg in conditional branches" {
+    let x = 10
+    let y = 20
+    let m = x
+    if y > m {
+        m = y
+        dbg(y)
+    }
+    assert(m == 20)
 }
 
-test "dbg with string" {
-    dbg("hello world")
-    assert(true)
+test "dbg with nested function calls" {
+    fn inner(n: int) {
+        dbg(n)
+        return n * 2
+    }
+    fn outer(n: int) {
+        dbg(n)
+        return inner(n + 1)
+    }
+    let r = outer(5)
+    assert(r == 12)
 }
 
-test "dbg with list" {
-    dbg([1, 2, 3])
-    assert(true)
+test "dbg with array and dict" {
+    let arr = [10, 20, 30]
+    let d = { "a": 1, "b": 2 }
+    dbg(arr)
+    assert(arr[1] == 20)
+    assert(d.has("a"))
 }
 
-test "division" {
-    assert(10 / 2 == 5)
+test "breakpoint in recursive function" {
+    fn fib(n: int) {
+        dbg(n)
+        if n <= 1 {
+            return n
+        }
+        return fib(n - 1) + fib(n - 2)
+    }
+    let r = fib(6)
+    assert(r == 8)
 }
 
-test "string concat" {
-    assert("hello" + " " + "world" == "hello world")
+test "multiple dbg calls trace execution" {
+    dbg("start")
+    let x = 42
+    dbg(x)
+    x = x * 2
+    dbg(x)
+    x = x - 10
+    dbg(x)
+    assert(x == 74)
 }
 
-test "range sum" {
-    let n = 1
-    n = n + 2
-    n = n + 3
-    assert(n == 6)
+test "countdown with breakpoint check" {
+    let countdown = 3
+    dbg(countdown)
+    while countdown > 0 {
+        dbg(countdown)
+        countdown = countdown - 1
+    }
+    dbg("launch")
+    assert(countdown == 0)
+}
+
+test "factorial with dbg" {
+    fn fact(n: int) {
+        dbg(n)
+        if n <= 1 {
+            return 1
+        }
+        return n * fact(n - 1)
+    }
+    let r = fact(5)
+    assert(r == 120)
+}
+
+test "conditional breakpoint logic" {
+    let i = 0
+    while i < 10 {
+        if i == 5 {
+            dbg(i)
+        }
+        i = i + 1
+    }
+    assert(i == 10)
+}
+
+test "palindrome check with dbg steps" {
+    fn is_pal(s: string) {
+        let i = 0
+        let j = s.length - 1
+        while i < j {
+            dbg(s[i])
+            if s[i] != s[j] {
+                return false
+            }
+            i = i + 1
+            j = j - 1
+        }
+        return true
+    }
+    assert(is_pal("racecar"))
+    assert(!is_pal("hello"))
 }

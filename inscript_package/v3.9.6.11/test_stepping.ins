@@ -1,37 +1,89 @@
 # v3.9.6.11 — Debugger stepping (.ins tests)
+# Code patterns that demonstrate step-over, step-into, step-out
 # Run: python inscript.py --test v3.9.6.11/test_stepping.ins
 
-test "assert true" {
-    assert(true)
-}
-
-test "nested call depth" {
-    let depth = 0
-    depth = depth + 1
-    depth = depth + 1
-    depth = depth + 1
-    assert(depth == 3)
-}
-
-test "function call pattern" {
-    let x = 1
-    let y = 2
-    let z = x + y
-    assert(z == 3)
-}
-
-test "condition evaluation" {
-    let a = 5
-    let b = 10
+test "step through simple arithmetic" {
+    let a = 1
+    let b = 2
     let c = a + b
-    assert(c == 15)
-    let d = c * 2
-    assert(d == 30)
+    let d = c * 3
+    let e = d - 5
+    assert(e == 4)
 }
 
-test "multi step" {
-    let v = 1
-    v = v * 10
-    v = v + 5
-    assert(v == 15)
+test "step into nested functions" {
+    fn double(x: int) { return x * 2 }
+    fn add(a: int, b: int) { return a + b }
+    fn compute(n: int) { return double(add(n, 3)) }
+    let r = compute(5)
+    assert(r == 16)
+}
+
+test "step over function calls" {
+    fn square(x: int) { return x * x }
+    fn cube(x: int) { return x * x * x }
+    let a = square(3)
+    let b = cube(2)
+    let c = a + b
+    assert(c == 17)
+}
+
+test "step through recursive fibonacci" {
+    fn fib(n: int) {
+        if n <= 1 { return n }
+        return fib(n - 1) + fib(n - 2)
+    }
+    let r = fib(5)
+    assert(r == 5)
+}
+
+test "step through conditional logic" {
+    fn classify(x: int) {
+        if x < 0 { return -1 }
+        if x == 0 { return 0 }
+        return 1
+    }
+    assert(classify(-5) == -1)
+    assert(classify(0) == 0)
+    assert(classify(42) == 1)
+}
+
+test "multi-step accumulator" {
+    let total = 0
+    total = total + 10
+    total = total + 20
+    total = total + 30
+    total = total + 40
+    assert(total == 100)
+}
+
+test "step through string processing" {
+    fn count_vowels(s: string) {
+        let count = 0
+        let i = 0
+        while i < s.length {
+            let ch = s[i]
+            if ch == "a" || ch == "e" || ch == "i" || ch == "o" || ch == "u" {
+                count = count + 1
+            }
+            i = i + 1
+        }
+        return count
+    }
+    let r = count_vowels("hello world")
+    assert(r == 3)
+}
+
+test "step through closure" {
+    fn make_counter() {
+        let n = 0
+        return || { n = n + 1; return n }
+    }
+    let c = make_counter()
+    let a = c()
+    let b = c()
+    let d = c()
+    assert(a == 1)
+    assert(b == 2)
+    assert(d == 3)
 }

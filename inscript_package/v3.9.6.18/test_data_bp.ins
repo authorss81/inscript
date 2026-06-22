@@ -1,16 +1,88 @@
 # v3.9.6.18 — Data breakpoints (.ins tests)
+# Shows variable mutations for data/watchpoint tracking
 # Run: python inscript.py --test v3.9.6.18/test_data_bp.ins
 
-test "basic" {
-    assert(true)
+test "variable changes across loop iterations" {
+    let x = 0
+    let i = 0
+    while i < 5 {
+        x = x + i
+        i = i + 1
+    }
+    assert(x == 10)
 }
 
-test "watchvar concept" {
-    assert(1 == 1)
+test "field mutation on struct" {
+    struct Counter { value: int }
+    let c = Counter(value: 0)
+    c.value = 10
+    assert(c.value == 10)
+    c.value = c.value + 5
+    assert(c.value == 15)
+    c.value = c.value * 2
+    assert(c.value == 30)
 }
 
-test "assign concept" {
-    let x = 1
-    x = 2
-    assert(x == 2)
+test "array element mutations" {
+    let arr = [0, 0, 0]
+    arr[0] = 100
+    arr[1] = 200
+    arr[2] = 300
+    assert(arr[0] == 100)
+    assert(arr[1] == 200)
+    assert(arr[2] == 300)
+}
+
+test "dictionary value mutations" {
+    let d = { "count": 0 }
+    d["count"] = 1
+    d["count"] = d["count"] + 2
+    d["count"] = d["count"] * 3
+    assert(d["count"] == 9)
+}
+
+test "multiple variable interleaved updates" {
+    let a = 1
+    let b = 1
+    let i = 0
+    while i < 5 {
+        let tmp = a
+        a = b
+        b = tmp + b
+        i = i + 1
+    }
+    assert(a == 8)
+    assert(b == 13)
+}
+
+test "state machine transitions" {
+    let state = "idle"
+    let count = 0
+    state = "running"
+    count = count + 1
+    if count >= 3 {
+        state = "cooldown"
+    }
+    state = "running"
+    count = count + 1
+    if count >= 3 {
+        state = "cooldown"
+    }
+    state = "running"
+    count = count + 1
+    if count >= 3 {
+        state = "cooldown"
+    }
+    assert(state == "cooldown")
+}
+
+test "nested mutation tracking" {
+    let x = 0
+    if true {
+        x = 5
+        if x > 0 {
+            x = x * 2
+        }
+    }
+    assert(x == 10)
 }
