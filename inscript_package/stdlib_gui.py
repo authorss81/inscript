@@ -74,6 +74,8 @@ class _Widget:
         self.size_policy_w = SIZE_FILL
         self.size_policy_h = SIZE_FILL
         self._z = 0
+        self.tab_index = -1
+        self._focused = False
 
     def contains(self, px: float, py: float) -> bool:
         return self.visible and (self.x <= px <= self.x + self.w and
@@ -87,6 +89,7 @@ class _Widget:
         elif name == "visible": self.visible = bool(val)
         elif name == "size_policy_w": self.size_policy_w = int(val)
         elif name == "size_policy_h": self.size_policy_h = int(val)
+        elif name == "tab_index": self.tab_index = int(val)
         else:
             raise AttributeError(f"_Widget has no settable attribute '{name}'")
 
@@ -213,6 +216,7 @@ class Panel(_Widget):
             return
         for child in self.children:
             child.update(input_ns)
+        _tab_cycle_focus(self.children, input_ns)
 
     def draw(self, draw_ns):
         if not self.visible:
@@ -844,6 +848,615 @@ class Dropdown(_Widget):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Focus navigation helpers
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _set_focused(widget, value):
+    widget._focused = value
+    if hasattr(widget, 'focused'):
+        widget.focused = value
+
+
+def _tab_cycle_focus(children, input_ns):
+    if not children or input_ns is None:
+        return
+    kp = getattr(input_ns, "key_pressed", None)
+    if kp is None or not kp("tab"):
+        return
+    focusable = [(c.tab_index, i, c) for i, c in enumerate(children)
+                 if c.visible and c.tab_index >= 0]
+    if not focusable:
+        return
+    focusable.sort(key=lambda x: (x[0], x[1]))
+    shift = getattr(input_ns, "key_down", None)
+    shift_held = shift is not None and (shift("lshift") or shift("rshift"))
+    cur = -1
+    for i, (_, _, c) in enumerate(focusable):
+        if c._focused:
+            cur = i
+            break
+    if shift_held:
+        cur = cur - 1 if cur > 0 else len(focusable) - 1
+    else:
+        cur = cur + 1 if cur >= 0 and cur < len(focusable) - 1 else 0
+    for _, _, c in focusable:
+        _set_focused(c, False)
+    _set_focused(focusable[cur][2], True)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ScrollView — scrollable content area
+# ─────────────────────────────────────────────────────────────────────────────
+
+class ScrollView(Panel):
+    def __init__(self, x: float = 0, y: float = 0, w: float = 300, h: float = 200):
+        super().__init__(x, y, w, h)
+        self.scroll_x = 0.0
+        self.scroll_y = 0.0
+        self.scrollbar_size = 12
+        self.track_color = _color_dict(0.2, 0.2, 0.22)
+        self.thumb_color = _color_dict(0.45, 0.45, 0.5)
+        self.thumb_hover_color = _color_dict(0.55, 0.55, 0.6)
+        self._content_w = w
+        self._content_h = h
+        self._drag_v = False
+        self._drag_h = False
+        self._thumb_hover_v = False
+        self._thumb_hover_h = False
+
+    def _recalc_content(self):
+        if not self.children:
+            self._content_w = self.w
+            self._content_h = self.h
+            return
+        min_x = min(c.x for c in self.children)
+        min_y = min(c.y for c in self.children)
+        max_x = max(c.x + c.w for c in self.children)
+        max_y = max(c.y + c.h for c in self.children)
+        self._content_w = max(self.w, max_x - min_x)
+        self._content_h = max(self.h, max_y - min_y)
+
+    def _has_v_scroll(self):
+        return self._content_h > self.h
+
+    def _has_h_scroll(self):
+        return self._content_w > self.w
+
+    def _v_thumb_size(self):
+        if not self._has_v_scroll():
+            return self.h
+        ratio = self.h / self._content_h
+        return max(20, ratio * self.h)
+
+    def _h_thumb_size(self):
+        if not self._has_h_scroll():
+            return self.w
+        ratio = self.w / self._content_w
+        return max(20, ratio * self.w)
+
+    def _v_thumb_y(self):
+        avail = self.h - self._v_thumb_size() - self.scrollbar_size if self._has_h_scroll() else self.h - self._v_thumb_size()
+        ratio = self.scroll_y / max(1, self._content_h - self.h)
+        return self.y + ratio * avail
+
+    def _h_thumb_x(self):
+        avail = self.w - self._h_thumb_size() - self.scrollbar_size if self._has_v_scroll() else self.w - self._h_thumb_size()
+        ratio = self.scroll_x / max(1, self._content_w - self.w)
+        return self.x + ratio * avail
+
+    def update(self, input_ns=None):
+        if not self.visible or input_ns is None:
+            self._drag_v = False
+            self._drag_h = False
+            return
+        self._recalc_content()
+        mx = getattr(input_ns, "mouse_x", 0)
+        my = getattr(input_ns, "mouse_y", 0)
+        mp = getattr(input_ns, "mouse_pressed", None)
+        mdown = getattr(input_ns, "mouse_down", None)
+        mw = getattr(input_ns, "mouse_wheel", 0)
+        # Scrollbar drag state machine
+        v_bar_x = self.x + self.w - self.scrollbar_size
+        h_bar_y = self.y + self.h - self.scrollbar_size
+        if self._drag_v:
+            if mdown is not None and not mdown(0):
+                self._drag_v = False
+            else:
+                bar_avail = (self.h - self._v_thumb_size() -
+                             (self.scrollbar_size if self._has_h_scroll() else 0))
+                rel = (my - self.y) / max(1, bar_avail)
+                self.scroll_y = max(0, min(self._content_h - self.h, rel * (self._content_h - self.h)))
+        elif self._drag_h:
+            if mdown is not None and not mdown(0):
+                self._drag_h = False
+            else:
+                bar_avail = (self.w - self._h_thumb_size() -
+                             (self.scrollbar_size if self._has_v_scroll() else 0))
+                rel = (mx - self.x) / max(1, bar_avail)
+                self.scroll_x = max(0, min(self._content_w - self.w, rel * (self._content_w - self.w)))
+        # Mouse wheel
+        if self.contains(mx, my) and mw != 0:
+            self.scroll_y = max(0, min(self._content_h - self.h,
+                                       self.scroll_y - mw * 30))
+        # Thumb hover
+        self._thumb_hover_v = (self._has_v_scroll() and
+                               v_bar_x <= mx <= v_bar_x + self.scrollbar_size and
+                               self._v_thumb_y() <= my <= self._v_thumb_y() + self._v_thumb_size())
+        self._thumb_hover_h = (self._has_h_scroll() and
+                               h_bar_y <= my <= h_bar_y + self.scrollbar_size and
+                               self._h_thumb_x() <= mx <= self._h_thumb_x() + self._h_thumb_size())
+        # Start drag on thumb click
+        if mp is not None and mp(0):
+            if self._thumb_hover_v:
+                self._drag_v = True
+            elif self._thumb_hover_h:
+                self._drag_h = True
+            elif self._has_v_scroll() and v_bar_x <= mx <= v_bar_x + self.scrollbar_size and self.y <= my <= self.y + self.h:
+                rel = (my - self.y) / max(1, self.h)
+                self.scroll_y = max(0, min(self._content_h - self.h, rel * self._content_h))
+                self._drag_v = True
+            elif self._has_h_scroll() and h_bar_y <= my <= h_bar_y + self.scrollbar_size and self.x <= mx <= self.x + self.w:
+                rel = (mx - self.x) / max(1, self.w)
+                self.scroll_x = max(0, min(self._content_w - self.w, rel * self._content_w))
+                self._drag_h = True
+        # Transform input for children (add scroll offset to mouse coords)
+        class _ScrolledInput:
+            def __init__(self, ns, sx, sy, sv):
+                self._ns = ns
+                self._sx = sx
+                self._sy = sy
+                self._sv = sv
+            @property
+            def mouse_x(self):
+                return getattr(self._ns, "mouse_x", 0) + self._sx
+            @property
+            def mouse_y(self):
+                return getattr(self._ns, "mouse_y", 0) + self._sy
+            def __getattr__(self, name):
+                return getattr(self._ns, name)
+        scroll_ns = _ScrolledInput(input_ns, self.scroll_x, self.scroll_y, self.scrollbar_size)
+        # Filter out children not in viewport
+        for child in self.children:
+            child_vx = child.x - self.scroll_x
+            child_vy = child.y - self.scroll_y
+            if child_vx + child.w < self.x or child_vx > self.x + self.w:
+                continue
+            if child_vy + child.h < self.y or child_vy > self.y + self.h:
+                continue
+            child.update(scroll_ns)
+
+    def draw(self, draw_ns):
+        if not self.visible:
+            return
+        if self.bg_color and hasattr(draw_ns, "rect"):
+            draw_ns.rect(self.x, self.y, self.w, self.h, self.bg_color, True)
+        if self.border_color and self.border_width > 0 and hasattr(draw_ns, "rect"):
+            draw_ns.rect(self.x, self.y, self.w, self.h, self.border_color, False, self.border_width)
+        # Draw visible children with scroll offset
+        for child in sorted(self.children, key=lambda c: c._z):
+            child_x = child.x - self.scroll_x
+            child_y = child.y - self.scroll_y
+            if child_x + child.w < self.x or child_x > self.x + self.w:
+                continue
+            if child_y + child.h < self.y or child_y > self.y + self.h:
+                continue
+            orig_x, orig_y = child.x, child.y
+            child.x = child_x
+            child.y = child_y
+            child.draw(draw_ns)
+            child.x, child.y = orig_x, orig_y
+        # Draw scrollbars
+        sb = self.scrollbar_size
+        if self._has_v_scroll() and hasattr(draw_ns, "rect"):
+            bx = self.x + self.w - sb
+            draw_ns.rect(bx, self.y, sb, self.h - (sb if self._has_h_scroll() else 0),
+                         self.track_color, True)
+            thumb_c = self.thumb_hover_color if self._thumb_hover_v else self.thumb_color
+            ty = self._v_thumb_y()
+            th = self._v_thumb_size()
+            draw_ns.rect(bx, ty, sb, th, thumb_c, True)
+        if self._has_h_scroll() and hasattr(draw_ns, "rect"):
+            by = self.y + self.h - sb
+            draw_ns.rect(self.x, by, self.w - (sb if self._has_v_scroll() else 0), sb,
+                         self.track_color, True)
+            thumb_c = self.thumb_hover_color if self._thumb_hover_h else self.thumb_color
+            tx = self._h_thumb_x()
+            tw = self._h_thumb_size()
+            draw_ns.rect(tx, by, tw, sb, thumb_c, True)
+
+    def set_attr(self, name: str, val):
+        if name == "scroll_x": self.scroll_x = float(val)
+        elif name == "scroll_y": self.scroll_y = float(val)
+        elif name == "scrollbar_size": self.scrollbar_size = float(val)
+        else: super().set_attr(name, val)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# TabContainer — tabbed panels
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TabContainer(Panel):
+    def __init__(self, x: float = 0, y: float = 0, w: float = 400, h: float = 300,
+                 tab_height: int = 28):
+        super().__init__(x, y, w, h)
+        self.tab_height = tab_height
+        self._tabs = []
+        self.active_tab = -1
+
+    def set_attr(self, name: str, val):
+        if name == "active_tab":
+            idx = int(val)
+            if 0 <= idx < len(self._tabs):
+                self.active_tab = idx
+        elif name == "tab_height": self.tab_height = int(val)
+        else: super().set_attr(name, val)
+        self.tab_bg_color = _color_dict(0.2, 0.2, 0.22)
+        self.active_tab_color = _color_dict(0.3, 0.3, 0.35)
+        self.tab_hover_color = _color_dict(0.25, 0.25, 0.3)
+        self.tab_text_color = _color_dict(0.7, 0.7, 0.7)
+        self.active_text_color = _color_dict(1.0, 1.0, 1.0)
+        self._hovered_tab = -1
+
+    def add_tab(self, title: str, panel: Panel):
+        self._tabs.append({"title": title, "panel": panel})
+        panel.x = self.x
+        panel.y = self.y + self.tab_height
+        panel.w = self.w
+        panel.h = self.h - self.tab_height
+        self.add(panel)
+        if self.active_tab < 0:
+            self.active_tab = 0
+
+    def remove_tab(self, index: int):
+        if 0 <= index < len(self._tabs):
+            self.remove(self._tabs[index]["panel"])
+            self._tabs.pop(index)
+            if self.active_tab >= len(self._tabs):
+                self.active_tab = len(self._tabs) - 1
+
+    def clear_tabs(self):
+        for t in self._tabs:
+            self.remove(t["panel"])
+        self._tabs.clear()
+        self.active_tab = -1
+
+    def _tab_width_at(self, index):
+        title = self._tabs[index]["title"]
+        return max(60, len(title) * 9 + 20)
+
+    def update(self, input_ns=None):
+        if not self.visible or input_ns is None:
+            return
+        mx = getattr(input_ns, "mouse_x", 0)
+        my = getattr(input_ns, "mouse_y", 0)
+        mp = getattr(input_ns, "mouse_pressed", None)
+        self._hovered_tab = -1
+        tx = self.x + 2
+        for i in range(len(self._tabs)):
+            tw = self._tab_width_at(i)
+            if tx <= mx <= tx + tw and self.y <= my <= self.y + self.tab_height:
+                self._hovered_tab = i
+                if mp is not None and mp(0):
+                    self.active_tab = i
+                break
+            tx += tw
+        # Update active tab only
+        if 0 <= self.active_tab < len(self._tabs):
+            self._tabs[self.active_tab]["panel"].update(input_ns)
+        # Tab key to switch tabs
+        kp = getattr(input_ns, "key_pressed", None)
+        if kp is not None and self._focused:
+            if kp("left") and self.active_tab > 0:
+                self.active_tab -= 1
+            elif kp("right") and self.active_tab < len(self._tabs) - 1:
+                self.active_tab += 1
+
+    def draw(self, draw_ns):
+        if not self.visible:
+            return
+        # Draw tab headers
+        tx = self.x + 2
+        for i, tab in enumerate(self._tabs):
+            tw = self._tab_width_at(i)
+            bg = self.active_tab_color if i == self.active_tab else (
+                self.tab_hover_color if i == self._hovered_tab else self.tab_bg_color)
+            tc = self.active_text_color if i == self.active_tab else self.tab_text_color
+            if hasattr(draw_ns, "rect"):
+                draw_ns.rect(tx, self.y, tw, self.tab_height, bg, True)
+                if i == self.active_tab and hasattr(draw_ns, "line"):
+                    draw_ns.line(tx, self.y + self.tab_height, tx + tw, self.y + self.tab_height,
+                                 bg, 2)
+            if hasattr(draw_ns, "text_centered"):
+                draw_ns.text_centered(tx + tw / 2, self.y + self.tab_height / 2,
+                                      tab["title"], tc, 12)
+            elif hasattr(draw_ns, "text"):
+                draw_ns.text(tx + 4, self.y + 4, tab["title"], tc, 12)
+            tx += tw
+        # Draw content area background
+        if hasattr(draw_ns, "rect"):
+            draw_ns.rect(self.x, self.y + self.tab_height, self.w,
+                         self.h - self.tab_height, self.bg_color or _color_dict(0.15, 0.15, 0.18), True)
+        # Draw active tab content
+        if 0 <= self.active_tab < len(self._tabs):
+            self._tabs[self.active_tab]["panel"].draw(draw_ns)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Splitter — resizable split panes
+# ─────────────────────────────────────────────────────────────────────────────
+
+class Splitter(_Widget):
+    def __init__(self, x: float = 0, y: float = 0, w: float = 400, h: float = 300,
+                 orientation: str = "horizontal", split: float = 0.5):
+        super().__init__(x, y, w, h)
+        self.orientation = orientation
+        self.split = max(0.05, min(0.95, float(split)))
+        self.divider_size = 6
+        self.divider_color = _color_dict(0.3, 0.3, 0.35)
+        self.divider_hover_color = _color_dict(0.5, 0.5, 0.55)
+        self._dragging = False
+        self._hovered = False
+        self.panel1 = Panel(0, 0, 0, 0)
+        self.panel2 = Panel(0, 0, 0, 0)
+        self.panel1._z = self._z + 1
+        self.panel2._z = self._z + 1
+
+    def set_attr(self, name: str, val):
+        if name == "split":
+            self.split = max(0.05, min(0.95, float(val)))
+        elif name == "orientation":
+            self.orientation = str(val)
+        elif name == "divider_size":
+            self.divider_size = float(val)
+        else:
+            super().set_attr(name, val)
+
+    def _layout(self):
+        if self.orientation == "horizontal":
+            div = self.divider_size
+            p1w = max(0, int((self.w - div) * self.split))
+            p2w = max(0, self.w - div - p1w)
+            self.panel1.x = self.x
+            self.panel1.y = self.y
+            self.panel1.w = p1w
+            self.panel1.h = self.h
+            self.panel2.x = self.x + p1w + div
+            self.panel2.y = self.y
+            self.panel2.w = p2w
+            self.panel2.h = self.h
+        else:
+            div = self.divider_size
+            p1h = max(0, int((self.h - div) * self.split))
+            p2h = max(0, self.h - div - p1h)
+            self.panel1.x = self.x
+            self.panel1.y = self.y
+            self.panel1.w = self.w
+            self.panel1.h = p1h
+            self.panel2.x = self.x
+            self.panel2.y = self.y + p1h + div
+            self.panel2.w = self.w
+            self.panel2.h = p2h
+
+    def _divider_rect(self):
+        self._layout()
+        if self.orientation == "horizontal":
+            px = self.panel1.x + self.panel1.w
+            return (px, self.y, self.divider_size, self.h)
+        else:
+            py = self.panel1.y + self.panel1.h
+            return (self.x, py, self.w, self.divider_size)
+
+    def update(self, input_ns=None):
+        if not self.visible or input_ns is None:
+            self._dragging = False
+            return
+        self._layout()
+        mx = getattr(input_ns, "mouse_x", 0)
+        my = getattr(input_ns, "mouse_y", 0)
+        mp = getattr(input_ns, "mouse_pressed", None)
+        mdown = getattr(input_ns, "mouse_down", None)
+        dx, dy, dw, dh = self._divider_rect()
+        self._hovered = (dx <= mx <= dx + dw and dy <= my <= dy + dh)
+        if self._dragging:
+            if mdown is not None and not mdown(0):
+                self._dragging = False
+            else:
+                if self.orientation == "horizontal":
+                    rel = (mx - self.x) / max(1, self.w - self.divider_size)
+                else:
+                    rel = (my - self.y) / max(1, self.h - self.divider_size)
+                self.split = max(0.05, min(0.95, rel))
+                self._layout()
+        elif self._hovered and mp is not None and mp(0):
+            self._dragging = True
+        self.panel1.update(input_ns)
+        self.panel2.update(input_ns)
+
+    def draw(self, draw_ns):
+        if not self.visible:
+            return
+        self._layout()
+        self.panel1.draw(draw_ns)
+        self.panel2.draw(draw_ns)
+        dx, dy, dw, dh = self._divider_rect()
+        dc = self.divider_hover_color if (self._hovered or self._dragging) else self.divider_color
+        if hasattr(draw_ns, "rect"):
+            draw_ns.rect(dx, dy, dw, dh, dc, True)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# MenuItem, Menu, MenuBar — dropdown menu system
+# ─────────────────────────────────────────────────────────────────────────────
+
+class MenuItem:
+    def __init__(self, label: str = "", on_click=None, submenu: list = None):
+        self.label = label
+        self.on_click = on_click
+        self.submenu = list(submenu) if submenu else None
+
+
+class Menu:
+    def __init__(self, title: str = ""):
+        self.title = title
+        self.items: list[MenuItem] = []
+
+    def add_item(self, item: MenuItem):
+        self.items.append(item)
+
+    def add(self, label: str, on_click=None):
+        self.items.append(MenuItem(label, on_click))
+
+    def add_submenu(self, label: str, items: list):
+        self.items.append(MenuItem(label, submenu=items))
+
+
+class MenuBar(_Widget):
+    def __init__(self, x: float = 0, y: float = 0, w: float = 640, h: float = 26):
+        super().__init__(x, y, w, h)
+        self.menus: list[Menu] = []
+        self._open_index = -1
+        self._hovered_menu = -1
+        self.menu_bg_color = _color_dict(0.18, 0.18, 0.2)
+        self.menu_text_color = _color_dict(0.85, 0.85, 0.85)
+        self.menu_hover_color = _color_dict(0.3, 0.3, 0.35)
+        self.dropdown_bg_color = _color_dict(0.2, 0.2, 0.22)
+        self.dropdown_hover_color = _color_dict(0.3, 0.3, 0.35)
+        self.dropdown_text_color = _color_dict(1.0, 1.0, 1.0)
+        self.border_color = _color_dict(0.3, 0.3, 0.35)
+        self._item_rects = []
+        self._hovered_item = -1
+
+    def add_menu(self, menu: Menu):
+        self.menus.append(menu)
+
+    def _menu_x(self, index):
+        x = self.x + 4
+        for i in range(index):
+            x += max(40, len(self.menus[i].title) * 9 + 16)
+        return x
+
+    def _menu_width(self, index):
+        return max(40, len(self.menus[index].title) * 9 + 16)
+
+    def close_all(self):
+        self._open_index = -1
+        self._item_rects.clear()
+
+    def update(self, input_ns=None):
+        if not self.visible or input_ns is None:
+            self.close_all()
+            return
+        mx = getattr(input_ns, "mouse_x", 0)
+        my = getattr(input_ns, "mouse_y", 0)
+        mp = getattr(input_ns, "mouse_pressed", None)
+        # Menu bar hover
+        self._hovered_menu = -1
+        for i in range(len(self.menus)):
+            mx_pos = self._menu_x(i)
+            mw = self._menu_width(i)
+            if mx_pos <= mx <= mx_pos + mw and self.y <= my <= self.y + self.h:
+                self._hovered_menu = i
+                break
+        # Click on menu bar
+        if self._hovered_menu >= 0 and mp is not None and mp(0):
+            if self._open_index == self._hovered_menu:
+                self._open_index = -1
+            else:
+                self._open_index = self._hovered_menu
+                self._item_rects.clear()
+            return
+        # Close if clicking outside
+        if mp is not None and mp(0):
+            clicked_menu = False
+            for i in range(len(self.menus)):
+                mx_pos = self._menu_x(i)
+                mw = self._menu_width(i)
+                if mx_pos <= mx <= mx_pos + mw and self.y <= my <= self.y + self.h:
+                    clicked_menu = True
+                    break
+            if not clicked_menu and self._open_index >= 0:
+                # Check if click is within dropdown
+                in_dropdown = False
+                for rx, ry, rw, rh in self._item_rects:
+                    if rx <= mx <= rx + rw and ry <= my <= ry + rh:
+                        in_dropdown = True
+                        break
+                if not in_dropdown:
+                    self.close_all()
+        # Open menu: hover + item selection
+        if self._open_index >= 0 and self._open_index < len(self.menus):
+            menu = self.menus[self._open_index]
+            menu_x = self._menu_x(self._open_index)
+            item_h = 24
+            self._item_rects.clear()
+            self._hovered_item = -1
+            for i, item in enumerate(menu.items):
+                ix = menu_x
+                iy = self.y + self.h + i * item_h
+                iw = max(120, len(item.label) * 9 + 24)
+                self._item_rects.append((ix, iy, iw, item_h))
+                if ix <= mx <= ix + iw and iy <= my <= iy + item_h:
+                    self._hovered_item = i
+            # Click on item
+            if mp is not None and mp(0) and self._hovered_item >= 0:
+                item = menu.items[self._hovered_item]
+                if item.submenu:
+                    pass  # submenus deferred for future enhancement
+                elif item.on_click:
+                    _call_user_fn(item.on_click, item.label)
+                self.close_all()
+
+    def draw(self, draw_ns):
+        if not self.visible:
+            return
+        # Draw menu bar background
+        if hasattr(draw_ns, "rect"):
+            draw_ns.rect(self.x, self.y, self.w, self.h, self.menu_bg_color, True)
+            draw_ns.rect(self.x, self.y, self.w, self.h, self.border_color, False, 1)
+        # Draw menu titles
+        for i, menu in enumerate(self.menus):
+            mx_pos = self._menu_x(i)
+            mw = self._menu_width(i)
+            is_open = (i == self._open_index)
+            is_hover = (i == self._hovered_menu)
+            bg = self.menu_hover_color if (is_open or is_hover) else None
+            if bg and hasattr(draw_ns, "rect"):
+                draw_ns.rect(mx_pos, self.y, mw, self.h, bg, True)
+            if hasattr(draw_ns, "text_centered"):
+                draw_ns.text_centered(mx_pos + mw / 2, self.y + self.h / 2,
+                                      menu.title, self.menu_text_color, 11)
+            elif hasattr(draw_ns, "text"):
+                draw_ns.text(mx_pos + 4, self.y + 4, menu.title, self.menu_text_color, 11)
+        # Draw open dropdown
+        if self._open_index >= 0 and self._open_index < len(self.menus):
+            menu = self.menus[self._open_index]
+            menu_x = self._menu_x(self._open_index)
+            if not self._item_rects:
+                item_h = 24
+                for i in range(len(menu.items)):
+                    iw = max(120, len(menu.items[i].label) * 9 + 24)
+                    self._item_rects.append((menu_x, self.y + self.h + i * item_h, iw, item_h))
+            total_h = len(menu.items) * 24
+            max_w = max(rw for rw, _, _, _ in self._item_rects) if self._item_rects else 120
+            if hasattr(draw_ns, "rect"):
+                draw_ns.rect(menu_x, self.y + self.h, max_w, total_h, self.dropdown_bg_color, True)
+                draw_ns.rect(menu_x, self.y + self.h, max_w, total_h, self.border_color, False, 1)
+            for i, item in enumerate(menu.items):
+                ix, iy, iw, ih = self._item_rects[i]
+                if hasattr(draw_ns, "rect") and self._hovered_item == i:
+                    draw_ns.rect(ix, iy, iw, ih, self.dropdown_hover_color, True)
+                if hasattr(draw_ns, "text"):
+                    draw_ns.text(ix + 6, iy + 3, item.label, self.dropdown_text_color, 12)
+
+    def set_attr(self, name: str, val):
+        if name == "menus":
+            self.menus = list(val) if isinstance(val, (list, tuple)) else []
+            self.close_all()
+        else:
+            super().set_attr(name, val)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Module registration
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -861,6 +1474,12 @@ register_module("gui", {
     "Slider": Slider,
     "TextInput": TextInput,
     "Dropdown": Dropdown,
+    "ScrollView": ScrollView,
+    "TabContainer": TabContainer,
+    "Splitter": Splitter,
+    "MenuBar": MenuBar,
+    "Menu": Menu,
+    "MenuItem": MenuItem,
     "SIZE_FIXED": SIZE_FIXED,
     "SIZE_FILL": SIZE_FILL,
 })

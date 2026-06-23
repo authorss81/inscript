@@ -395,20 +395,32 @@ class InputNamespace(_NS):
         self._mbtn     = {}   # btn_int → bool (held)
         self._mpressed = {}   # btn_int → bool (just clicked this frame)
         self._mreleased= {}
+        self._wheel_y  = 0
         InputNamespace._KEY_MAP = self._build_keymap()
 
     def _update(self, events):
         self._pressed.clear(); self._released.clear()
         self._mpressed.clear(); self._mreleased.clear()
+        self._wheel_y = 0
         for ev in events:
             if ev.type == pygame.KEYDOWN:
                 self._held.add(ev.key); self._pressed.add(ev.key)
             elif ev.type == pygame.KEYUP:
                 self._held.discard(ev.key); self._released.add(ev.key)
             elif ev.type == pygame.MOUSEBUTTONDOWN:
-                self._mbtn[ev.button-1] = True; self._mpressed[ev.button-1] = True
+                if ev.button == 4:
+                    self._wheel_y = -1
+                elif ev.button == 5:
+                    self._wheel_y = 1
+                else:
+                    self._mbtn[ev.button-1] = True
+                    self._mpressed[ev.button-1] = True
             elif ev.type == pygame.MOUSEBUTTONUP:
-                self._mbtn[ev.button-1] = False; self._mreleased[ev.button-1] = True
+                if ev.button not in (4, 5):
+                    self._mbtn[ev.button-1] = False
+                    self._mreleased[ev.button-1] = True
+            elif ev.type == pygame.MOUSEWHEEL:
+                self._wheel_y = ev.y
 
     def _key(self, name):
         k = self._KEY_MAP.get(str(name).lower())
@@ -431,6 +443,9 @@ class InputNamespace(_NS):
     def mouse_down(self, btn=0):     return self._mbtn.get(int(btn), False)
     def mouse_pressed(self, btn=0):  return self._mpressed.get(int(btn), False)
     def mouse_released(self, btn=0): return self._mreleased.get(int(btn), False)
+
+    @property
+    def mouse_wheel(self):           return self._wheel_y
 
 
 # ─────────────────────────────────────────────────────────────────────────────

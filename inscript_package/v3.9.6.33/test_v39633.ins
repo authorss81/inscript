@@ -1,0 +1,302 @@
+# v3.9.6.33 — GUI: containers + navigation (ScrollView, TabContainer, Splitter, MenuBar)
+# Run: python inscript.py --test v3.9.6.33/test_v39633.ins
+
+# ── ScrollView ───────────────────────────────────────────────────────────────
+
+test "scrollview_create" {
+    import "gui" as gui
+    let sv = gui.ScrollView(10, 20, 300, 200)
+    assert(sv.x == 10)
+    assert(sv.y == 20)
+    assert(sv.w == 300)
+    assert(sv.h == 200)
+    assert(sv.scroll_x == 0.0)
+    assert(sv.scroll_y == 0.0)
+}
+
+test "scrollview_contains_hit_detection" {
+    import "gui" as gui
+    let sv = gui.ScrollView(100, 100, 300, 200)
+    assert(sv.contains(100, 100) == true)
+    assert(sv.contains(300, 200) == true)
+    assert(sv.contains(399, 299) == true)
+    assert(sv.contains(99, 100) == false)
+    assert(sv.contains(100, 99) == false)
+}
+
+test "scrollview_set_scroll_via_set_attr" {
+    import "gui" as gui
+    let sv = gui.ScrollView(0, 0, 300, 200)
+    sv.set_attr("scroll_x", 50.0)
+    sv.set_attr("scroll_y", 100.0)
+    assert(sv.scroll_x == 50.0)
+    assert(sv.scroll_y == 100.0)
+}
+
+test "scrollview_hidden_blocks_hits" {
+    import "gui" as gui
+    let sv = gui.ScrollView(100, 100, 300, 200)
+    assert(sv.contains(150, 150) == true)
+    sv.hide()
+    assert(sv.contains(150, 150) == false)
+}
+
+test "scrollview_children_rendered_offscreen_not_crashed" {
+    import "gui" as gui
+    let sv = gui.ScrollView(0, 0, 200, 200)
+    let b = gui.Button(0, 300, 100, 30, "Below")
+    sv.add(b)
+    sv.draw(nil)
+    assert(sv.children.len == 1)
+}
+
+test "scrollview_children_visible_drawn" {
+    import "gui" as gui
+    let sv = gui.ScrollView(0, 0, 200, 200)
+    let b = gui.Button(10, 10, 100, 30, "Visible")
+    sv.add(b)
+    sv.draw(nil)
+    assert(b.x == 10)
+    assert(b.y == 10)
+}
+
+
+# ── TabContainer ─────────────────────────────────────────────────────────────
+
+test "tabcontainer_create" {
+    import "gui" as gui
+    let tc = gui.TabContainer(10, 20, 400, 300)
+    assert(tc.x == 10)
+    assert(tc.y == 20)
+    assert(tc.w == 400)
+    assert(tc.h == 300)
+    assert(tc.active_tab == -1)
+}
+
+test "tabcontainer_add_tabs" {
+    import "gui" as gui
+    let tc = gui.TabContainer(0, 0, 400, 300)
+    let p1 = gui.Panel(0, 0, 400, 270)
+    let p2 = gui.Panel(0, 0, 400, 270)
+    tc.add_tab("First", p1)
+    tc.add_tab("Second", p2)
+    assert(tc.active_tab == 0)
+    tc.set_attr("active_tab", 1)
+    assert(tc.active_tab == 1)
+}
+
+test "tabcontainer_switch_tabs" {
+    import "gui" as gui
+    let tc = gui.TabContainer(0, 0, 400, 300)
+    let p1 = gui.Panel(0, 0, 400, 270)
+    let p2 = gui.Panel(0, 0, 400, 270)
+    tc.add_tab("First", p1)
+    tc.add_tab("Second", p2)
+    assert(tc.active_tab == 0)
+    tc.set_attr("active_tab", 1)
+    assert(tc.active_tab == 1)
+}
+
+test "tabcontainer_remove_tab" {
+    import "gui" as gui
+    let tc = gui.TabContainer(0, 0, 400, 300)
+    let p1 = gui.Panel(0, 0, 400, 270)
+    let p2 = gui.Panel(0, 0, 400, 270)
+    tc.add_tab("First", p1)
+    tc.add_tab("Second", p2)
+    tc.set_attr("active_tab", 1)
+    tc.remove_tab(1)
+    assert(tc.active_tab == 0)
+}
+
+test "tabcontainer_clear_tabs" {
+    import "gui" as gui
+    let tc = gui.TabContainer(0, 0, 400, 300)
+    tc.add_tab("A", gui.Panel(0, 0, 400, 270))
+    tc.add_tab("B", gui.Panel(0, 0, 400, 270))
+    tc.clear_tabs()
+    assert(tc.active_tab == -1)
+    assert(tc.children.len == 0)
+}
+
+test "tabcontainer_contains_hit_detection" {
+    import "gui" as gui
+    let tc = gui.TabContainer(100, 100, 400, 300)
+    assert(tc.contains(100, 100) == true)
+    assert(tc.contains(499, 399) == true)
+    assert(tc.contains(99, 100) == false)
+}
+
+test "tabcontainer_default_constructor" {
+    import "gui" as gui
+    let tc = gui.TabContainer()
+    assert(tc.x == 0)
+    assert(tc.y == 0)
+    assert(tc.w == 400)
+    assert(tc.h == 300)
+    assert(tc.active_tab == -1)
+}
+
+
+# ── Splitter ─────────────────────────────────────────────────────────────────
+
+test "splitter_create" {
+    import "gui" as gui
+    let sp = gui.Splitter(10, 20, 400, 300)
+    assert(sp.x == 10)
+    assert(sp.y == 20)
+    assert(sp.w == 400)
+    assert(sp.h == 300)
+    assert(sp.orientation == "horizontal")
+}
+
+test "splitter_vertical_orientation" {
+    import "gui" as gui
+    let sp = gui.Splitter(0, 0, 400, 300, "vertical", 0.5)
+    assert(sp.orientation == "vertical")
+    assert(sp.split == 0.5)
+}
+
+test "splitter_split_clamped" {
+    import "gui" as gui
+    let sp = gui.Splitter(0, 0, 400, 300, "horizontal", 0.0)
+    assert(sp.split >= 0.05)
+    sp.set_attr("split", 2.0)
+    assert(sp.split <= 0.95)
+}
+
+test "splitter_set_split_via_set_attr" {
+    import "gui" as gui
+    let sp = gui.Splitter(0, 0, 400, 300)
+    sp.set_attr("split", 0.75)
+    assert(sp.split == 0.75)
+}
+
+test "splitter_contains_hit_detection" {
+    import "gui" as gui
+    let sp = gui.Splitter(100, 100, 400, 300)
+    assert(sp.contains(100, 100) == true)
+    assert(sp.contains(499, 399) == true)
+    assert(sp.contains(99, 100) == false)
+}
+
+test "splitter_panel1_panel2_exist" {
+    import "gui" as gui
+    let sp = gui.Splitter(0, 0, 400, 300)
+    assert(sp.panel1.x == 0)
+    assert(sp.panel2.x >= 0)
+}
+
+test "splitter_hidden_blocks_hits" {
+    import "gui" as gui
+    let sp = gui.Splitter(100, 100, 400, 300)
+    assert(sp.contains(200, 200) == true)
+    sp.hide()
+    assert(sp.contains(200, 200) == false)
+}
+
+
+# ── MenuBar ──────────────────────────────────────────────────────────────────
+
+test "menubar_create" {
+    import "gui" as gui
+    let mb = gui.MenuBar(0, 0, 640, 26)
+    assert(mb.x == 0)
+    assert(mb.y == 0)
+    assert(mb.w == 640)
+    assert(mb.h == 26)
+}
+
+test "menubar_add_menus" {
+    import "gui" as gui
+    let mb = gui.MenuBar(0, 0, 640, 26)
+    let m1 = gui.Menu("File")
+    let m2 = gui.Menu("Edit")
+    m1.add("Open")
+    m1.add("Save")
+    m2.add("Copy")
+    m2.add("Paste")
+    mb.add_menu(m1)
+    mb.add_menu(m2)
+    assert(mb.menus.len == 2)
+}
+
+test "menubar_menu_items" {
+    import "gui" as gui
+    let m = gui.Menu("File")
+    m.add("Open")
+    m.add("Save")
+    m.add("Exit")
+    assert(m.items.len == 3)
+    assert(m.items[0].label == "Open")
+    assert(m.items[2].label == "Exit")
+}
+
+test "menubar_menu_add_item" {
+    import "gui" as gui
+    let m = gui.Menu("Help")
+    let item = gui.MenuItem("About")
+    m.add_item(item)
+    assert(m.items.len == 1)
+    assert(m.items[0].label == "About")
+}
+
+test "menubar_close_all" {
+    import "gui" as gui
+    let mb = gui.MenuBar(0, 0, 640, 26)
+    let m = gui.Menu("File")
+    m.add("Open")
+    mb.add_menu(m)
+    mb.close_all()
+    assert(mb.menus.len == 1)
+}
+
+test "menubar_set_attr_menus" {
+    import "gui" as gui
+    let mb = gui.MenuBar(0, 0, 640, 26)
+    let m = gui.Menu("Test")
+    m.add("Item")
+    mb.set_attr("menus", [m])
+    assert(mb.menus.len == 1)
+}
+
+test "menubar_contains_hit_detection" {
+    import "gui" as gui
+    let mb = gui.MenuBar(100, 100, 400, 26)
+    assert(mb.contains(100, 100) == true)
+    assert(mb.contains(300, 115) == true)
+    assert(mb.contains(499, 125) == true)
+    assert(mb.contains(99, 100) == false)
+}
+
+test "menubar_default_constructor" {
+    import "gui" as gui
+    let mb = gui.MenuBar()
+    assert(mb.x == 0)
+    assert(mb.y == 0)
+    assert(mb.menus.len == 0)
+}
+
+
+# ── Focus Navigation (tab_index) ─────────────────────────────────────────────
+
+test "widget_tab_index_default" {
+    import "gui" as gui
+    let b = gui.Button(0, 0, 100, 30, "Test")
+    assert(b.tab_index == -1)
+}
+
+test "widget_tab_index_set_via_set_attr" {
+    import "gui" as gui
+    let b = gui.Button(0, 0, 100, 30, "Test")
+    b.set_attr("tab_index", 1)
+    assert(b.tab_index == 1)
+}
+
+test "widget_tab_index_negative_no_focus" {
+    import "gui" as gui
+    let b = gui.Button(0, 0, 100, 30, "Test")
+    assert(b._focused == false)
+    b.set_attr("tab_index", -1)
+    assert(b._focused == false)
+}
