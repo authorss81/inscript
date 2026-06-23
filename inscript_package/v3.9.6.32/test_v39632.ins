@@ -1,0 +1,357 @@
+# v3.9.6.32 — GUI: input widgets (Checkbox, Slider, TextInput, Dropdown)
+# Run: python inscript.py --test v3.9.6.32/test_v39632.ins
+
+# ── Checkbox ─────────────────────────────────────────────────────────────────
+
+test "checkbox_create" {
+    import "gui" as gui
+    let cb = gui.Checkbox(10, 20, "Enable", 16)
+    assert(cb.x == 10)
+    assert(cb.y == 20)
+    assert(cb.text == "Enable")
+    assert(cb.font_size == 16)
+    assert(cb.w == 20)
+    assert(cb.h == 20)
+}
+
+test "checkbox_default_unchecked" {
+    import "gui" as gui
+    let cb = gui.Checkbox(0, 0, "Test")
+    assert(cb.checked == false)
+}
+
+test "checkbox_toggle_checked" {
+    import "gui" as gui
+    let cb = gui.Checkbox(0, 0, "Test")
+    cb.checked = true
+    assert(cb.checked == true)
+    cb.checked = false
+    assert(cb.checked == false)
+}
+
+test "checkbox_set_attr_checked_text" {
+    import "gui" as gui
+    let cb = gui.Checkbox(0, 0, "Old")
+    cb.set_attr("checked", true)
+    assert(cb.checked == true)
+    cb.set_attr("text", "New")
+    assert(cb.text == "New")
+    cb.set_attr("font_size", 20)
+    assert(cb.font_size == 20)
+}
+
+test "checkbox_contains_hit_detection" {
+    import "gui" as gui
+    let cb = gui.Checkbox(100, 100, "Test")
+    assert(cb.contains(100, 100) == true)
+    assert(cb.contains(110, 110) == true)
+    assert(cb.contains(118, 118) == true)
+    assert(cb.contains(99, 100) == false)
+    assert(cb.contains(100, 99) == false)
+    assert(cb.contains(121, 100) == false)
+    assert(cb.contains(100, 121) == false)
+}
+
+test "checkbox_hidden_blocks_hits" {
+    import "gui" as gui
+    let cb = gui.Checkbox(100, 100, "Test")
+    assert(cb.contains(105, 105) == true)
+    cb.hide()
+    assert(cb.contains(105, 105) == false)
+}
+
+test "checkbox_on_change_callback_registered" {
+    import "gui" as gui
+    let cb = gui.Checkbox(0, 0, "Test")
+    let called = false
+    cb.on_change(fn(val) { called = true })
+    cb.checked = true
+    assert(cb.checked == true)
+}
+
+test "checkbox_default_constructor" {
+    import "gui" as gui
+    let cb = gui.Checkbox()
+    assert(cb.x == 0)
+    assert(cb.y == 0)
+    assert(cb.text == "")
+    assert(cb.checked == false)
+}
+
+
+# ── Slider ───────────────────────────────────────────────────────────────────
+
+test "slider_create" {
+    import "gui" as gui
+    let s = gui.Slider(10, 20, 300, 30)
+    assert(s.x == 10)
+    assert(s.y == 20)
+    assert(s.w == 300)
+    assert(s.h == 30)
+    assert(s.min_val == 0.0)
+    assert(s.max_val == 100.0)
+}
+
+test "slider_default_value" {
+    import "gui" as gui
+    let s = gui.Slider(0, 0, 200, 20)
+    assert(s.value == 50.0)
+}
+
+test "slider_custom_range_initial" {
+    import "gui" as gui
+    let s = gui.Slider(0, 0, 200, 20, 0.0, 10.0, 3.0)
+    assert(s.min_val == 0.0)
+    assert(s.max_val == 10.0)
+    assert(s.value == 3.0)
+}
+
+test "slider_value_clamping" {
+    import "gui" as gui
+    let s = gui.Slider(0, 0, 200, 20, 0.0, 100.0, 150.0)
+    assert(s.value == 100.0)
+}
+
+test "slider_set_value_via_set_attr" {
+    import "gui" as gui
+    let s = gui.Slider(0, 0, 200, 20, 0.0, 100.0, 50.0)
+    s.set_attr("value", 75.0)
+    assert(s.value == 75.0)
+}
+
+test "slider_set_attr_clamps_value" {
+    import "gui" as gui
+    let s = gui.Slider(0, 0, 200, 20, 0.0, 100.0, 50.0)
+    s.set_attr("value", 999.0)
+    assert(s.value == 100.0)
+    s.set_attr("value", -999.0)
+    assert(s.value == 0.0)
+}
+
+test "slider_set_min_max_via_set_attr" {
+    import "gui" as gui
+    let s = gui.Slider(0, 0, 200, 20, 0.0, 100.0, 50.0)
+    s.set_attr("min_val", 20.0)
+    s.set_attr("max_val", 80.0)
+    assert(s.min_val == 20.0)
+    assert(s.max_val == 80.0)
+}
+
+test "slider_contains_hit_detection" {
+    import "gui" as gui
+    let s = gui.Slider(100, 100, 200, 30)
+    assert(s.contains(100, 100) == true)
+    assert(s.contains(200, 115) == true)
+    assert(s.contains(299, 129) == true)
+    assert(s.contains(99, 100) == false)
+    assert(s.contains(100, 99) == false)
+}
+
+test "slider_on_change_callback_registered" {
+    import "gui" as gui
+    let s = gui.Slider(0, 0, 200, 20, 0.0, 100.0, 50.0)
+    let called = false
+    s.on_change(fn(val) { called = true })
+    s.set_attr("value", 80.0)
+    assert(s.value == 80.0)
+}
+
+test "slider_default_constructor" {
+    import "gui" as gui
+    let s = gui.Slider()
+    assert(s.x == 0)
+    assert(s.y == 0)
+    assert(s.w == 200)
+    assert(s.h == 20)
+}
+
+
+# ── TextInput ────────────────────────────────────────────────────────────────
+
+test "textinput_create" {
+    import "gui" as gui
+    let ti = gui.TextInput(10, 20, 300, 30, "Enter name", 16)
+    assert(ti.x == 10)
+    assert(ti.y == 20)
+    assert(ti.w == 300)
+    assert(ti.h == 30)
+    assert(ti.placeholder == "Enter name")
+    assert(ti.font_size == 16)
+    assert(ti.text == "")
+    assert(ti.focused == false)
+}
+
+test "textinput_set_text_via_set_attr" {
+    import "gui" as gui
+    let ti = gui.TextInput(0, 0, 200, 30, "")
+    assert(ti.text == "")
+    ti.set_attr("text", "hello")
+    assert(ti.text == "hello")
+    ti.set_attr("placeholder", "type here")
+    assert(ti.placeholder == "type here")
+}
+
+test "textinput_set_focused_via_set_attr" {
+    import "gui" as gui
+    let ti = gui.TextInput(0, 0, 200, 30)
+    assert(ti.focused == false)
+    ti.set_attr("focused", true)
+    assert(ti.focused == true)
+}
+
+test "textinput_contains_hit_detection" {
+    import "gui" as gui
+    let ti = gui.TextInput(100, 100, 200, 30)
+    assert(ti.contains(100, 100) == true)
+    assert(ti.contains(200, 115) == true)
+    assert(ti.contains(299, 129) == true)
+    assert(ti.contains(99, 100) == false)
+    assert(ti.contains(100, 99) == false)
+}
+
+test "textinput_hidden_blocks_hits" {
+    import "gui" as gui
+    let ti = gui.TextInput(100, 100, 200, 30)
+    assert(ti.contains(150, 115) == true)
+    ti.hide()
+    assert(ti.contains(150, 115) == false)
+}
+
+test "textinput_on_submit_callback_registered" {
+    import "gui" as gui
+    let ti = gui.TextInput(0, 0, 200, 30)
+    let called = false
+    ti.on_submit(fn(text) { called = true })
+    ti.set_attr("text", "player1")
+    assert(ti.text == "player1")
+}
+
+test "textinput_on_change_callback_registered" {
+    import "gui" as gui
+    let ti = gui.TextInput(0, 0, 200, 30)
+    let called = false
+    ti.on_change(fn(text) { called = true })
+    ti.set_attr("text", "abc")
+    assert(ti.text == "abc")
+}
+
+test "textinput_default_constructor" {
+    import "gui" as gui
+    let ti = gui.TextInput()
+    assert(ti.x == 0)
+    assert(ti.y == 0)
+    assert(ti.text == "")
+    assert(ti.placeholder == "")
+    assert(ti.focused == false)
+}
+
+
+# ── Dropdown ─────────────────────────────────────────────────────────────────
+
+test "dropdown_create" {
+    import "gui" as gui
+    let dd = gui.Dropdown(10, 20, 200, 30, [], 16)
+    assert(dd.x == 10)
+    assert(dd.y == 20)
+    assert(dd.w == 200)
+    assert(dd.h == 30)
+    assert(dd.font_size == 16)
+}
+
+test "dropdown_with_options" {
+    import "gui" as gui
+    let dd = gui.Dropdown(0, 0, 200, 30, ["Option A", "Option B", "Option C"])
+    assert(dd.options.len == 3)
+    assert(dd.options[0] == "Option A")
+    assert(dd.options[2] == "Option C")
+}
+
+test "dropdown_select_by_index" {
+    import "gui" as gui
+    let dd = gui.Dropdown(0, 0, 200, 30, ["Red", "Green", "Blue"])
+    dd.set_attr("selected_index", 1)
+    assert(dd.selected_index == 1)
+    assert(dd.selected_text == "Green")
+}
+
+test "dropdown_set_attr_options_replace_list" {
+    import "gui" as gui
+    let dd = gui.Dropdown(0, 0, 200, 30, ["Old"])
+    dd.set_attr("options", ["X", "Y", "Z"])
+    assert(dd.options.len == 3)
+    assert(dd.options[0] == "X")
+    assert(dd.selected_index == -1)
+}
+
+test "dropdown_select_index_out_of_range" {
+    import "gui" as gui
+    let dd = gui.Dropdown(0, 0, 200, 30, ["A", "B"])
+    dd.set_attr("selected_index", -1)
+    assert(dd.selected_index == -1)
+    dd.set_attr("selected_index", 99)
+    assert(dd.selected_index == -1)
+}
+
+test "dropdown_add_remove_clear_options" {
+    import "gui" as gui
+    let dd = gui.Dropdown(0, 0, 200, 30, ["A"])
+    dd.add_option("B")
+    assert(dd.options.len == 2)
+    dd.remove_option(0)
+    assert(dd.options.len == 1)
+    assert(dd.options[0] == "B")
+    dd.clear_options()
+    assert(dd.options.len == 0)
+    assert(dd.selected_index == -1)
+}
+
+test "dropdown_remove_selected_resets_selection" {
+    import "gui" as gui
+    let dd = gui.Dropdown(0, 0, 200, 30, ["A", "B", "C"])
+    dd.set_attr("selected_index", 1)
+    assert(dd.selected_text == "B")
+    dd.remove_option(1)
+    assert(dd.selected_index == -1)
+    assert(dd.selected_text == "")
+}
+
+test "dropdown_contains_hit_detection" {
+    import "gui" as gui
+    let dd = gui.Dropdown(100, 100, 200, 30)
+    assert(dd.contains(100, 100) == true)
+    assert(dd.contains(200, 115) == true)
+    assert(dd.contains(299, 129) == true)
+    assert(dd.contains(99, 100) == false)
+    assert(dd.contains(100, 99) == false)
+}
+
+test "dropdown_dict_option_label_value" {
+    import "gui" as gui
+    let dd = gui.Dropdown(0, 0, 200, 30, [
+        {"label": "One", "value": 1},
+        {"label": "Two", "value": 2}
+    ])
+    dd.set_attr("selected_index", 0)
+    assert(dd.selected_text == "One")
+    assert(dd.selected_value == 1)
+}
+
+test "dropdown_on_select_callback_registered" {
+    import "gui" as gui
+    let dd = gui.Dropdown(0, 0, 200, 30, ["A", "B"])
+    let called = false
+    dd.on_select(fn(val) { called = true })
+    dd.set_attr("selected_index", 1)
+    assert(dd.selected_text == "B")
+}
+
+test "dropdown_default_constructor" {
+    import "gui" as gui
+    let dd = gui.Dropdown()
+    assert(dd.x == 0)
+    assert(dd.y == 0)
+    assert(dd.w == 200)
+    assert(dd.h == 30)
+    assert(dd.options.len == 0)
+    assert(dd.selected_index == -1)
+}
