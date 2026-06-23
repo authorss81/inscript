@@ -704,6 +704,11 @@ class TextInput(_Widget):
         self.cursor_color = _color_dict(0.8, 0.8, 0.8)
         self.border_color = _color_dict(0.4, 0.4, 0.5)
         self.focus_border_color = _color_dict(0.3, 0.6, 1.0)
+        self.required = False
+        self.min_length = 0
+        self.max_length = 0
+        self.pattern = ""
+        self._error = ""
         self._on_submit = None
         self._on_change = None
         self._init_theme()
@@ -769,11 +774,33 @@ class TextInput(_Widget):
             cursor_x = self.x + 4 + len(self.text) * int(self.font_size * 0.5)
             draw_ns.rect(cursor_x, self.y + 4, 2, self.font_size, self.cursor_color, True)
 
+    def validate(self) -> bool:
+        if self.required and not self.text:
+            self._error = "Required"
+            return False
+        if self.min_length > 0 and len(self.text) < self.min_length:
+            self._error = f"Min {self.min_length} chars"
+            return False
+        if self.max_length > 0 and len(self.text) > self.max_length:
+            self._error = f"Max {self.max_length} chars"
+            return False
+        if self.pattern:
+            import re
+            if not re.match(self.pattern, self.text):
+                self._error = "Invalid format"
+                return False
+        self._error = ""
+        return True
+
     def set_attr(self, name: str, val):
         if name == "text": self.text = str(val)
         elif name == "placeholder": self.placeholder = str(val)
         elif name == "focused": self.focused = bool(val)
         elif name == "font_size": self.font_size = int(val)
+        elif name == "required": self.required = bool(val)
+        elif name == "min_length": self.min_length = int(val)
+        elif name == "max_length": self.max_length = int(val)
+        elif name == "pattern": self.pattern = str(val) if val else ""
         else: super().set_attr(name, val)
 
 
@@ -1633,6 +1660,67 @@ default_theme.set_style("MenuBar", _DEFAULT_MENUBAR)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Data binding (MVC)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class ObservableValue:
+    def __init__(self, initial=None):
+        self._value = initial
+        self._callbacks = []
+
+    def get(self):
+        return self._value
+
+    def set(self, val):
+        old = self._value
+        self._value = val
+        if old != val:
+            for cb in self._callbacks:
+                _call_user_fn(cb, val)
+
+    def on_change(self, fn):
+        if fn is not None:
+            self._callbacks.append(fn)
+
+    def set_attr(self, name: str, val):
+        if name == "value": self.set(val)
+        else: raise AttributeError(f"ObservableValue has no settable attribute '{name}'")
+
+
+def bind(widget, attr, observable):
+    observable.on_change(lambda val: setattr(widget, attr, str(val) if not isinstance(val, str) else val))
+    init_val = observable.get()
+    if init_val is not None:
+        setattr(widget, attr, str(init_val) if not isinstance(init_val, str) else init_val)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Dialog system
+# ─────────────────────────────────────────────────────────────────────────────
+
+def message_box(title: str = "Message", text: str = "",
+                button_text: str = "OK", on_close=None):
+    w, h = 300, 150
+    x = 170
+    y = 165
+    panel = Panel(x, y, w, h)
+    panel.bg_color = _color_dict(0.2, 0.2, 0.25)
+    panel.border_color = _color_dict(0.4, 0.4, 0.5)
+    panel.border_width = 2
+    tl = Label(10, 10, title, 14)
+    tl.color = _color_dict(1.0, 1.0, 1.0)
+    panel.add(tl)
+    ml = Label(10, 40, text, 12)
+    ml.color = _color_dict(0.8, 0.8, 0.8)
+    panel.add(ml)
+    btn = Button(w / 2 - 40, h - 40, 80, 30, button_text, 12)
+    if on_close is not None:
+        btn.on_click(lambda w: _call_user_fn(on_close, "OK"))
+    panel.add(btn)
+    return panel
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Module registration
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -1658,6 +1746,9 @@ register_module("gui", {
     "MenuItem": MenuItem,
     "Theme": Theme,
     "default_theme": default_theme,
+    "ObservableValue": ObservableValue,
+    "bind": bind,
+    "message_box": message_box,
     "SIZE_FIXED": SIZE_FIXED,
     "SIZE_FILL": SIZE_FILL,
 })

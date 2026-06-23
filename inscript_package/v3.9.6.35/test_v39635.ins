@@ -1,0 +1,203 @@
+# v3.9.6.35 — GUI: data binding + validation + dialog
+# Run: python inscript.py --test v3.9.6.35/test_v39635.ins
+
+# ── ObservableValue ──────────────────────────────────────────────────────────
+
+test "observable_create" {
+    import "gui" as gui
+    let ov = gui.ObservableValue(42)
+    assert(ov != nil)
+    assert(ov.get() == 42)
+}
+
+test "observable_default_value_nil" {
+    import "gui" as gui
+    let ov = gui.ObservableValue()
+    assert(ov.get() == nil)
+}
+
+test "observable_set_value" {
+    import "gui" as gui
+    let ov = gui.ObservableValue(0)
+    ov.set(100)
+    assert(ov.get() == 100)
+}
+
+test "observable_on_change_callback" {
+    import "gui" as gui
+    let ov = gui.ObservableValue(0)
+    let called = false
+    ov.on_change(fn(val) { called = true })
+    ov.set(50)
+    assert(called == true)
+}
+
+test "observable_set_attr_value" {
+    import "gui" as gui
+    let ov = gui.ObservableValue(0)
+    ov.set_attr("value", 99)
+    assert(ov.get() == 99)
+}
+
+test "observable_multiple_callbacks" {
+    import "gui" as gui
+    let ov = gui.ObservableValue(0)
+    let count = 0
+    ov.on_change(fn(v) { count = count + 1 })
+    ov.on_change(fn(v) { count = count + 1 })
+    ov.set(10)
+    assert(count == 2)
+}
+
+
+# ── bind() ───────────────────────────────────────────────────────────────────
+
+test "bind_label_to_observable" {
+    import "gui" as gui
+    let ov = gui.ObservableValue("Hello")
+    let lb = gui.Label(0, 0, "", 12)
+    gui.bind(lb, "text", ov)
+    assert(lb.text == "Hello")
+}
+
+test "bind_updates_on_change" {
+    import "gui" as gui
+    let ov = gui.ObservableValue("A")
+    let lb = gui.Label(0, 0, "", 12)
+    gui.bind(lb, "text", ov)
+    ov.set("B")
+    assert(lb.text == "B")
+}
+
+test "bind_slider_value_to_label" {
+    import "gui" as gui
+    let ov = gui.ObservableValue(50)
+    let lb = gui.Label(0, 0, "", 12)
+    gui.bind(lb, "text", ov)
+    ov.set(75)
+    assert(lb.text == "75")
+}
+
+
+# ── TextInput Validation ─────────────────────────────────────────────────────
+
+test "textinput_required_default_false" {
+    import "gui" as gui
+    let ti = gui.TextInput(0, 0, 200, 30, "")
+    assert(ti.required == false)
+}
+
+test "textinput_set_attr_required" {
+    import "gui" as gui
+    let ti = gui.TextInput(0, 0, 200, 30, "")
+    ti.set_attr("required", true)
+    assert(ti.required == true)
+}
+
+test "textinput_validate_required_passes_when_not_empty" {
+    import "gui" as gui
+    let ti = gui.TextInput(0, 0, 200, 30, "")
+    ti.set_attr("required", true)
+    ti.set_attr("text", "hello")
+    assert(ti.validate() == true)
+}
+
+test "textinput_validate_required_fails_when_empty" {
+    import "gui" as gui
+    let ti = gui.TextInput(0, 0, 200, 30, "")
+    ti.set_attr("required", true)
+    assert(ti.validate() == false)
+}
+
+test "textinput_validate_min_length" {
+    import "gui" as gui
+    let ti = gui.TextInput(0, 0, 200, 30, "")
+    ti.set_attr("min_length", 3)
+    ti.set_attr("text", "ab")
+    assert(ti.validate() == false)
+    ti.set_attr("text", "abc")
+    assert(ti.validate() == true)
+}
+
+test "textinput_validate_max_length" {
+    import "gui" as gui
+    let ti = gui.TextInput(0, 0, 200, 30, "")
+    ti.set_attr("max_length", 5)
+    ti.set_attr("text", "toolong")
+    assert(ti.validate() == false)
+    ti.set_attr("text", "short")
+    assert(ti.validate() == true)
+}
+
+test "textinput_validate_pattern" {
+    import "gui" as gui
+    let ti = gui.TextInput(0, 0, 200, 30, "")
+    ti.set_attr("pattern", "^[A-Za-z]+$")
+    ti.set_attr("text", "Hello")
+    assert(ti.validate() == true)
+    ti.set_attr("text", "Hello123")
+    assert(ti.validate() == false)
+}
+
+test "textinput_validate_all_rules_together" {
+    import "gui" as gui
+    let ti = gui.TextInput(0, 0, 200, 30, "")
+    ti.set_attr("required", true)
+    ti.set_attr("min_length", 3)
+    ti.set_attr("max_length", 10)
+    ti.set_attr("pattern", "^[a-z]+$")
+    ti.set_attr("text", "good")
+    assert(ti.validate() == true)
+    ti.set_attr("text", "")
+    assert(ti.validate() == false)
+    ti.set_attr("text", "ab")
+    assert(ti.validate() == false)
+    ti.set_attr("text", "toolongtext")
+    assert(ti.validate() == false)
+    ti.set_attr("text", "Bad!")  # has uppercase and !, fails pattern
+    assert(ti.validate() == false)
+}
+
+test "textinput_set_attr_min_max_length" {
+    import "gui" as gui
+    let ti = gui.TextInput(0, 0, 200, 30, "")
+    ti.set_attr("min_length", 2)
+    ti.set_attr("max_length", 8)
+    assert(ti.min_length == 2)
+    assert(ti.max_length == 8)
+}
+
+test "textinput_set_attr_pattern" {
+    import "gui" as gui
+    let ti = gui.TextInput(0, 0, 200, 30, "")
+    ti.set_attr("pattern", "^[0-9]+$")
+    assert(ti.pattern == "^[0-9]+$")
+}
+
+
+# ── message_box ──────────────────────────────────────────────────────────────
+
+test "message_box_creates_panel" {
+    import "gui" as gui
+    let mb = gui.message_box("Title", "Message text", "OK")
+    assert(mb != nil)
+}
+
+test "message_box_has_children" {
+    import "gui" as gui
+    let mb = gui.message_box("Title", "Body", "OK")
+    assert(mb.children.len >= 2)
+}
+
+test "message_box_custom_title" {
+    import "gui" as gui
+    let mb = gui.message_box("My Dialog", "Some text", "Close")
+    assert(mb != nil)
+}
+
+test "message_box_draw_does_not_crash" {
+    import "gui" as gui
+    let mb = gui.message_box("Test", "Testing", "OK")
+    mb.draw(nil)
+    assert(mb.visible == true)
+}
