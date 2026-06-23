@@ -3556,6 +3556,10 @@ def _set_attr(obj: Any, name: str, val: Any, line: int, interp=None) -> None:
     if isinstance(obj, (Vec2, Vec3, Color, Rect, PhysicsWorld, Body, Shape)):
         try: obj.set_attr(name, val); return
         except AttributeError: pass
+    setter = getattr(obj, 'set_attr', None)
+    if callable(setter):
+        try: setter(name, val); return
+        except (AttributeError, Exception): pass
     raise InScriptRuntimeError(f"Cannot set attribute '{name}'", line)
 
 

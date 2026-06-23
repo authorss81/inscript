@@ -1,0 +1,155 @@
+# v3.9.6.30 — GUI: core widget types
+# Button, Label, Panel, Image construction and standalone methods
+# Run: python inscript.py --test v3.9.6.30/test_v39630.ins
+
+# ── Button ──────────────────────────────────────────────────────────────────
+
+test "button_create" {
+    import "gui" as gui
+    let btn = gui.Button(100, 100, 200, 50, "Click", 18)
+    assert(btn.x == 100)
+    assert(btn.y == 100)
+    assert(btn.w == 200)
+    assert(btn.h == 50)
+    assert(btn.text == "Click")
+}
+
+test "button_contains" {
+    import "gui" as gui
+    let btn = gui.Button(100, 100, 200, 50, "Hit")
+    assert(btn.contains(150, 120) == true)
+    assert(btn.contains(50, 50) == false)
+    assert(btn.contains(400, 200) == false)
+}
+
+test "button_contains_edge" {
+    import "gui" as gui
+    let btn = gui.Button(10, 10, 50, 30, "Edge")
+    assert(btn.contains(10, 10) == true)
+    assert(btn.contains(59, 39) == true)
+    assert(btn.contains(9, 9) == false)
+    assert(btn.contains(61, 41) == false)
+}
+
+test "button_visible_hides_hit" {
+    import "gui" as gui
+    let btn = gui.Button(0, 0, 100, 50, "Vis")
+    assert(btn.contains(50, 25) == true)
+    btn.set_attr("visible", false)
+    assert(btn.contains(50, 25) == false)
+}
+
+test "button_click_callback" {
+    import "gui" as gui
+    let btn = gui.Button(0, 0, 100, 50, "Click")
+    let called = false
+    btn.on_click(fn(w) {
+        called = true
+    })
+    assert(called == false)
+    assert(btn._on_click != nil)
+}
+
+test "button_hover_callback" {
+    import "gui" as gui
+    let btn = gui.Button(0, 0, 100, 50, "Hover")
+    let hovered = false
+    btn.on_hover(fn(w) {
+        if w != nil { hovered = true }
+    })
+    assert(hovered == false)
+    assert(btn._on_hover != nil)
+}
+
+# ── Label ───────────────────────────────────────────────────────────────────
+
+test "label_create" {
+    import "gui" as gui
+    let lbl = gui.Label(50, 60, "Hello", 20)
+    assert(lbl.x == 50)
+    assert(lbl.y == 60)
+    assert(lbl.text == "Hello")
+    assert(lbl.font_size == 20)
+}
+
+test "label_color_default" {
+    import "gui" as gui
+    let lbl = gui.Label(0, 0, "Color")
+    assert(lbl.color != nil)
+    assert(lbl.color.r > 0.9)
+}
+
+# ── Panel ───────────────────────────────────────────────────────────────────
+
+test "panel_create" {
+    import "gui" as gui
+    let p = gui.Panel(50, 50, 300, 400)
+    assert(p.x == 50)
+    assert(p.y == 50)
+    assert(p.w == 300)
+    assert(p.h == 400)
+    assert(p.bg_color == nil)
+}
+
+test "panel_add_child" {
+    import "gui" as gui
+    let p = gui.Panel(0, 0, 400, 300)
+    let btn = gui.Button(10, 10, 100, 30, "Child")
+    p.add(btn)
+    assert(p.children != nil)
+}
+
+test "panel_remove_child" {
+    import "gui" as gui
+    let p = gui.Panel(0, 0, 200, 200)
+    let btn = gui.Button(0, 0, 50, 20, "Del")
+    p.add(btn)
+    p.remove(btn)
+    assert(p.children == [])
+}
+
+test "panel_clear" {
+    import "gui" as gui
+    let p = gui.Panel(0, 0, 200, 200)
+    p.add(gui.Button(0, 0, 50, 20, "A"))
+    p.add(gui.Button(0, 0, 50, 20, "B"))
+    p.clear()
+    assert(p.children == [])
+}
+
+test "panel_contains" {
+    import "gui" as gui
+    let p = gui.Panel(100, 100, 300, 200)
+    assert(p.contains(150, 150) == true)
+    assert(p.contains(50, 50) == false)
+    assert(p.contains(450, 350) == false)
+}
+
+# ── Image ───────────────────────────────────────────────────────────────────
+
+test "image_create" {
+    import "gui" as gui
+    let img = gui.Image(100, 200, "sprites/hero.png")
+    assert(img.x == 100)
+    assert(img.y == 200)
+    assert(img.path == "sprites/hero.png")
+    assert(img.alpha == 255)
+}
+
+test "image_visible_toggle" {
+    import "gui" as gui
+    let img = gui.Image(0, 0, "test.png")
+    assert(img.visible == true)
+    img.set_attr("visible", false)
+    assert(img.visible == false)
+}
+
+# ── Module import ───────────────────────────────────────────────────────────
+
+test "gui_module_importable" {
+    import "gui" as gui
+    assert(gui.Button != nil)
+    assert(gui.Label != nil)
+    assert(gui.Panel != nil)
+    assert(gui.Image != nil)
+}

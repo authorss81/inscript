@@ -1158,6 +1158,12 @@ try:
 except Exception as _e3:
     import sys; print(f'[stdlib_game load error] {_e3}', file=sys.stderr)
 
+# ── GUI system (v3.9.6.30): Button, Label, Panel, Image widgets
+try:
+    import stdlib_gui  # noqa: F401
+except Exception as _gui_err:
+    import sys; print(f'[stdlib_gui load error] {_gui_err}', file=sys.stderr)
+
 # ── Asset pipeline (v2.8.0): AssetHandle, AssetRegistry, `asset` module
 try:
     import stdlib_assets  # noqa: F401

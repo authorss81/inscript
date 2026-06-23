@@ -1,0 +1,282 @@
+# v3.9.6.31 — GUI: layout system (HBox, VBox, Grid)
+# Run: python inscript.py --test v3.9.6.31/test_v39631.ins
+
+# ── HBox — Horizontal Box Layout ───────────────────────────────────────────
+
+test "hbox_create" {
+    import "gui" as gui
+    let hb = gui.HBox(10, 20, 400, 50)
+    assert(hb.x == 10)
+    assert(hb.y == 20)
+    assert(hb.w == 400)
+    assert(hb.h == 50)
+}
+
+test "hbox_positions_children_horizontally" {
+    import "gui" as gui
+    let hb = gui.HBox(0, 0, 300, 50, 0, 0)
+    let b1 = gui.Button(0, 0, 100, 50, "A")
+    let b2 = gui.Button(0, 0, 100, 50, "B")
+    b1.set_attr("size_policy_w", gui.SIZE_FIXED)
+    b2.set_attr("size_policy_w", gui.SIZE_FIXED)
+    hb.add(b1)
+    hb.add(b2)
+    hb.draw(nil)
+    assert(b1.x == 0)
+    assert(b2.x == 100)
+}
+
+test "hbox_spacing_offsets_children" {
+    import "gui" as gui
+    let hb = gui.HBox(0, 0, 300, 50, 10, 0)
+    let b1 = gui.Button(0, 0, 100, 50, "A")
+    let b2 = gui.Button(0, 0, 100, 50, "B")
+    b1.set_attr("size_policy_w", gui.SIZE_FIXED)
+    b2.set_attr("size_policy_w", gui.SIZE_FIXED)
+    hb.add(b1)
+    hb.add(b2)
+    hb.draw(nil)
+    assert(b2.x == 110)
+}
+
+test "hbox_padding_insets_children" {
+    import "gui" as gui
+    let hb = gui.HBox(0, 0, 300, 50, 0, 20)
+    let b1 = gui.Button(0, 0, 100, 50, "A")
+    hb.add(b1)
+    hb.draw(nil)
+    assert(b1.x == 20)
+    assert(b1.y == 20)
+}
+
+test "hbox_fill_width_shared_equally" {
+    import "gui" as gui
+    let hb = gui.HBox(0, 0, 200, 50, 0, 0)
+    let b1 = gui.Button(0, 0, 0, 50, "A")
+    let b2 = gui.Button(0, 0, 0, 50, "B")
+    hb.add(b1)
+    hb.add(b2)
+    hb.draw(nil)
+    assert(b1.w == 100)
+    assert(b2.w == 100)
+}
+
+test "hbox_fixed_and_fill_mix" {
+    import "gui" as gui
+    let hb = gui.HBox(0, 0, 300, 50, 0, 0)
+    let b1 = gui.Button(0, 0, 100, 50, "Fixed")
+    let b2 = gui.Button(0, 0, 0, 50, "Fill")
+    b1.set_attr("size_policy_w", gui.SIZE_FIXED)
+    hb.add(b1)
+    hb.add(b2)
+    hb.draw(nil)
+    assert(b1.w == 100)
+    assert(b2.w == 200)
+}
+
+test "hbox_add_triggers_relayout" {
+    import "gui" as gui
+    let hb = gui.HBox(0, 0, 200, 50, 0, 0)
+    let b1 = gui.Button(0, 0, 0, 50, "A")
+    hb.add(b1)
+    hb.draw(nil)
+    assert(b1.w == 200)
+    let b2 = gui.Button(0, 0, 0, 50, "B")
+    hb.add(b2)
+    hb.draw(nil)
+    assert(b1.w == 100)
+    assert(b2.w == 100)
+}
+
+test "hbox_remove_triggers_relayout" {
+    import "gui" as gui
+    let hb = gui.HBox(0, 0, 200, 50, 0, 0)
+    let b1 = gui.Button(0, 0, 0, 50, "A")
+    let b2 = gui.Button(0, 0, 0, 50, "B")
+    hb.add(b1)
+    hb.add(b2)
+    hb.draw(nil)
+    assert(b1.w == 100)
+    hb.remove(b1)
+    hb.draw(nil)
+    assert(b2.w == 200)
+}
+
+test "hbox_clear_resets_layout" {
+    import "gui" as gui
+    let hb = gui.HBox(0, 0, 200, 50, 0, 0)
+    let b1 = gui.Button(0, 0, 0, 50, "A")
+    hb.add(b1)
+    hb.clear()
+    assert(hb.children == [])
+}
+
+# ── VBox — Vertical Box Layout ─────────────────────────────────────────────
+
+test "vbox_create" {
+    import "gui" as gui
+    let vb = gui.VBox(5, 10, 200, 400)
+    assert(vb.x == 5)
+    assert(vb.y == 10)
+    assert(vb.w == 200)
+    assert(vb.h == 400)
+}
+
+test "vbox_positions_children_vertically" {
+    import "gui" as gui
+    let vb = gui.VBox(0, 0, 200, 100, 0, 0)
+    let b1 = gui.Button(0, 0, 200, 50, "A")
+    let b2 = gui.Button(0, 0, 200, 50, "B")
+    vb.add(b1)
+    vb.add(b2)
+    vb.draw(nil)
+    assert(b1.y == 0)
+    assert(b2.y == 50)
+}
+
+test "vbox_spacing_offsets_vertically" {
+    import "gui" as gui
+    let vb = gui.VBox(0, 0, 200, 100, 8, 0)
+    let b1 = gui.Button(0, 0, 200, 50, "A")
+    let b2 = gui.Button(0, 0, 200, 50, "B")
+    b1.set_attr("size_policy_h", gui.SIZE_FIXED)
+    b2.set_attr("size_policy_h", gui.SIZE_FIXED)
+    vb.add(b1)
+    vb.add(b2)
+    vb.draw(nil)
+    assert(b2.y == 58)
+}
+
+test "vbox_fill_height_shared_equally" {
+    import "gui" as gui
+    let vb = gui.VBox(0, 0, 200, 100, 0, 0)
+    let b1 = gui.Button(0, 0, 200, 0, "A")
+    let b2 = gui.Button(0, 0, 200, 0, "B")
+    vb.add(b1)
+    vb.add(b2)
+    vb.draw(nil)
+    assert(b1.h == 50)
+    assert(b2.h == 50)
+}
+
+test "vbox_fixed_and_fill_mix_height" {
+    import "gui" as gui
+    let vb = gui.VBox(0, 0, 200, 200, 0, 0)
+    let b1 = gui.Button(0, 0, 200, 50, "Fixed")
+    let b2 = gui.Button(0, 0, 200, 0, "Fill")
+    b1.set_attr("size_policy_h", gui.SIZE_FIXED)
+    vb.add(b1)
+    vb.add(b2)
+    vb.draw(nil)
+    assert(b1.h == 50)
+    assert(b2.h == 150)
+}
+
+test "vbox_padding_insets_vertically" {
+    import "gui" as gui
+    let vb = gui.VBox(0, 0, 200, 100, 0, 10)
+    let b1 = gui.Button(0, 0, 200, 0, "A")
+    vb.add(b1)
+    vb.draw(nil)
+    assert(b1.x == 10)
+    assert(b1.y == 10)
+}
+
+# ── Grid — Row/Column Grid Layout ──────────────────────────────────────────
+
+test "grid_create" {
+    import "gui" as gui
+    let g = gui.Grid(0, 0, 400, 400, 2)
+    assert(g.x == 0)
+    assert(g.y == 0)
+    assert(g.w == 400)
+    assert(g.h == 400)
+    assert(g.cols == 2)
+}
+
+test "grid_2col_positions_children" {
+    import "gui" as gui
+    let g = gui.Grid(0, 0, 200, 200, 2, 0, 0)
+    let a = gui.Button(0, 0, 0, 0, "A")
+    let b = gui.Button(0, 0, 0, 0, "B")
+    let c = gui.Button(0, 0, 0, 0, "C")
+    let d = gui.Button(0, 0, 0, 0, "D")
+    g.add(a); g.add(b); g.add(c); g.add(d)
+    g.draw(nil)
+    assert(a.x == 0 && a.y == 0)
+    assert(b.x == 100 && b.y == 0)
+    assert(c.x == 0 && c.y == 100)
+    assert(d.x == 100 && d.y == 100)
+}
+
+test "grid_3col_positions_children" {
+    import "gui" as gui
+    let g = gui.Grid(0, 0, 300, 200, 3, 0, 0)
+    let a = gui.Button(0, 0, 0, 0, "A")
+    let b = gui.Button(0, 0, 0, 0, "B")
+    let c = gui.Button(0, 0, 0, 0, "C")
+    g.add(a); g.add(b); g.add(c)
+    g.draw(nil)
+    assert(a.x == 0 && a.y == 0)
+    assert(b.x == 100 && b.y == 0)
+    assert(c.x == 200 && c.y == 0)
+}
+
+test "grid_with_spacing" {
+    import "gui" as gui
+    let g = gui.Grid(0, 0, 210, 210, 2, 10, 0)
+    let a = gui.Button(0, 0, 0, 0, "A")
+    let b = gui.Button(0, 0, 0, 0, "B")
+    g.add(a); g.add(b)
+    g.draw(nil)
+    assert(a.x == 0 && a.y == 0)
+    assert(b.x == 110 && b.y == 0)
+}
+
+test "grid_with_padding" {
+    import "gui" as gui
+    let g = gui.Grid(0, 0, 220, 220, 2, 0, 10)
+    let a = gui.Button(0, 0, 0, 0, "A")
+    let b = gui.Button(0, 0, 0, 0, "B")
+    g.add(a); g.add(b)
+    g.draw(nil)
+    assert(a.x == 10 && a.y == 10)
+}
+
+test "grid_cols_settable" {
+    import "gui" as gui
+    let g = gui.Grid(0, 0, 400, 200, 4)
+    assert(g.cols == 4)
+    g.set_attr("cols", 3)
+    assert(g.cols == 3)
+}
+
+test "grid_uneven_rows" {
+    import "gui" as gui
+    let g = gui.Grid(0, 0, 200, 150, 2, 0, 0)
+    let a = gui.Button(0, 0, 0, 0, "A")
+    let b = gui.Button(0, 0, 0, 0, "B")
+    let c = gui.Button(0, 0, 0, 0, "C")
+    g.add(a); g.add(b); g.add(c)
+    g.draw(nil)
+    assert(a.y == 0)
+    assert(b.y == 0)
+    assert(c.y == 75)
+}
+
+# ── Size policies ──────────────────────────────────────────────────────────
+
+test "size_policy_constants" {
+    import "gui" as gui
+    assert(gui.SIZE_FIXED == 0)
+    assert(gui.SIZE_FILL == 1)
+}
+
+# ── Module exports ─────────────────────────────────────────────────────────
+
+test "layout_classes_exported" {
+    import "gui" as gui
+    assert(gui.HBox != nil)
+    assert(gui.VBox != nil)
+    assert(gui.Grid != nil)
+}
