@@ -1,0 +1,236 @@
+# v3.9.6.34 — GUI: styling + theming (Theme, disabled, shadow, rounded_radius)
+# Run: python inscript.py --test v3.9.6.34/test_v39634.ins
+
+# ── Theme ────────────────────────────────────────────────────────────────────
+
+test "theme_create" {
+    import "gui" as gui
+    let t = gui.Theme()
+    assert(t != nil)
+}
+
+test "theme_set_get_style" {
+    import "gui" as gui
+    let t = gui.Theme()
+    t.set_style("Button", {"bg_color": {"r": 0.5, "g": 0.2, "b": 0.2, "a": 1.0}})
+    assert(t.get_style("Button", "bg_color") != nil)
+}
+
+test "theme_default_theme_exists" {
+    import "gui" as gui
+    assert(gui.default_theme != nil)
+}
+
+test "theme_default_theme_has_button_defaults" {
+    import "gui" as gui
+    let bg = gui.default_theme.get_style("Button", "bg_color")
+    assert(bg != nil)
+    assert(bg.r == 0.3)
+    assert(bg.g == 0.3)
+    assert(bg.b == 0.35)
+}
+
+test "theme_button_rounded_radius_default" {
+    import "gui" as gui
+    let r = gui.default_theme.get_style("Button", "rounded_radius")
+    assert(r == 6)
+}
+
+test "theme_set_shadow" {
+    import "gui" as gui
+    let t = gui.Theme()
+    t.set_shadow("Button", 4, 4, 5)
+    let sh = t.get_style("Button", "shadow")
+    assert(sh != nil)
+    assert(sh.offset_x == 4)
+    assert(sh.offset_y == 4)
+    assert(sh.size == 5)
+}
+
+test "theme_apply_to_widget" {
+    import "gui" as gui
+    let t = gui.Theme()
+    t.set_style("Button", {"text_color": {"r": 0.9, "g": 0.1, "b": 0.1, "a": 1.0}})
+    let b = gui.Button(0, 0, 100, 30, "Test")
+    assert(b.text_color != nil)
+}
+
+test "theme_set_style_overrides_widget_default" {
+    import "gui" as gui
+    let t = gui.Theme()
+    t.set_style("Button", {"rounded_radius": 10})
+    assert(t.get_style("Button", "rounded_radius") == 10)
+}
+
+
+# ── Disabled State ───────────────────────────────────────────────────────────
+
+test "widget_disabled_default_false" {
+    import "gui" as gui
+    let b = gui.Button(0, 0, 100, 30, "Test")
+    assert(b.disabled == false)
+}
+
+test "widget_disabled_set_via_set_attr" {
+    import "gui" as gui
+    let b = gui.Button(0, 0, 100, 30, "Test")
+    b.set_attr("disabled", true)
+    assert(b.disabled == true)
+}
+
+test "widget_disabled_blocks_contains" {
+    import "gui" as gui
+    let b = gui.Button(100, 100, 100, 30, "Test")
+    assert(b.contains(110, 110) == true)
+    b.set_attr("disabled", true)
+    assert(b.contains(110, 110) == false)
+}
+
+test "widget_enable_disable_methods" {
+    import "gui" as gui
+    let b = gui.Button(0, 0, 100, 30, "Test")
+    b.disable()
+    assert(b.disabled == true)
+    b.enable()
+    assert(b.disabled == false)
+}
+
+
+# ── Shadow ───────────────────────────────────────────────────────────────────
+
+test "widget_shadow_default_none" {
+    import "gui" as gui
+    let b = gui.Button(0, 0, 100, 30, "Test")
+    assert(b.shadow == nil)
+}
+
+test "widget_shadow_can_be_set" {
+    import "gui" as gui
+    let b = gui.Button(0, 0, 100, 30, "Test")
+    b.set_attr("shadow", {"offset_x": 3, "offset_y": 3, "size": 4, "color": {"r": 0, "g": 0, "b": 0, "a": 0.3}})
+    assert(b.shadow != nil)
+    assert(b.shadow.offset_x == 3)
+}
+
+
+# ── Rounded Radius ───────────────────────────────────────────────────────────
+
+test "widget_rounded_radius_default" {
+    import "gui" as gui
+    let b = gui.Button(0, 0, 100, 30, "Test")
+    assert(b.rounded_radius == 6)
+}
+
+test "widget_rounded_radius_set_via_set_attr" {
+    import "gui" as gui
+    let b = gui.Button(0, 0, 100, 30, "Test")
+    b.set_attr("rounded_radius", 10)
+    assert(b.rounded_radius == 10)
+}
+
+test "widget_rounded_radius_draw_does_not_crash" {
+    import "gui" as gui
+    let b = gui.Button(0, 0, 100, 30, "Rounded")
+    b.set_attr("rounded_radius", 8)
+    b.draw(nil)
+    assert(b.rounded_radius == 8)
+}
+
+
+# ── Disabled Drawing ─────────────────────────────────────────────────────────
+
+test "disabled_button_draw_does_not_crash" {
+    import "gui" as gui
+    let b = gui.Button(0, 0, 100, 30, "Disabled")
+    b.set_attr("disabled", true)
+    b.draw(nil)
+    assert(b.disabled == true)
+}
+
+test "disabled_button_skips_update" {
+    import "gui" as gui
+    let b = gui.Button(0, 0, 100, 30, "Disabled")
+    b.set_attr("disabled", true)
+    b.update(nil)
+    assert(b.disabled == true)
+}
+
+test "disabled_checkbox_not_affected" {
+    import "gui" as gui
+    let cb = gui.Checkbox(0, 0, "Test")
+    cb.set_attr("disabled", true)
+    cb.draw(nil)
+    assert(cb.disabled == true)
+}
+
+test "disabled_slider_draw_does_not_crash" {
+    import "gui" as gui
+    let s = gui.Slider(0, 0, 200, 20)
+    s.set_attr("disabled", true)
+    s.draw(nil)
+    assert(s.disabled == true)
+}
+
+test "disabled_textinput_draw_does_not_crash" {
+    import "gui" as gui
+    let ti = gui.TextInput(0, 0, 200, 30, "Enter")
+    ti.set_attr("disabled", true)
+    ti.draw(nil)
+    assert(ti.disabled == true)
+}
+
+test "disabled_dropdown_draw_does_not_crash" {
+    import "gui" as gui
+    let dd = gui.Dropdown(0, 0, 200, 30, ["A"])
+    dd.set_attr("disabled", true)
+    dd.draw(nil)
+    assert(dd.disabled == true)
+}
+
+
+# ── Theme + Widget Integration ───────────────────────────────────────────────
+
+test "button_created_with_default_theme_values" {
+    import "gui" as gui
+    let b = gui.Button(0, 0, 100, 30, "Test")
+    assert(b.rounded_radius == 6)
+}
+
+test "button_draw_with_rounded_rect_no_crash" {
+    import "gui" as gui
+    let b = gui.Button(0, 0, 100, 30, "Rounded")
+    assert(b.rounded_radius == 6)
+    b.draw(nil)
+}
+
+test "panel_theme_inheritance" {
+    import "gui" as gui
+    let p = gui.Panel(0, 0, 200, 200)
+    let b = gui.Button(10, 10, 100, 30, "Child")
+    p.add(b)
+    assert(b.theme != nil)
+}
+
+test "checkbox_text_color_default" {
+    import "gui" as gui
+    let cb = gui.Checkbox(0, 0, "Check")
+    assert(cb.text_color != nil)
+}
+
+test "slider_track_color_default" {
+    import "gui" as gui
+    let s = gui.Slider(0, 0, 200, 20)
+    assert(s.track_color != nil)
+}
+
+test "textinput_border_color_default" {
+    import "gui" as gui
+    let ti = gui.TextInput(0, 0, 200, 30)
+    assert(ti.border_color != nil)
+}
+
+test "dropdown_bg_color_default" {
+    import "gui" as gui
+    let dd = gui.Dropdown(0, 0, 200, 30, ["A", "B"])
+    assert(dd.bg_color != nil)
+}

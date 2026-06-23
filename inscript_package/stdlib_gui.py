@@ -65,6 +65,8 @@ SIZE_FILL = 1
 
 
 class _Widget:
+    _widget_type = "Widget"
+
     def __init__(self, x: float, y: float, w: float, h: float):
         self.x = x
         self.y = y
@@ -76,10 +78,23 @@ class _Widget:
         self._z = 0
         self.tab_index = -1
         self._focused = False
+        self.disabled = False
+        self.shadow = None
+        self.rounded_radius = 0
+        self.theme = None
+
+    def _init_theme(self):
+        if self.theme is None:
+            g = globals()
+            dt = g.get("default_theme")
+            if dt is not None:
+                self.theme = dt
+        if self.theme is not None:
+            self.theme.apply_to(self)
 
     def contains(self, px: float, py: float) -> bool:
-        return self.visible and (self.x <= px <= self.x + self.w and
-                                 self.y <= py <= self.y + self.h)
+        return self.visible and not self.disabled and (self.x <= px <= self.x + self.w and
+                                                       self.y <= py <= self.y + self.h)
 
     def set_attr(self, name: str, val):
         if name == "x": self.x = val
@@ -87,9 +102,12 @@ class _Widget:
         elif name == "w": self.w = val
         elif name == "h": self.h = val
         elif name == "visible": self.visible = bool(val)
+        elif name == "disabled": self.disabled = bool(val)
         elif name == "size_policy_w": self.size_policy_w = int(val)
         elif name == "size_policy_h": self.size_policy_h = int(val)
         elif name == "tab_index": self.tab_index = int(val)
+        elif name == "rounded_radius": self.rounded_radius = float(val)
+        elif name == "shadow": self.shadow = val if isinstance(val, dict) else None
         else:
             raise AttributeError(f"_Widget has no settable attribute '{name}'")
 
@@ -102,6 +120,24 @@ class _Widget:
     def toggle_visible(self):
         self.visible = not self.visible
 
+    def enable(self):
+        self.disabled = False
+
+    def disable(self):
+        self.disabled = True
+
+    def _draw_shadow(self, draw_ns):
+        if self.shadow is None or not hasattr(draw_ns, "rect"):
+            return
+        sx = self.shadow.get("offset_x", 3)
+        sy = self.shadow.get("offset_y", 3)
+        size = self.shadow.get("size", 4)
+        color = self.shadow.get("color", _color_dict(0, 0, 0, 0.3))
+        for i in range(size):
+            a = 1.0 - (i / max(1, size)) * 0.8
+            sc = _color_dict(color["r"], color["g"], color["b"], color.get("a", 0.3) * a)
+            draw_ns.rect(self.x + sx + i, self.y + sy + i, self.w, self.h, sc, True)
+
     def update(self, input_ns=None):
         raise NotImplementedError
 
@@ -110,6 +146,8 @@ class _Widget:
 
 
 class Button(_Widget):
+    _widget_type = "Button"
+
     def __init__(self, x: float, y: float, w: float, h: float,
                  text: str = "", font_size: int = 16):
         super().__init__(x, y, w, h)
@@ -123,6 +161,7 @@ class Button(_Widget):
         self.pressed = False
         self._on_click = None
         self._on_hover = None
+        self._init_theme()
 
     def on_click(self, fn):
         self._on_click = fn
@@ -153,28 +192,38 @@ class Button(_Widget):
     def draw(self, draw_ns):
         if not self.visible:
             return
-        color = self.pressed_color if self.pressed else (
-            self.hover_color if self.hovered else self.bg_color)
+        self._draw_shadow(draw_ns)
+        if self.disabled:
+            color = _color_dict(0.2, 0.2, 0.22)
+            tc = _color_dict(0.5, 0.5, 0.5)
+        else:
+            color = self.pressed_color if self.pressed else (
+                self.hover_color if self.hovered else self.bg_color)
+            tc = self.text_color
         cx = self.x + self.w / 2
         cy = self.y + self.h / 2
-        if hasattr(draw_ns, "rounded_rect"):
-            draw_ns.rounded_rect(self.x, self.y, self.w, self.h, color, 6, True)
+        rr = max(0, int(self.rounded_radius))
+        if hasattr(draw_ns, "rounded_rect") and rr > 0:
+            draw_ns.rounded_rect(self.x, self.y, self.w, self.h, color, rr, True)
         elif hasattr(draw_ns, "rect"):
             draw_ns.rect(self.x, self.y, self.w, self.h, color, True)
         if self.text and hasattr(draw_ns, "text_centered"):
-            draw_ns.text_centered(cx, cy, self.text, self.text_color, self.font_size)
+            draw_ns.text_centered(cx, cy, self.text, tc, self.font_size)
         elif self.text and hasattr(draw_ns, "text"):
             draw_ns.text(cx - len(self.text) * 4, cy - self.font_size / 2,
-                         self.text, self.text_color, self.font_size)
+                         self.text, tc, self.font_size)
 
 
 class Label(_Widget):
+    _widget_type = "Label"
+
     def __init__(self, x: float, y: float, text: str = "", font_size: int = 16):
         super().__init__(x, y, 0, 0)
         self.text = text
         self.font_size = font_size
         self.color = _color_dict(1.0, 1.0, 1.0)
         self.bg_color = None
+        self._init_theme()
 
     def draw(self, draw_ns):
         if not self.visible:
@@ -193,14 +242,19 @@ class Label(_Widget):
 
 
 class Panel(_Widget):
+    _widget_type = "Panel"
+
     def __init__(self, x: float, y: float, w: float, h: float):
         super().__init__(x, y, w, h)
         self.children: List[_Widget] = []
         self.bg_color = None
         self.border_color = None
         self.border_width = 0
+        self._init_theme()
 
     def add(self, widget):
+        if widget.theme is None and self.theme is not None:
+            widget.theme = self.theme
         if widget not in self.children:
             self.children.append(widget)
 
@@ -237,12 +291,15 @@ class Panel(_Widget):
 
 
 class Image(_Widget):
+    _widget_type = "Image"
+
     def __init__(self, x: float, y: float, path: str = ""):
         super().__init__(x, y, 0, 0)
         self.path = path
         self.alpha = 255
         self.scale = 1.0
         self.angle = 0.0
+        self._init_theme()
 
     def draw(self, draw_ns):
         if not self.visible or not self.path:
@@ -264,6 +321,8 @@ class Image(_Widget):
 # ─────────────────────────────────────────────────────────────────────────────
 
 class HBox(Panel):
+    _widget_type = "HBox"
+
     def __init__(self, x: float = 0, y: float = 0, w: float = 400, h: float = 50,
                  spacing: float = 4, padding: float = 4):
         super().__init__(x, y, w, h)
@@ -334,6 +393,8 @@ class HBox(Panel):
 # ─────────────────────────────────────────────────────────────────────────────
 
 class VBox(Panel):
+    _widget_type = "VBox"
+
     def __init__(self, x: float = 0, y: float = 0, w: float = 200, h: float = 400,
                  spacing: float = 4, padding: float = 4):
         super().__init__(x, y, w, h)
@@ -404,6 +465,8 @@ class VBox(Panel):
 # ─────────────────────────────────────────────────────────────────────────────
 
 class Grid(Panel):
+    _widget_type = "Grid"
+
     def __init__(self, x: float = 0, y: float = 0, w: float = 400, h: float = 400,
                  cols: int = 2, spacing: float = 4, padding: float = 4):
         super().__init__(x, y, w, h)
@@ -468,6 +531,8 @@ class Grid(Panel):
 # ─────────────────────────────────────────────────────────────────────────────
 
 class Checkbox(_Widget):
+    _widget_type = "Checkbox"
+
     def __init__(self, x: float = 0, y: float = 0, text: str = "", font_size: int = 16):
         super().__init__(x, y, 20, 20)
         self.text = text
@@ -479,6 +544,7 @@ class Checkbox(_Widget):
         self.hover_color = _color_dict(0.6, 0.6, 0.6)
         self.hovered = False
         self._on_change = None
+        self._init_theme()
 
     def on_change(self, fn):
         self._on_change = fn
@@ -523,6 +589,8 @@ class Checkbox(_Widget):
 # ─────────────────────────────────────────────────────────────────────────────
 
 class Slider(_Widget):
+    _widget_type = "Slider"
+
     def __init__(self, x: float = 0, y: float = 0, w: float = 200, h: float = 20,
                  min_val: float = 0.0, max_val: float = 100.0, initial: float = 50.0):
         super().__init__(x, y, w, h)
@@ -538,6 +606,7 @@ class Slider(_Widget):
         self.text_color = _color_dict(1.0, 1.0, 1.0)
         self._dragging = False
         self._on_change = None
+        self._init_theme()
 
     def on_change(self, fn):
         self._on_change = fn
@@ -620,6 +689,8 @@ class Slider(_Widget):
 _ALPHANUM = "abcdefghijklmnopqrstuvwxyz0123456789"
 
 class TextInput(_Widget):
+    _widget_type = "TextInput"
+
     def __init__(self, x: float = 0, y: float = 0, w: float = 200, h: float = 30,
                  placeholder: str = "", font_size: int = 16):
         super().__init__(x, y, w, h)
@@ -635,6 +706,7 @@ class TextInput(_Widget):
         self.focus_border_color = _color_dict(0.3, 0.6, 1.0)
         self._on_submit = None
         self._on_change = None
+        self._init_theme()
 
     def on_submit(self, fn):
         self._on_submit = fn
@@ -710,6 +782,8 @@ class TextInput(_Widget):
 # ─────────────────────────────────────────────────────────────────────────────
 
 class Dropdown(_Widget):
+    _widget_type = "Dropdown"
+
     def __init__(self, x: float = 0, y: float = 0, w: float = 200, h: float = 30,
                  options: list = None, font_size: int = 16):
         super().__init__(x, y, w, h)
@@ -727,6 +801,7 @@ class Dropdown(_Widget):
         self._on_select = None
         self._option_rects = []
         self._hovered_option = -1
+        self._init_theme()
 
     def on_select(self, fn):
         self._on_select = fn
@@ -889,6 +964,8 @@ def _tab_cycle_focus(children, input_ns):
 # ─────────────────────────────────────────────────────────────────────────────
 
 class ScrollView(Panel):
+    _widget_type = "ScrollView"
+
     def __init__(self, x: float = 0, y: float = 0, w: float = 300, h: float = 200):
         super().__init__(x, y, w, h)
         self.scroll_x = 0.0
@@ -1076,6 +1153,8 @@ class ScrollView(Panel):
 # ─────────────────────────────────────────────────────────────────────────────
 
 class TabContainer(Panel):
+    _widget_type = "TabContainer"
+
     def __init__(self, x: float = 0, y: float = 0, w: float = 400, h: float = 300,
                  tab_height: int = 28):
         super().__init__(x, y, w, h)
@@ -1186,6 +1265,8 @@ class TabContainer(Panel):
 # ─────────────────────────────────────────────────────────────────────────────
 
 class Splitter(_Widget):
+    _widget_type = "Splitter"
+
     def __init__(self, x: float = 0, y: float = 0, w: float = 400, h: float = 300,
                  orientation: str = "horizontal", split: float = 0.5):
         super().__init__(x, y, w, h)
@@ -1200,6 +1281,7 @@ class Splitter(_Widget):
         self.panel2 = Panel(0, 0, 0, 0)
         self.panel1._z = self._z + 1
         self.panel2._z = self._z + 1
+        self._init_theme()
 
     def set_attr(self, name: str, val):
         if name == "split":
@@ -1311,6 +1393,8 @@ class Menu:
 
 
 class MenuBar(_Widget):
+    _widget_type = "MenuBar"
+
     def __init__(self, x: float = 0, y: float = 0, w: float = 640, h: float = 26):
         super().__init__(x, y, w, h)
         self.menus: list[Menu] = []
@@ -1325,6 +1409,7 @@ class MenuBar(_Widget):
         self.border_color = _color_dict(0.3, 0.3, 0.35)
         self._item_rects = []
         self._hovered_item = -1
+        self._init_theme()
 
     def add_menu(self, menu: Menu):
         self.menus.append(menu)
@@ -1457,6 +1542,97 @@ class MenuBar(_Widget):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Theme system
+# ─────────────────────────────────────────────────────────────────────────────
+
+_DISABLED_STYLE = {"disabled_text_color": _color_dict(0.5, 0.5, 0.5),
+                   "disabled_bg_color": _color_dict(0.15, 0.15, 0.17)}
+_DEFAULT_BUTTON = {"bg_color": _color_dict(0.3, 0.3, 0.35),
+                   "text_color": _color_dict(1.0, 1.0, 1.0),
+                   "hover_color": _color_dict(0.4, 0.4, 0.5),
+                   "pressed_color": _color_dict(0.2, 0.2, 0.25),
+                   "rounded_radius": 6}
+_DEFAULT_LABEL = {"color": _color_dict(1.0, 1.0, 1.0)}
+_DEFAULT_CHECKBOX = {"box_color": _color_dict(0.5, 0.5, 0.5),
+                     "check_color": _color_dict(0.2, 0.8, 0.2),
+                     "text_color": _color_dict(1.0, 1.0, 1.0),
+                     "hover_color": _color_dict(0.6, 0.6, 0.6)}
+_DEFAULT_SLIDER = {"track_color": _color_dict(0.3, 0.3, 0.35),
+                   "fill_color": _color_dict(0.2, 0.6, 0.9),
+                   "thumb_color": _color_dict(0.9, 0.9, 0.9),
+                   "text_color": _color_dict(1.0, 1.0, 1.0)}
+_DEFAULT_TEXTINPUT = {"bg_color": _color_dict(0.15, 0.15, 0.18),
+                      "text_color": _color_dict(1.0, 1.0, 1.0),
+                      "placeholder_color": _color_dict(0.4, 0.4, 0.45),
+                      "border_color": _color_dict(0.4, 0.4, 0.5),
+                      "focus_border_color": _color_dict(0.3, 0.6, 1.0)}
+_DEFAULT_DROPDOWN = {"bg_color": _color_dict(0.25, 0.25, 0.3),
+                     "text_color": _color_dict(1.0, 1.0, 1.0),
+                     "hover_color": _color_dict(0.35, 0.35, 0.4),
+                     "option_bg_color": _color_dict(0.2, 0.2, 0.22),
+                     "border_color": _color_dict(0.4, 0.4, 0.5)}
+_DEFAULT_SCROLLVIEW = {"track_color": _color_dict(0.2, 0.2, 0.22),
+                       "thumb_color": _color_dict(0.45, 0.45, 0.5),
+                       "thumb_hover_color": _color_dict(0.55, 0.55, 0.6)}
+_DEFAULT_TABCONTAINER = {"tab_bg_color": _color_dict(0.2, 0.2, 0.22),
+                         "active_tab_color": _color_dict(0.3, 0.3, 0.35),
+                         "tab_hover_color": _color_dict(0.25, 0.25, 0.3),
+                         "tab_text_color": _color_dict(0.7, 0.7, 0.7),
+                         "active_text_color": _color_dict(1.0, 1.0, 1.0)}
+_DEFAULT_SPLITTER = {"divider_color": _color_dict(0.3, 0.3, 0.35),
+                     "divider_hover_color": _color_dict(0.5, 0.5, 0.55)}
+_DEFAULT_MENUBAR = {"menu_bg_color": _color_dict(0.18, 0.18, 0.2),
+                    "menu_text_color": _color_dict(0.85, 0.85, 0.85),
+                    "menu_hover_color": _color_dict(0.3, 0.3, 0.35),
+                    "dropdown_bg_color": _color_dict(0.2, 0.2, 0.22),
+                    "dropdown_hover_color": _color_dict(0.3, 0.3, 0.35),
+                    "dropdown_text_color": _color_dict(1.0, 1.0, 1.0),
+                    "border_color": _color_dict(0.3, 0.3, 0.35)}
+
+
+class Theme:
+    def __init__(self):
+        self._styles: dict[str, dict] = {}
+
+    def set_style(self, widget_type: str, props: dict):
+        self._styles[widget_type] = dict(props)
+
+    def get_style(self, widget_type: str, attr: str, default=None):
+        style = self._styles.get(widget_type, {})
+        return style.get(attr, default)
+
+    def apply_to(self, widget):
+        wt = getattr(widget, "_widget_type", "Widget")
+        style = self._styles.get(wt, {})
+        for k, v in style.items():
+            if hasattr(widget, k):
+                setattr(widget, k, v)
+
+    def set_shadow(self, widget_type: str, offset_x: float = 3, offset_y: float = 3,
+                   size: int = 4, color: dict = None):
+        self._styles.setdefault(widget_type, {})
+        self._styles[widget_type]["shadow"] = {
+            "offset_x": offset_x,
+            "offset_y": offset_y,
+            "size": size,
+            "color": color or _color_dict(0, 0, 0, 0.3),
+        }
+
+
+default_theme = Theme()
+default_theme.set_style("Button", _DEFAULT_BUTTON)
+default_theme.set_style("Label", _DEFAULT_LABEL)
+default_theme.set_style("Checkbox", _DEFAULT_CHECKBOX)
+default_theme.set_style("Slider", _DEFAULT_SLIDER)
+default_theme.set_style("TextInput", _DEFAULT_TEXTINPUT)
+default_theme.set_style("Dropdown", _DEFAULT_DROPDOWN)
+default_theme.set_style("ScrollView", _DEFAULT_SCROLLVIEW)
+default_theme.set_style("TabContainer", _DEFAULT_TABCONTAINER)
+default_theme.set_style("Splitter", _DEFAULT_SPLITTER)
+default_theme.set_style("MenuBar", _DEFAULT_MENUBAR)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Module registration
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -1480,6 +1656,8 @@ register_module("gui", {
     "MenuBar": MenuBar,
     "Menu": Menu,
     "MenuItem": MenuItem,
+    "Theme": Theme,
+    "default_theme": default_theme,
     "SIZE_FIXED": SIZE_FIXED,
     "SIZE_FILL": SIZE_FILL,
 })
