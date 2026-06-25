@@ -24,7 +24,7 @@ from errors   import (InScriptError, LexerError, ParseError,
                        SemanticError, InScriptRuntimeError,
                        MultiError, InScriptWarning)
 
-VERSION = "3.9.6.37"
+VERSION = "3.9.6.38"
 
 MANIFEST_FILENAME = "inscript.toml"
 LOCK_FILENAME     = "inscript.lock"
@@ -1257,8 +1257,16 @@ def _check_v2_readiness(project_dir: str = ".") -> int:
 
     print(f"\n  InScript v2.0.0 Readiness Check\n  Project: {os.path.abspath(project_dir)}\n")
 
+    # ── Filter: exclude legacy version test directories (v1.*, v2.*, v3.*) ──
+    def _is_version_test_dir(path: str) -> bool:
+        rel = os.path.relpath(path, project_dir)
+        parts = rel.replace("\\", "/").split("/")
+        return any(_re.match(r'^v\d+(\.\d+)*$', p) for p in parts)
+
+    ins_files = [f for f in (_find_ins_files(project_dir) if os.path.isdir(project_dir) else [])
+                 if not _is_version_test_dir(f)]
+
     # ── Gate 1: div removed ───────────────────────────────────────────────────
-    ins_files = list(_find_ins_files(project_dir)) if os.path.isdir(project_dir) else []
     div_hits = []
     for fpath in ins_files:
         try:

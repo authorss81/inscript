@@ -747,12 +747,22 @@ _IDENT_MAP: dict = {
 
 # Rust lexer maps these keywords to Identifier(value); convert to proper token type
 _RUST_SOFT_KEYWORDS: dict = {
-    "import":  TT.IMPORT,
-    "from":    TT.FROM,
-    "as":      TT.AS,
-    "export":  TT.EXPORT,
-    "self":    TT.SELF,
-    "super":   TT.SUPER,
+    "import":    TT.IMPORT,
+    "from":      TT.FROM,
+    "as":        TT.AS,
+    "export":    TT.EXPORT,
+    "self":      TT.SELF,
+    "super":     TT.SUPER,
+    "interface": TT.INTERFACE,
+    "impl":      TT.IMPL,
+    "pub":       TT.PUB,
+    "spawn":     TT.SPAWN,
+    "select":    TT.SELECT,
+    "then":      TT.THEN,
+    "abstract":  TT.ABSTRACT,
+    "defer":     TT.DEFER,
+    "repeat":    TT.REPEAT,
+    "until":     TT.UNTIL,
 }
 
 def tokenize(source: str, filename: str = "<stdin>") -> List[Token]:
