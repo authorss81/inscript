@@ -74,6 +74,16 @@ ANCHOR_HCENTER = 16
 ANCHOR_VCENTER = 32
 
 
+def _stretch_weight(sp):
+    if sp == SIZE_EXPAND:
+        return 2.0
+    if sp == SIZE_SHRINK:
+        return 0.5
+    if sp == SIZE_FILL:
+        return 1.0
+    return 0.0
+
+
 class _Widget:
     _widget_type = "Widget"
 
@@ -352,8 +362,6 @@ class Panel(_Widget):
         if hasattr(self, '_needs_layout'):
             self._needs_layout = True
         for c in self.children:
-            if hasattr(c, 'apply_anchors'):
-                c.apply_anchors(self.w, self.h)
             if isinstance(c, Panel):
                 c.invalidate_layout()
 
@@ -370,9 +378,15 @@ class Panel(_Widget):
     def clear(self):
         self.children.clear()
 
+    def _apply_child_anchors(self):
+        for c in self.children:
+            if c.anchor != ANCHOR_NONE and c.visible:
+                c.apply_anchors(self.w, self.h)
+
     def update(self, input_ns=None):
         if not self.visible:
             return
+        self._apply_child_anchors()
         for child in self.children:
             child.update(input_ns)
         _tab_cycle_focus(self.children, input_ns)
@@ -385,6 +399,7 @@ class Panel(_Widget):
         if self.border_color and self.border_width > 0 and hasattr(draw_ns, "rect"):
             draw_ns.rect(self.x, self.y, self.w, self.h, self.border_color,
                          False, self.border_width)
+        self._apply_child_anchors()
         for child in sorted(self.children, key=lambda c: c._z):
             child.draw(draw_ns)
 
@@ -465,6 +480,9 @@ class HBox(Panel):
         self.padding = padding
         self._needs_layout = True
 
+    def _apply_child_anchors(self):
+        pass
+
     def add(self, widget):
         super().add(widget)
         self._needs_layout = True
@@ -491,37 +509,28 @@ class HBox(Panel):
         if not visible:
             self._needs_layout = False
             return
-        fixed_total = 0
-        fill_count = 0
-        expand_count = 0
+        fixed_total = 0.0
+        total_weight = 0.0
         for c in visible:
             sp = getattr(c, 'size_policy_w', SIZE_FILL)
-            if sp == SIZE_EXPAND:
-                expand_count += 1
-            elif sp == SIZE_FILL:
-                fill_count += 1
+            wgt = _stretch_weight(sp)
+            if wgt > 0:
+                total_weight += wgt
             else:
-                cw_fixed = max(0, c.w)
-                if sp == SIZE_SHRINK:
-                    cw_fixed = cw_fixed * 0.5
-                fixed_total += cw_fixed
+                fixed_total += max(0, c.w)
         avail = max(0, cw - fixed_total - self.spacing * max(0, len(visible) - 1))
-        total_fill = fill_count + expand_count
-        fill_w = avail / max(total_fill, 1) if total_fill > 0 else 0
-        expand_w = avail / max(expand_count, 1) if expand_count > 0 else 0
+        unit = avail / max(total_weight, 0.001) if total_weight > 0 else 0
         for c in visible:
             c.x = cx
             c.y = cy
             sp = getattr(c, 'size_policy_w', SIZE_FILL)
-            if sp == SIZE_EXPAND:
-                c.w = expand_w * 1.5
-            elif sp == SIZE_FILL:
-                c.w = fill_w
-            elif sp == SIZE_SHRINK:
-                c.w = max(20, c.w * 0.5)
+            wgt = _stretch_weight(sp)
+            if wgt > 0:
+                c.w = unit * wgt
             c.h = ch
             c._z = self._z + 1
-            c.apply_anchors(cw, ch)
+            if c.anchor != ANCHOR_NONE:
+                c.apply_anchors(cw, ch)
             cx = cx + c.w + self.spacing
         self._needs_layout = False
 
@@ -550,6 +559,9 @@ class VBox(Panel):
         self.padding = padding
         self._needs_layout = True
 
+    def _apply_child_anchors(self):
+        pass
+
     def add(self, widget):
         super().add(widget)
         self._needs_layout = True
@@ -576,37 +588,28 @@ class VBox(Panel):
         if not visible:
             self._needs_layout = False
             return
-        fixed_total = 0
-        fill_count = 0
-        expand_count = 0
+        fixed_total = 0.0
+        total_weight = 0.0
         for c in visible:
             sp = getattr(c, 'size_policy_h', SIZE_FILL)
-            if sp == SIZE_EXPAND:
-                expand_count += 1
-            elif sp == SIZE_FILL:
-                fill_count += 1
+            wgt = _stretch_weight(sp)
+            if wgt > 0:
+                total_weight += wgt
             else:
-                ch_fixed = max(0, c.h)
-                if sp == SIZE_SHRINK:
-                    ch_fixed = ch_fixed * 0.5
-                fixed_total += ch_fixed
+                fixed_total += max(0, c.h)
         avail = max(0, ch - fixed_total - self.spacing * max(0, len(visible) - 1))
-        total_fill = fill_count + expand_count
-        fill_h = avail / max(total_fill, 1) if total_fill > 0 else 0
-        expand_h = avail / max(expand_count, 1) if expand_count > 0 else 0
+        unit = avail / max(total_weight, 0.001) if total_weight > 0 else 0
         for c in visible:
             c.x = cx
             c.y = cy
             c.w = cw
             sp = getattr(c, 'size_policy_h', SIZE_FILL)
-            if sp == SIZE_EXPAND:
-                c.h = expand_h * 1.5
-            elif sp == SIZE_FILL:
-                c.h = fill_h
-            elif sp == SIZE_SHRINK:
-                c.h = max(20, c.h * 0.5)
+            wgt = _stretch_weight(sp)
+            if wgt > 0:
+                c.h = unit * wgt
             c._z = self._z + 1
-            c.apply_anchors(cw, ch)
+            if c.anchor != ANCHOR_NONE:
+                c.apply_anchors(cw, ch)
             cy = cy + c.h + self.spacing
         self._needs_layout = False
 
@@ -635,6 +638,9 @@ class Grid(Panel):
         self.spacing = spacing
         self.padding = padding
         self._needs_layout = True
+
+    def _apply_child_anchors(self):
+        pass
 
     def add(self, widget):
         super().add(widget)
@@ -671,22 +677,15 @@ class Grid(Panel):
             row = i // self.cols
             sp_w = getattr(c, 'size_policy_w', SIZE_FILL)
             sp_h = getattr(c, 'size_policy_h', SIZE_FILL)
-            if sp_w == SIZE_EXPAND:
-                c.w = col_w * 1.5
-            elif sp_w == SIZE_SHRINK:
-                c.w = max(20, col_w * 0.5)
-            else:
-                c.w = col_w
-            if sp_h == SIZE_EXPAND:
-                c.h = row_h * 1.5
-            elif sp_h == SIZE_SHRINK:
-                c.h = max(20, row_h * 0.5)
-            else:
-                c.h = row_h
+            wgt_w = _stretch_weight(sp_w)
+            wgt_h = _stretch_weight(sp_h)
+            c.w = col_w * (wgt_w if wgt_w > 0 else 1.0)
+            c.h = row_h * (wgt_h if wgt_h > 0 else 1.0)
             c.x = cx + col * (col_w + self.spacing)
             c.y = cy + row * (row_h + self.spacing)
             c._z = self._z + 1
-            c.apply_anchors(col_w, row_h)
+            if c.anchor != ANCHOR_NONE:
+                c.apply_anchors(col_w, row_h)
         self._needs_layout = False
 
     def draw(self, draw_ns):
