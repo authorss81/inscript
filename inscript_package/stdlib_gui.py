@@ -159,6 +159,7 @@ class Button(_Widget):
         self.pressed_color = _color_dict(0.2, 0.2, 0.25)
         self.hovered = False
         self.pressed = False
+        self.icon = ""
         self._on_click = None
         self._on_hover = None
         self._init_theme()
@@ -207,11 +208,21 @@ class Button(_Widget):
             draw_ns.rounded_rect(self.x, self.y, self.w, self.h, color, rr, True)
         elif hasattr(draw_ns, "rect"):
             draw_ns.rect(self.x, self.y, self.w, self.h, color, True)
+        text_x = self.x
+        if self.icon and hasattr(draw_ns, "sprite"):
+            draw_ns.sprite(self.x + 4, self.y + 2, self.icon, 255)
+            text_x = self.x + 24
         if self.text and hasattr(draw_ns, "text_centered"):
-            draw_ns.text_centered(cx, cy, self.text, tc, self.font_size)
+            if self.icon:
+                draw_ns.text(text_x + 4, cy - self.font_size / 2, self.text, tc, self.font_size)
+            else:
+                draw_ns.text_centered(cx, cy, self.text, tc, self.font_size)
         elif self.text and hasattr(draw_ns, "text"):
-            draw_ns.text(cx - len(self.text) * 4, cy - self.font_size / 2,
-                         self.text, tc, self.font_size)
+            draw_ns.text(text_x + 4, cy - self.font_size / 2, self.text, tc, self.font_size)
+
+    def set_attr(self, name: str, val):
+        if name == "icon": self.icon = str(val)
+        else: super().set_attr(name, val)
 
 
 class Label(_Widget):
@@ -223,22 +234,51 @@ class Label(_Widget):
         self.font_size = font_size
         self.color = _color_dict(1.0, 1.0, 1.0)
         self.bg_color = None
+        self.wrap = False
+        self.wrap_width = 200.0
         self._init_theme()
+
+    def _wrap_lines(self):
+        if not self.wrap or not self.text:
+            return [self.text]
+        char_w = self.font_size * 0.6
+        max_chars = max(1, int(self.wrap_width / char_w))
+        words = self.text.split(" ")
+        lines = []
+        current = ""
+        for word in words:
+            candidate = (current + " " + word).strip()
+            if len(candidate) <= max_chars or not current:
+                current = candidate
+            else:
+                lines.append(current)
+                current = word
+        if current:
+            lines.append(current)
+        return lines
 
     def draw(self, draw_ns):
         if not self.visible:
             return
+        lines = self._wrap_lines()
+        lh = self.font_size + 4
+        total_h = len(lines) * lh
         if self.bg_color and hasattr(draw_ns, "rect"):
-            tw = len(self.text) * self.font_size * 0.6 if self.text else 0
-            draw_ns.rect(self.x - 2, self.y - 2, tw + 4, self.font_size + 4,
-                         self.bg_color, True)
-        if self.text and hasattr(draw_ns, "text"):
-            draw_ns.text(self.x, self.y, self.text, self.color, self.font_size)
-        elif self.text and hasattr(draw_ns, "text_centered"):
-            draw_ns.text_centered(self.x, self.y, self.text, self.color, self.font_size)
+            max_w = max((len(l) * self.font_size * 0.6 for l in lines), default=0)
+            draw_ns.rect(self.x - 2, self.y - 2, max_w + 4, total_h + 4, self.bg_color, True)
+        for i, line in enumerate(lines):
+            if line and hasattr(draw_ns, "text"):
+                draw_ns.text(self.x, self.y + i * lh, line, self.color, self.font_size)
+            elif line and hasattr(draw_ns, "text_centered"):
+                draw_ns.text_centered(self.x, self.y + i * lh + lh / 2, line, self.color, self.font_size)
 
     def update(self, input_ns=None):
         pass
+
+    def set_attr(self, name: str, val):
+        if name == "wrap": self.wrap = bool(val)
+        elif name == "wrap_width": self.wrap_width = float(val)
+        else: super().set_attr(name, val)
 
 
 class Panel(_Widget):
@@ -299,6 +339,7 @@ class Image(_Widget):
         self.alpha = 255
         self.scale = 1.0
         self.angle = 0.0
+        self.mode = "stretch"
         self._init_theme()
 
     def draw(self, draw_ns):
@@ -307,13 +348,42 @@ class Image(_Widget):
         sp = getattr(draw_ns, "sprite", None)
         sp_ex = getattr(draw_ns, "sprite_ex", None)
         if sp_ex is not None:
-            sp_ex(self.x, self.y, self.path, self.angle, self.scale,
-                  False, False, self.alpha)
+            if self.mode == "fit":
+                s = min(self.w / max(1, self.w), self.h / max(1, self.h))
+                cx = self.x + (self.w - self.w * s) / 2
+                cy = self.y + (self.h - self.h * s) / 2
+                sp_ex(cx, cy, self.path, self.angle, s, False, False, self.alpha)
+            elif self.mode == "tile":
+                tw = max(1, int(self.w / max(1, self.scale)))
+                th = max(1, int(self.h / max(1, self.scale)))
+                for ty in range(th):
+                    for tx in range(tw):
+                        sp_ex(self.x + tx * self.w / max(1, tw),
+                              self.y + ty * self.h / max(1, th),
+                              self.path, 0, 1.0, False, False, self.alpha)
+            else:
+                sp_ex(self.x, self.y, self.path, self.angle, self.scale,
+                      False, False, self.alpha)
         elif sp is not None:
-            sp(self.x, self.y, self.path, self.alpha)
+            if self.mode == "tile":
+                tw = max(1, int(self.w / 32))
+                th = max(1, int(self.h / 32))
+                for ty in range(th):
+                    for tx in range(tw):
+                        sp(self.x + tx * 32, self.y + ty * 32, self.path, self.alpha)
+            else:
+                sp(self.x, self.y, self.path, self.alpha)
 
     def update(self, input_ns=None):
         pass
+
+    def set_attr(self, name: str, val):
+        if name == "mode": self.mode = str(val)
+        elif name == "path": self.path = str(val)
+        elif name == "alpha": self.alpha = int(val)
+        elif name == "scale": self.scale = float(val)
+        elif name == "angle": self.angle = float(val)
+        else: super().set_attr(name, val)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1176,6 +1246,100 @@ class ScrollView(Panel):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# TextArea — Multi-line text input
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TextArea(ScrollView):
+    _widget_type = "TextArea"
+
+    def __init__(self, x: float = 0, y: float = 0, w: float = 300, h: float = 150,
+                 font_size: int = 14):
+        super().__init__(x, y, w, h)
+        self.text = ""
+        self.font_size = font_size
+        self._line_h = font_size + 4
+        self.focused = False
+        self.placeholder = ""
+        self.bg_color = _color_dict(0.12, 0.12, 0.15)
+        self.border_color = _color_dict(0.4, 0.4, 0.5)
+        self.focus_border_color = _color_dict(0.3, 0.6, 1.0)
+        self.text_color = _color_dict(1.0, 1.0, 1.0)
+        self.placeholder_color = _color_dict(0.4, 0.4, 0.45)
+        self.cursor_color = _color_dict(0.8, 0.8, 0.8)
+        self._on_change = None
+
+    def _text_lines(self):
+        return self.text.split("\n") if self.text else [""]
+
+    def on_change(self, fn):
+        self._on_change = fn
+
+    def update(self, input_ns=None):
+        if not self.visible or input_ns is None:
+            return
+        mx = getattr(input_ns, "mouse_x", 0)
+        my = getattr(input_ns, "mouse_y", 0)
+        mp = getattr(input_ns, "mouse_pressed", None)
+        if mp is not None and mp(0):
+            self.focused = self.contains(mx, my)
+        if not self.focused:
+            return
+        old_text = self.text
+        shift = False
+        kd = getattr(input_ns, "key_down", None)
+        if kd is not None:
+            shift = kd("lshift") or kd("rshift")
+        kp = getattr(input_ns, "key_pressed", None)
+        if kp is None:
+            return
+        for ch in _ALPHANUM:
+            if kp(ch):
+                self.text += ch.upper() if shift else ch
+        if kp("space"):
+            self.text += " "
+        if kp("enter") or kp("return"):
+            self.text += "\n"
+            self.scroll_y = max(0, self._content_h - self.h)
+        if kp("backspace"):
+            self.text = self.text[:-1]
+        if old_text != self.text and self._on_change:
+            _call_user_fn(self._on_change, self.text)
+        lines = self._text_lines()
+        self._content_h = max(self.h, len(lines) * self._line_h + 8)
+        self._content_w = self.w
+
+    def draw(self, draw_ns):
+        if not self.visible:
+            return
+        if hasattr(draw_ns, "rect"):
+            draw_ns.rect(self.x, self.y, self.w, self.h, self.bg_color, True)
+            draw_ns.rect(self.x, self.y, self.w, self.h, self.border_color, False, 2)
+            if self.focused:
+                draw_ns.rect(self.x, self.y, self.w, self.h, self.focus_border_color, False, 2)
+        lines = self._text_lines()
+        display_lines = lines if self.text else ([self.placeholder] if self.placeholder else [""])
+        disp_color = self.text_color if self.text else self.placeholder_color
+        for i, line in enumerate(display_lines):
+            ly = self.y + 4 + i * self._line_h - self.scroll_y
+            if ly + self._line_h < self.y or ly > self.y + self.h:
+                continue
+            if hasattr(draw_ns, "text"):
+                draw_ns.text(self.x + 4, ly, line, disp_color, self.font_size)
+        if self.focused and hasattr(draw_ns, "rect"):
+            cursor_y = self.y + 4 + (len(lines) - 1) * self._line_h - self.scroll_y
+            cursor_x = self.x + 4 + len(lines[-1]) * int(self.font_size * 0.5) if lines else self.x + 4
+            if self.y <= cursor_y <= self.y + self.h - 4:
+                draw_ns.rect(cursor_x, cursor_y, 2, self._line_h, self.cursor_color, True)
+
+    def set_attr(self, name: str, val):
+        if name == "text": self.text = str(val)
+        elif name == "placeholder": self.placeholder = str(val)
+        elif name == "focused": self.focused = bool(val)
+        elif name == "font_size": self.font_size = int(val)
+        else: super().set_attr(name, val)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # TabContainer — tabbed panels
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -1598,6 +1762,12 @@ _DEFAULT_DROPDOWN = {"bg_color": _color_dict(0.25, 0.25, 0.3),
                      "hover_color": _color_dict(0.35, 0.35, 0.4),
                      "option_bg_color": _color_dict(0.2, 0.2, 0.22),
                      "border_color": _color_dict(0.4, 0.4, 0.5)}
+_DEFAULT_TEXTAREA = {"bg_color": _color_dict(0.12, 0.12, 0.15),
+                     "border_color": _color_dict(0.4, 0.4, 0.5),
+                     "focus_border_color": _color_dict(0.3, 0.6, 1.0),
+                     "text_color": _color_dict(1.0, 1.0, 1.0),
+                     "placeholder_color": _color_dict(0.4, 0.4, 0.45),
+                     "cursor_color": _color_dict(0.8, 0.8, 0.8)}
 _DEFAULT_SCROLLVIEW = {"track_color": _color_dict(0.2, 0.2, 0.22),
                        "thumb_color": _color_dict(0.45, 0.45, 0.5),
                        "thumb_hover_color": _color_dict(0.55, 0.55, 0.6)}
@@ -1657,6 +1827,7 @@ default_theme.set_style("ScrollView", _DEFAULT_SCROLLVIEW)
 default_theme.set_style("TabContainer", _DEFAULT_TABCONTAINER)
 default_theme.set_style("Splitter", _DEFAULT_SPLITTER)
 default_theme.set_style("MenuBar", _DEFAULT_MENUBAR)
+default_theme.set_style("TextArea", _DEFAULT_TEXTAREA)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1738,6 +1909,7 @@ register_module("gui", {
     "Slider": Slider,
     "TextInput": TextInput,
     "Dropdown": Dropdown,
+    "TextArea": TextArea,
     "ScrollView": ScrollView,
     "TabContainer": TabContainer,
     "Splitter": Splitter,

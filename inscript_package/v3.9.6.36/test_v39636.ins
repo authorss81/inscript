@@ -1,0 +1,226 @@
+# v3.9.6.36 — GUI: polish (Label wrap, Button icon, Image modes, TextArea)
+# Run: python inscript.py --test v3.9.6.36/test_v39636.ins
+
+# ── Label Wrapping ───────────────────────────────────────────────────────────
+
+test "label_wrap_default_false" {
+    import "gui" as gui
+    let lb = gui.Label(0, 0, "Hello")
+    assert(lb.wrap == false)
+}
+
+test "label_wrap_enable_via_set_attr" {
+    import "gui" as gui
+    let lb = gui.Label(0, 0, "Long text here")
+    lb.set_attr("wrap", true)
+    assert(lb.wrap == true)
+}
+
+test "label_wrap_width_default" {
+    import "gui" as gui
+    let lb = gui.Label(0, 0, "Text")
+    assert(lb.wrap_width == 200.0)
+}
+
+test "label_wrap_width_set_via_set_attr" {
+    import "gui" as gui
+    let lb = gui.Label(0, 0, "Text")
+    lb.set_attr("wrap_width", 150.0)
+    assert(lb.wrap_width == 150.0)
+}
+
+test "label_wrap_draw_no_crash" {
+    import "gui" as gui
+    let lb = gui.Label(0, 0, "This is a long text that should wrap")
+    lb.set_attr("wrap", true)
+    lb.set_attr("wrap_width", 100.0)
+    lb.draw(nil)
+    assert(lb.wrap == true)
+}
+
+test "label_create_with_constructor_defaults" {
+    import "gui" as gui
+    let lb = gui.Label(10, 20, "Hello", 16)
+    assert(lb.x == 10)
+    assert(lb.y == 20)
+    assert(lb.text == "Hello")
+    assert(lb.font_size == 16)
+}
+
+
+# ── Button Icon ──────────────────────────────────────────────────────────────
+
+test "button_icon_default_empty" {
+    import "gui" as gui
+    let b = gui.Button(0, 0, 100, 30, "Click")
+    assert(b.icon == "")
+}
+
+test "button_icon_set_via_set_attr" {
+    import "gui" as gui
+    let b = gui.Button(0, 0, 100, 30, "Click")
+    b.set_attr("icon", "icon.png")
+    assert(b.icon == "icon.png")
+}
+
+test "button_icon_draw_no_crash" {
+    import "gui" as gui
+    let b = gui.Button(0, 0, 100, 30, "Click")
+    b.set_attr("icon", "test.png")
+    b.draw(nil)
+    assert(b.icon == "test.png")
+}
+
+test "button_set_attr_icon_without_text" {
+    import "gui" as gui
+    let b = gui.Button(0, 0, 50, 50, "")
+    b.set_attr("icon", "icon.png")
+    assert(b.icon == "icon.png")
+    b.draw(nil)
+}
+
+
+# ── Image Modes ──────────────────────────────────────────────────────────────
+
+test "image_mode_default_stretch" {
+    import "gui" as gui
+    let img = gui.Image(0, 0, "test.png")
+    assert(img.mode == "stretch")
+}
+
+test "image_mode_set_to_fit" {
+    import "gui" as gui
+    let img = gui.Image(0, 0, "test.png")
+    img.set_attr("mode", "fit")
+    assert(img.mode == "fit")
+}
+
+test "image_mode_set_to_tile" {
+    import "gui" as gui
+    let img = gui.Image(0, 0, "test.png")
+    img.set_attr("mode", "tile")
+    assert(img.mode == "tile")
+}
+
+test "image_mode_stretch_draw_no_crash" {
+    import "gui" as gui
+    let img = gui.Image(0, 0, "test.png")
+    img.set_attr("mode", "stretch")
+    img.draw(nil)
+    assert(img.mode == "stretch")
+}
+
+test "image_mode_fit_draw_no_crash" {
+    import "gui" as gui
+    let img = gui.Image(0, 0, "test.png")
+    img.w = 100
+    img.h = 100
+    img.set_attr("mode", "fit")
+    img.draw(nil)
+    assert(img.mode == "fit")
+}
+
+test "image_mode_tile_draw_no_crash" {
+    import "gui" as gui
+    let img = gui.Image(0, 0, "test.png")
+    img.w = 200
+    img.h = 100
+    img.set_attr("mode", "tile")
+    img.draw(nil)
+    assert(img.mode == "tile")
+}
+
+test "image_set_attr_alpha_scale_angle" {
+    import "gui" as gui
+    let img = gui.Image(0, 0, "test.png")
+    img.set_attr("alpha", 128)
+    img.set_attr("scale", 2.0)
+    img.set_attr("angle", 45)
+    assert(img.alpha == 128)
+    assert(img.scale == 2.0)
+    assert(img.angle == 45)
+}
+
+
+# ── TextArea ─────────────────────────────────────────────────────────────────
+
+test "textarea_create" {
+    import "gui" as gui
+    let ta = gui.TextArea(10, 20, 300, 150)
+    assert(ta.x == 10)
+    assert(ta.y == 20)
+    assert(ta.w == 300)
+    assert(ta.h == 150)
+    assert(ta.text == "")
+    assert(ta.focused == false)
+}
+
+test "textarea_set_text_via_set_attr" {
+    import "gui" as gui
+    let ta = gui.TextArea(0, 0, 300, 150)
+    ta.set_attr("text", "Hello\nWorld")
+    assert(ta.text == "Hello\nWorld")
+}
+
+test "textarea_text_lines" {
+    import "gui" as gui
+    let ta = gui.TextArea(0, 0, 300, 150)
+    ta.set_attr("text", "Line1\nLine2\nLine3")
+    assert(ta.text == "Line1\nLine2\nLine3")
+}
+
+test "textarea_placeholder" {
+    import "gui" as gui
+    let ta = gui.TextArea(0, 0, 300, 150, 14)
+    ta.set_attr("placeholder", "Enter text...")
+    assert(ta.placeholder == "Enter text...")
+}
+
+test "textarea_focused_set_via_set_attr" {
+    import "gui" as gui
+    let ta = gui.TextArea(0, 0, 300, 150)
+    assert(ta.focused == false)
+    ta.set_attr("focused", true)
+    assert(ta.focused == true)
+}
+
+test "textarea_contains_hit_detection" {
+    import "gui" as gui
+    let ta = gui.TextArea(100, 100, 300, 150)
+    assert(ta.contains(100, 100) == true)
+    assert(ta.contains(250, 175) == true)
+    assert(ta.contains(99, 100) == false)
+}
+
+test "textarea_on_change_callback_registered" {
+    import "gui" as gui
+    let ta = gui.TextArea(0, 0, 300, 150)
+    let called = false
+    ta.on_change(fn(text) { called = true })
+    ta.set_attr("text", "new content")
+    assert(ta.text == "new content")
+}
+
+test "textarea_draw_no_crash" {
+    import "gui" as gui
+    let ta = gui.TextArea(0, 0, 300, 150, 14)
+    ta.set_attr("text", "Hello\nWorld\nMulti-line")
+    ta.draw(nil)
+    assert(ta.text == "Hello\nWorld\nMulti-line")
+}
+
+test "textarea_draw_placeholder_no_crash" {
+    import "gui" as gui
+    let ta = gui.TextArea(0, 0, 300, 150)
+    ta.set_attr("placeholder", "Type here...")
+    ta.draw(nil)
+    assert(ta.placeholder == "Type here...")
+}
+
+test "textarea_hidden_blocks_hits" {
+    import "gui" as gui
+    let ta = gui.TextArea(100, 100, 300, 150)
+    assert(ta.contains(150, 150) == true)
+    ta.hide()
+    assert(ta.contains(150, 150) == false)
+}

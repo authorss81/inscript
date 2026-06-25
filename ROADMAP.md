@@ -1,6 +1,6 @@
 # InScript Roadmap — Production-Grade Microversion Plan
 
-> **Current:** v3.9.6.29 — Physics: optimization (sleeping + broadphase). Phase 10 done.
+> **Current:** v3.9.6.35 — GUI: data binding + validation + dialog. Phase 11 items up to v35 complete.
 > 
 > **Version scheme:** MAJOR.MINOR.PATCH.MICRO — each micro targets a discrete production feature.
 > After v3.9.6.99, roll to v3.9.7.0 for the next feature cluster.
@@ -352,11 +352,33 @@ Parallel microversion to v3.9.6.13. Fixes 6 pre-existing Rust lexer tests by bri
 - [ ] Rounded corners, drop shadows, gradients
 
 ### v3.9.6.35 — GUI: data binding + MVC
-- [ ] Model-View pattern: widget ↔ variable binding
-- [ ] Observable variables (auto-redraw on change)
+- [x] Model-View pattern: widget ↔ variable binding
+- [x] Observable variables (auto-redraw on change)
+- [x] Form validation (required, min, max, pattern)
+- [x] Dialog system (message boxes)
 - [ ] List model for dropdowns, grids
-- [ ] Form validation (required, min, max, pattern)
-- [ ] Dialog system (message boxes, file picker, color picker)
+- [ ] File picker dialog
+
+### v3.9.6.36 — GUI: polish (Label wrap, Button icon, Image modes, TextArea)
+- [ ] `Label` — text wrapping with configurable wrap_width
+- [ ] `Button` — icon path support (sprite drawn before text)
+- [ ] `Image` — stretch / fit / tile modes
+- [ ] `TextArea` — multi-line text input with scroll
+
+### v3.9.6.37 — GUI: advanced layout
+- [ ] Anchors and margins (screen-relative positioning: left, right, top, bottom)
+- [ ] `SIZE_EXPAND` / `SIZE_SHRINK` size policies
+- [ ] Dynamic resize behavior in HBox/VBox/Grid
+
+### v3.9.6.38 — GUI: dialogs + ListModel
+- [ ] `ListModel` — observable list for dropdowns/grids
+- [ ] `file_picker()` — native OS file dialog via tkinter
+- [ ] `color_picker()` — native OS color picker via tkinter
+
+### v3.9.6.39 — GUI: gradients + stylesheets
+- [ ] Gradient background rendering (vertical top→bottom gradient)
+- [ ] `.insstyle` stylesheet file loader
+- [ ] Style cascade: widget attr > theme > stylesheet > built-in default
 
 ---
 
