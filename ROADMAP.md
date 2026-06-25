@@ -360,10 +360,10 @@ Parallel microversion to v3.9.6.13. Fixes 6 pre-existing Rust lexer tests by bri
 - [ ] File picker dialog
 
 ### v3.9.6.36 — GUI: polish (Label wrap, Button icon, Image modes, TextArea)
-- [ ] `Label` — text wrapping with configurable wrap_width
-- [ ] `Button` — icon path support (sprite drawn before text)
-- [ ] `Image` — stretch / fit / tile modes
-- [ ] `TextArea` — multi-line text input with scroll
+- [x] `Label` — text wrapping with configurable wrap_width
+- [x] `Button` — icon path support (sprite drawn before text)
+- [x] `Image` — stretch / fit / tile modes
+- [x] `TextArea` — multi-line text input with scroll
 
 ### v3.9.6.37 — GUI: advanced layout
 - [ ] Anchors and margins (screen-relative positioning: left, right, top, bottom)
