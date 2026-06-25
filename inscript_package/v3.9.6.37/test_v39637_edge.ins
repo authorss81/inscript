@@ -1,0 +1,367 @@
+# v3.9.6.37 — Edge-case tests for advanced layout
+# Run: python inscript.py --test v3.9.6.37/test_v39637_edge.ins
+
+# ── Anchor: ANCHOR_NONE is no-op ──────────────────────────────────────────────
+
+test "anchor_none_does_nothing" {
+    import "gui" as gui
+    let c = gui.Panel(50, 30, 100, 50)
+    c.set_attr("anchor", gui.ANCHOR_NONE)
+    c.apply_anchors(400, 300)
+    assert(c.x == 50)
+    assert(c.y == 30)
+    assert(c.w == 100)
+    assert(c.h == 50)
+}
+
+# ── Anchor: LEFT|RIGHT with zero margins ─────────────────────────────────────
+
+test "anchor_left_right_zero_margins" {
+    import "gui" as gui
+    let c = gui.Panel(0, 0, 100, 50)
+    c.set_attr("anchor", gui.ANCHOR_LEFT | gui.ANCHOR_RIGHT)
+    c.apply_anchors(500, 200)
+    assert(c.x == 0)
+    assert(c.w == 500)
+}
+
+# ── Anchor: TOP|BOTTOM with zero margins ─────────────────────────────────────
+
+test "anchor_top_bottom_zero_margins" {
+    import "gui" as gui
+    let c = gui.Panel(0, 0, 100, 50)
+    c.set_attr("anchor", gui.ANCHOR_TOP | gui.ANCHOR_BOTTOM)
+    c.apply_anchors(500, 200)
+    assert(c.y == 0)
+    assert(c.h == 200)
+}
+
+# ── Anchor: all four edges = stretch both axes ───────────────────────────────
+
+test "anchor_all_four_stretch_both" {
+    import "gui" as gui
+    let c = gui.Panel(10, 10, 50, 50)
+    c.set_attr("anchor", gui.ANCHOR_LEFT | gui.ANCHOR_RIGHT | gui.ANCHOR_TOP | gui.ANCHOR_BOTTOM)
+    c.set_attr("margin_left", 5)
+    c.set_attr("margin_right", 15)
+    c.set_attr("margin_top", 10)
+    c.set_attr("margin_bottom", 20)
+    c.apply_anchors(400, 300)
+    assert(c.x == 5)
+    assert(c.y == 10)
+    assert(c.w == 380)
+    assert(c.h == 270)
+}
+
+# ── Anchor: HCenter with margins ─────────────────────────────────────────────
+
+test "anchor_hcenter_with_margins" {
+    import "gui" as gui
+    let c = gui.Panel(0, 0, 100, 50)
+    c.set_attr("anchor", gui.ANCHOR_HCENTER)
+    c.set_attr("margin_left", 10)
+    c.set_attr("margin_right", 20)
+    c.apply_anchors(500, 200)
+    assert(c.x == 190)
+}
+
+# ── Anchor: VCenter with margins ─────────────────────────────────────────────
+
+test "anchor_vcenter_with_margins" {
+    import "gui" as gui
+    let c = gui.Panel(0, 0, 100, 50)
+    c.set_attr("anchor", gui.ANCHOR_VCENTER)
+    c.set_attr("margin_top", 5)
+    c.set_attr("margin_bottom", 15)
+    c.apply_anchors(500, 200)
+    assert(c.y == 65)
+}
+
+# ── Anchor: zero-size parent doesn't crash ───────────────────────────────────
+
+test "anchor_zero_parent_no_crash" {
+    import "gui" as gui
+    let c = gui.Panel(50, 30, 100, 50)
+    c.set_attr("anchor", gui.ANCHOR_LEFT | gui.ANCHOR_RIGHT)
+    c.set_attr("margin_left", 5)
+    c.set_attr("margin_right", 5)
+    c.apply_anchors(0, 0)
+    assert(c.w >= 0)
+}
+
+# ── Anchor: negative margin doesn't crash ────────────────────────────────────
+
+test "anchor_negative_margin_no_crash" {
+    import "gui" as gui
+    let c = gui.Panel(0, 0, 100, 50)
+    c.set_attr("anchor", gui.ANCHOR_RIGHT)
+    c.set_attr("margin_right", -10)
+    c.apply_anchors(400, 200)
+    assert(c.x == 310)
+}
+
+# ── Anchor: auto-applied via Panel.draw ──────────────────────────────────────
+
+test "anchor_auto_apply_via_draw" {
+    import "gui" as gui
+    let p = gui.Panel(0, 0, 600, 400)
+    let c = gui.Panel(0, 0, 100, 50)
+    c.set_attr("anchor", gui.ANCHOR_RIGHT | gui.ANCHOR_BOTTOM)
+    c.set_attr("margin_right", 20)
+    c.set_attr("margin_bottom", 30)
+    p.add(c)
+    # Before draw: c at (0, 0)
+    p.draw(nil)
+    # After draw: anchors auto-applied
+    assert(c.x == 480)
+    assert(c.y == 320)
+}
+
+# ── Anchor: auto-applied via Panel.update ────────────────────────────────────
+
+test "anchor_auto_apply_via_update" {
+    import "gui" as gui
+    let p = gui.Panel(0, 0, 500, 300)
+    let c = gui.Panel(10, 10, 80, 40)
+    c.set_attr("anchor", gui.ANCHOR_HCENTER | gui.ANCHOR_VCENTER)
+    p.add(c)
+    p.update(nil)
+    assert(c.x == 210)
+    assert(c.y == 130)
+}
+
+# ── Anchor: multiple children auto-applied ────────────────────────────────────
+
+test "anchor_multiple_children_auto_apply" {
+    import "gui" as gui
+    let p = gui.Panel(0, 0, 400, 300)
+    let a = gui.Panel(0, 0, 50, 50)
+    let b = gui.Panel(0, 0, 50, 50)
+    a.set_attr("anchor", gui.ANCHOR_LEFT | gui.ANCHOR_TOP)
+    a.set_attr("margin_left", 10)
+    a.set_attr("margin_top", 10)
+    b.set_attr("anchor", gui.ANCHOR_RIGHT | gui.ANCHOR_BOTTOM)
+    b.set_attr("margin_right", 15)
+    b.set_attr("margin_bottom", 20)
+    p.add(a)
+    p.add(b)
+    p.draw(nil)
+    assert(a.x == 10)
+    assert(a.y == 10)
+    assert(b.x == 335)
+    assert(b.y == 230)
+}
+
+# ── Anchor: set anchor after adding to panel, then draw ──────────────────────
+
+test "anchor_set_after_add_still_applies" {
+    import "gui" as gui
+    let p = gui.Panel(0, 0, 400, 200)
+    let c = gui.Panel(0, 0, 100, 50)
+    p.add(c)
+    c.set_attr("anchor", gui.ANCHOR_HCENTER | gui.ANCHOR_VCENTER)
+    p.draw(nil)
+    assert(c.x == 150)
+    assert(c.y == 75)
+}
+
+# ── SIZE_EXPAND: only EXPAND children ─────────────────────────────────────────
+
+test "size_expand_all_expand_hbox" {
+    import "gui" as gui
+    let hb = gui.HBox(0, 0, 300, 50, 0, 0)
+    let a = gui.Panel(0, 0, 20, 40)
+    let b = gui.Panel(0, 0, 20, 40)
+    let c = gui.Panel(0, 0, 20, 40)
+    a.set_attr("size_policy_w", gui.SIZE_EXPAND)
+    b.set_attr("size_policy_w", gui.SIZE_EXPAND)
+    c.set_attr("size_policy_w", gui.SIZE_EXPAND)
+    hb.add(a); hb.add(b); hb.add(c)
+    hb._do_layout()
+    # All EXPAND (weight 2), total weight 6, each gets 300/6*2 = 100
+    assert(a.w == 100)
+    assert(b.w == 100)
+    assert(c.w == 100)
+}
+
+# ── SIZE_SHRINK: only SHRINK children ─────────────────────────────────────────
+
+test "size_shrink_all_shrink_hbox" {
+    import "gui" as gui
+    let hb = gui.HBox(0, 0, 300, 50, 0, 0)
+    let a = gui.Panel(0, 0, 20, 40)
+    let b = gui.Panel(0, 0, 20, 40)
+    a.set_attr("size_policy_w", gui.SIZE_SHRINK)
+    b.set_attr("size_policy_w", gui.SIZE_SHRINK)
+    hb.add(a); hb.add(b)
+    hb._do_layout()
+    # Both SHRINK (weight 0.5), total weight 1, each gets 300/1*0.5 = 150
+    assert(a.w == 150)
+    assert(b.w == 150)
+}
+
+# ── SIZE_FIXED: fixed-size children don't stretch ─────────────────────────────
+
+test "size_fixed_stays_fixed" {
+    import "gui" as gui
+    let hb = gui.HBox(0, 0, 500, 50, 0, 0)
+    let a = gui.Panel(0, 0, 30, 40)
+    let b = gui.Panel(0, 0, 200, 40)
+    let c = gui.Panel(0, 0, 50, 40)
+    a.set_attr("size_policy_w", gui.SIZE_FIXED)
+    b.set_attr("size_policy_w", gui.SIZE_FIXED)
+    c.set_attr("size_policy_w", gui.SIZE_FILL)
+    hb.add(a); hb.add(b); hb.add(c)
+    hb._do_layout()
+    assert(a.w == 30)
+    assert(b.w == 200)
+    # c gets the remaining space
+    assert(c.w == 270)
+}
+
+# ── SIZE_SHRINK: single child gets full width ─────────────────────────────────
+
+test "size_shrink_single_child_fills" {
+    import "gui" as gui
+    let hb = gui.HBox(0, 0, 400, 50, 0, 0)
+    let a = gui.Panel(0, 0, 10, 40)
+    a.set_attr("size_policy_w", gui.SIZE_SHRINK)
+    hb.add(a)
+    hb._do_layout()
+    assert(a.w == 400)
+}
+
+# ── SIZE_EXPAND: very small parent doesn't break ──────────────────────────────
+
+test "size_expand_tiny_parent" {
+    import "gui" as gui
+    let hb = gui.HBox(0, 0, 1, 50, 0, 0)
+    let a = gui.Panel(0, 0, 50, 40)
+    a.set_attr("size_policy_w", gui.SIZE_EXPAND)
+    hb.add(a)
+    hb._do_layout()
+    assert(a.w >= 0)
+}
+
+# ── Dynamic resize: shrink container ─────────────────────────────────────────
+
+test "resize_shrink_container" {
+    import "gui" as gui
+    let hb = gui.HBox(0, 0, 600, 50, 0, 0)
+    let a = gui.Panel(0, 0, 50, 40)
+    let b = gui.Panel(0, 0, 50, 40)
+    hb.add(a); hb.add(b)
+    hb._do_layout()
+    let old_a = a.w
+    let old_b = b.w
+    hb.set_size(200, 50)
+    hb._do_layout()
+    assert(a.w < old_a)
+    assert(b.w < old_b)
+    assert(a.w + b.w == 200)
+}
+
+# ── Dynamic resize: zero dimensions don't crash ───────────────────────────────
+
+test "resize_zero_dimensions" {
+    import "gui" as gui
+    let hb = gui.HBox(100, 100, 400, 50, 0, 0)
+    let a = gui.Panel(0, 0, 50, 40)
+    hb.add(a)
+    hb.set_size(0, 0)
+    hb._do_layout()
+    assert(a.w >= 0)
+}
+
+# ── Dynamic resize: nested containers propagate ───────────────────────────────
+
+test "resize_nested_container" {
+    import "gui" as gui
+    let outer = gui.HBox(0, 0, 800, 100, 0, 0)
+    let inner = gui.VBox(0, 0, 400, 100, 0, 0)
+    let child = gui.Panel(0, 0, 50, 30)
+    inner.add(child)
+    outer.add(inner)
+    outer._do_layout()
+    inner._do_layout()
+    let old_w = child.w
+    outer.set_size(400, 100)
+    outer._do_layout()
+    inner._do_layout()
+    assert(inner.w < 800)
+    assert(child.w <= old_w)
+}
+
+# ── Grid: mixed size policies in both axes ────────────────────────────────────
+
+test "grid_mixed_policies_both_axes" {
+    import "gui" as gui
+    let g = gui.Grid(0, 0, 400, 200, 2, 0, 0)
+    let a = gui.Panel(0, 0, 50, 30)
+    let b = gui.Panel(0, 0, 50, 30)
+    let c = gui.Panel(0, 0, 50, 30)
+    let d = gui.Panel(0, 0, 50, 30)
+    a.set_attr("size_policy_w", gui.SIZE_EXPAND)
+    a.set_attr("size_policy_h", gui.SIZE_SHRINK)
+    d.set_attr("size_policy_w", gui.SIZE_SHRINK)
+    d.set_attr("size_policy_h", gui.SIZE_EXPAND)
+    g.add(a); g.add(b); g.add(c); g.add(d)
+    g._do_layout()
+    # 2 cols, col_w=200, row_h=100
+    # a (col0, row0): EXPAND w=400, SHRINK h=50
+    # b (col1, row0): FILL w=200, FILL h=100
+    # c (col0, row1): FILL w=200, FILL h=100
+    # d (col1, row1): SHRINK w=100, EXPAND h=200
+    assert(a.w == 400)   # EXPAND 2x
+    assert(b.w == 200)   # FILL 1x
+    assert(c.w == 200)   # FILL 1x
+    assert(d.w == 100)   # SHRINK 0.5x
+    assert(a.h == 50)    # SHRINK 0.5x
+    assert(b.h == 100)   # FILL 1x
+    assert(c.h == 100)   # FILL 1x
+    assert(d.h == 200)   # EXPAND 2x
+}
+
+# ── Panel.set_size cascade: grandchild anchored ───────────────────────────────
+
+test "resize_cascade_anchored_grandchild" {
+    import "gui" as gui
+    let gp = gui.Panel(0, 0, 500, 400)
+    let p = gui.Panel(0, 0, 500, 400)
+    let c = gui.Panel(0, 0, 100, 50)
+    c.set_attr("anchor", gui.ANCHOR_RIGHT | gui.ANCHOR_BOTTOM)
+    c.set_attr("margin_right", 10)
+    c.set_attr("margin_bottom", 10)
+    p.add(c)
+    gp.add(p)
+    c.apply_anchors(500, 400)
+    assert(c.x == 390)
+    assert(c.y == 340)
+    gp.set_size(1000, 800)
+    p.set_size(1000, 800)
+    c.apply_anchors(1000, 800)
+    assert(c.x == 890)
+    assert(c.y == 740)
+}
+
+# ── All four policies in one HBox ─────────────────────────────────────────────
+
+test "all_four_policies_in_hbox" {
+    import "gui" as gui
+    let hb = gui.HBox(0, 0, 400, 50, 0, 0)
+    let a = gui.Panel(0, 0, 30, 40)  # FIXED
+    let b = gui.Panel(0, 0, 50, 40)  # FILL (default)
+    let c = gui.Panel(0, 0, 50, 40)  # EXPAND
+    let d = gui.Panel(0, 0, 50, 40)  # SHRINK
+    a.set_attr("size_policy_w", gui.SIZE_FIXED)
+    c.set_attr("size_policy_w", gui.SIZE_EXPAND)
+    d.set_attr("size_policy_w", gui.SIZE_SHRINK)
+    hb.add(a); hb.add(b); hb.add(c); hb.add(d)
+    hb._do_layout()
+    assert(a.w == 30)                                 # fixed
+    assert(c.w >= b.w)                                 # EXPAND > FILL
+    assert(d.w <= b.w)                                 # SHRINK < FILL
+    let total = a.w + b.w + c.w + d.w
+    assert(total >= 399)
+    assert(total <= 401)
+}
