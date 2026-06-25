@@ -1,0 +1,217 @@
+# v3.9.6.37 — GUI: advanced layout (anchors, margins, SIZE_EXPAND/SHRINK, dynamic resize)
+# Run: python inscript.py --test v3.9.6.37/test_v39637.ins
+
+# ── Anchor Constants ──────────────────────────────────────────────────────────
+
+test "anchor_constants_available" {
+    import "gui" as gui
+    assert(gui.ANCHOR_NONE == 0)
+    assert(gui.ANCHOR_LEFT == 1)
+    assert(gui.ANCHOR_RIGHT == 2)
+    assert(gui.ANCHOR_TOP == 4)
+    assert(gui.ANCHOR_BOTTOM == 8)
+    assert(gui.ANCHOR_HCENTER == 16)
+    assert(gui.ANCHOR_VCENTER == 32)
+}
+
+# ── Anchor: Left + Right (stretch horizontally) ───────────────────────────────
+
+test "anchor_left_right_stretch" {
+    import "gui" as gui
+    let w = gui.Panel(0, 0, 400, 100)
+    let c = gui.Panel(50, 10, 100, 50)
+    c.set_attr("anchor", gui.ANCHOR_LEFT | gui.ANCHOR_RIGHT)
+    c.set_attr("margin_left", 10)
+    c.set_attr("margin_right", 20)
+    c.apply_anchors(400, 100)
+    assert(c.x == 10)
+    assert(c.w == 370)
+}
+
+# ── Anchor: Right aligned ────────────────────────────────────────────────────
+
+test "anchor_right_aligned" {
+    import "gui" as gui
+    let c = gui.Panel(0, 0, 100, 50)
+    c.set_attr("anchor", gui.ANCHOR_RIGHT)
+    c.set_attr("margin_right", 10)
+    c.apply_anchors(400, 200)
+    assert(c.x == 290)
+    assert(c.w == 100)
+}
+
+# ── Anchor: Bottom aligned ───────────────────────────────────────────────────
+
+test "anchor_bottom_aligned" {
+    import "gui" as gui
+    let c = gui.Panel(0, 0, 100, 50)
+    c.set_attr("anchor", gui.ANCHOR_BOTTOM)
+    c.set_attr("margin_bottom", 10)
+    c.apply_anchors(400, 200)
+    assert(c.y == 140)
+    assert(c.h == 50)
+}
+
+# ── Anchor: Top + Bottom (stretch vertically) ─────────────────────────────────
+
+test "anchor_top_bottom_stretch" {
+    import "gui" as gui
+    let c = gui.Panel(10, 10, 100, 50)
+    c.set_attr("anchor", gui.ANCHOR_TOP | gui.ANCHOR_BOTTOM)
+    c.set_attr("margin_top", 5)
+    c.set_attr("margin_bottom", 15)
+    c.apply_anchors(400, 300)
+    assert(c.y == 5)
+    assert(c.h == 280)
+}
+
+# ── Anchor: HCenter ──────────────────────────────────────────────────────────
+
+test "anchor_hcenter" {
+    import "gui" as gui
+    let c = gui.Panel(0, 0, 100, 50)
+    c.set_attr("anchor", gui.ANCHOR_HCENTER)
+    c.apply_anchors(400, 200)
+    assert(c.x == 150)
+}
+
+# ── Anchor: VCenter ──────────────────────────────────────────────────────────
+
+test "anchor_vcenter" {
+    import "gui" as gui
+    let c = gui.Panel(0, 0, 100, 50)
+    c.set_attr("anchor", gui.ANCHOR_VCENTER)
+    c.apply_anchors(400, 200)
+    assert(c.y == 75)
+}
+
+# ── Anchor: Center both ─────────────────────────────────────────────────────
+
+test "anchor_center_both" {
+    import "gui" as gui
+    let c = gui.Panel(0, 0, 100, 50)
+    c.set_attr("anchor", gui.ANCHOR_HCENTER | gui.ANCHOR_VCENTER)
+    c.apply_anchors(400, 200)
+    assert(c.x == 150)
+    assert(c.y == 75)
+}
+
+# ── Margin defaults ──────────────────────────────────────────────────────────
+
+test "margin_defaults" {
+    import "gui" as gui
+    let c = gui.Panel(0, 0, 100, 50)
+    assert(c.margin_left == 0)
+    assert(c.margin_right == 0)
+    assert(c.margin_top == 0)
+    assert(c.margin_bottom == 0)
+}
+
+# ── SIZE_EXPAND ───────────────────────────────────────────────────────────────
+
+test "size_expand_constant" {
+    import "gui" as gui
+    assert(gui.SIZE_EXPAND == 2)
+}
+
+test "size_expand_in_hbox" {
+    import "gui" as gui
+    let hb = gui.HBox(0, 0, 400, 50)
+    let a = gui.Panel(0, 0, 50, 40)
+    let b = gui.Panel(0, 0, 50, 40)
+    a.set_attr("size_policy_w", gui.SIZE_EXPAND)
+    hb.add(a)
+    hb.add(b)
+    hb.set_attr("spacing", 0)
+    hb.set_attr("padding", 0)
+    hb._do_layout()
+    # b is FILL (default), a is EXPAND
+    # b stays at its base fill portion, a gets expand_w * 1.5
+    assert(a.w > 50)
+    assert(b.w > 0)
+    assert(a.x == 0)
+}
+
+test "size_expand_in_vbox" {
+    import "gui" as gui
+    let vb = gui.VBox(0, 0, 200, 400)
+    let a = gui.Panel(0, 0, 180, 30)
+    let b = gui.Panel(0, 0, 180, 30)
+    a.set_attr("size_policy_h", gui.SIZE_EXPAND)
+    vb.add(a)
+    vb.add(b)
+    vb.set_attr("spacing", 0)
+    vb.set_attr("padding", 0)
+    vb._do_layout()
+    assert(a.h > 30)
+    assert(a.y == 0)
+}
+
+# ── SIZE_SHRINK ───────────────────────────────────────────────────────────────
+
+test "size_shrink_constant" {
+    import "gui" as gui
+    assert(gui.SIZE_SHRINK == 3)
+}
+
+test "size_shrink_in_grid" {
+    import "gui" as gui
+    let g = gui.Grid(0, 0, 400, 200, 2, 0, 0)
+    let a = gui.Panel(0, 0, 100, 50)
+    a.set_attr("size_policy_w", gui.SIZE_SHRINK)
+    let b = gui.Panel(0, 0, 100, 50)
+    g.add(a)
+    g.add(b)
+    g._do_layout()
+    assert(a.w <= 100)
+    assert(a.w < b.w)
+}
+
+# ── Panel.set_size triggers layout ───────────────────────────────────────────
+
+test "panel_set_size_triggers_re_layout" {
+    import "gui" as gui
+    let hb = gui.HBox(0, 0, 400, 50, 0, 0)
+    let c = gui.Panel(0, 0, 100, 40)
+    hb.add(c)
+    hb._do_layout()
+    assert(c.w > 0)
+    hb.set_size(800, 50)
+    assert(hb.w == 800)
+    hb._do_layout()
+    assert(c.w > 100)
+}
+
+# ── Panel.set_size with anchor children ──────────────────────────────────────
+
+test "panel_set_size_anchor_children_reposition" {
+    import "gui" as gui
+    let p = gui.Panel(0, 0, 400, 300)
+    let c = gui.Panel(50, 50, 100, 50)
+    c.set_attr("anchor", gui.ANCHOR_RIGHT | gui.ANCHOR_BOTTOM)
+    c.set_attr("margin_right", 10)
+    c.set_attr("margin_bottom", 10)
+    c.apply_anchors(400, 300)
+    assert(c.x == 290)
+    assert(c.y == 240)
+    p.set_size(800, 600)
+    c.apply_anchors(800, 600)
+    assert(c.x == 690)
+    assert(c.y == 540)
+}
+
+# ── Nested containers with anchors ───────────────────────────────────────────
+
+test "nested_container_anchors" {
+    import "gui" as gui
+    let outer = gui.Panel(0, 0, 500, 500)
+    let inner = gui.Panel(0, 0, 100, 100)
+    inner.set_attr("anchor", gui.ANCHOR_HCENTER | gui.ANCHOR_VCENTER)
+    inner.apply_anchors(500, 500)
+    assert(inner.x == 200)
+    assert(inner.y == 200)
+    outer.set_size(1000, 800)
+    inner.apply_anchors(1000, 800)
+    assert(inner.x == 450)
+    assert(inner.y == 350)
+}

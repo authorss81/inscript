@@ -62,6 +62,16 @@ def _color_dict(r, g, b, a=1.0):
 
 SIZE_FIXED = 0
 SIZE_FILL = 1
+SIZE_EXPAND = 2
+SIZE_SHRINK = 3
+
+ANCHOR_NONE = 0
+ANCHOR_LEFT = 1
+ANCHOR_RIGHT = 2
+ANCHOR_TOP = 4
+ANCHOR_BOTTOM = 8
+ANCHOR_HCENTER = 16
+ANCHOR_VCENTER = 32
 
 
 class _Widget:
@@ -82,6 +92,11 @@ class _Widget:
         self.shadow = None
         self.rounded_radius = 0
         self.theme = None
+        self.anchor = ANCHOR_NONE
+        self.margin_left = 0.0
+        self.margin_right = 0.0
+        self.margin_top = 0.0
+        self.margin_bottom = 0.0
 
     def _init_theme(self):
         if self.theme is None:
@@ -91,6 +106,37 @@ class _Widget:
                 self.theme = dt
         if self.theme is not None:
             self.theme.apply_to(self)
+
+    def apply_anchors(self, parent_w: float, parent_h: float):
+        a = self.anchor
+        if a == ANCHOR_NONE:
+            return
+        ml = self.margin_left
+        mr = self.margin_right
+        mt = self.margin_top
+        mb = self.margin_bottom
+        if a & ANCHOR_LEFT and a & ANCHOR_RIGHT:
+            self.x = ml
+            self.w = max(0, parent_w - ml - mr)
+        elif a & ANCHOR_RIGHT:
+            self.x = parent_w - self.w - mr
+        elif a & ANCHOR_LEFT:
+            self.x = ml
+        if a & ANCHOR_HCENTER:
+            self.x = (parent_w - self.w) / 2 + ml - mr
+        if a & ANCHOR_TOP and a & ANCHOR_BOTTOM:
+            self.y = mt
+            self.h = max(0, parent_h - mt - mb)
+        elif a & ANCHOR_BOTTOM:
+            self.y = parent_h - self.h - mb
+        elif a & ANCHOR_TOP:
+            self.y = mt
+        if a & ANCHOR_VCENTER:
+            self.y = (parent_h - self.h) / 2 + mt - mb
+
+    def set_size(self, w: float, h: float):
+        self.w = w
+        self.h = h
 
     def contains(self, px: float, py: float) -> bool:
         return self.visible and not self.disabled and (self.x <= px <= self.x + self.w and
@@ -108,6 +154,11 @@ class _Widget:
         elif name == "tab_index": self.tab_index = int(val)
         elif name == "rounded_radius": self.rounded_radius = float(val)
         elif name == "shadow": self.shadow = val if isinstance(val, dict) else None
+        elif name == "anchor": self.anchor = int(val)
+        elif name == "margin_left": self.margin_left = float(val)
+        elif name == "margin_right": self.margin_right = float(val)
+        elif name == "margin_top": self.margin_top = float(val)
+        elif name == "margin_bottom": self.margin_bottom = float(val)
         else:
             raise AttributeError(f"_Widget has no settable attribute '{name}'")
 
@@ -292,6 +343,20 @@ class Panel(_Widget):
         self.border_width = 0
         self._init_theme()
 
+    def set_size(self, w: float, h: float):
+        self.w = w
+        self.h = h
+        self.invalidate_layout()
+
+    def invalidate_layout(self):
+        if hasattr(self, '_needs_layout'):
+            self._needs_layout = True
+        for c in self.children:
+            if hasattr(c, 'apply_anchors'):
+                c.apply_anchors(self.w, self.h)
+            if isinstance(c, Panel):
+                c.invalidate_layout()
+
     def add(self, widget):
         if widget.theme is None and self.theme is not None:
             widget.theme = self.theme
@@ -426,24 +491,37 @@ class HBox(Panel):
         if not visible:
             self._needs_layout = False
             return
-        fill_count = 0
         fixed_total = 0
+        fill_count = 0
+        expand_count = 0
         for c in visible:
             sp = getattr(c, 'size_policy_w', SIZE_FILL)
-            if sp == SIZE_FILL:
+            if sp == SIZE_EXPAND:
+                expand_count += 1
+            elif sp == SIZE_FILL:
                 fill_count += 1
             else:
-                fixed_total += max(0, c.w)
+                cw_fixed = max(0, c.w)
+                if sp == SIZE_SHRINK:
+                    cw_fixed = cw_fixed * 0.5
+                fixed_total += cw_fixed
         avail = max(0, cw - fixed_total - self.spacing * max(0, len(visible) - 1))
-        fill_w = avail / max(fill_count, 1) if fill_count > 0 else 0
+        total_fill = fill_count + expand_count
+        fill_w = avail / max(total_fill, 1) if total_fill > 0 else 0
+        expand_w = avail / max(expand_count, 1) if expand_count > 0 else 0
         for c in visible:
             c.x = cx
             c.y = cy
             sp = getattr(c, 'size_policy_w', SIZE_FILL)
-            if sp == SIZE_FILL:
+            if sp == SIZE_EXPAND:
+                c.w = expand_w * 1.5
+            elif sp == SIZE_FILL:
                 c.w = fill_w
+            elif sp == SIZE_SHRINK:
+                c.w = max(20, c.w * 0.5)
             c.h = ch
             c._z = self._z + 1
+            c.apply_anchors(cw, ch)
             cx = cx + c.w + self.spacing
         self._needs_layout = False
 
@@ -498,24 +576,37 @@ class VBox(Panel):
         if not visible:
             self._needs_layout = False
             return
-        fill_count = 0
         fixed_total = 0
+        fill_count = 0
+        expand_count = 0
         for c in visible:
             sp = getattr(c, 'size_policy_h', SIZE_FILL)
-            if sp == SIZE_FILL:
+            if sp == SIZE_EXPAND:
+                expand_count += 1
+            elif sp == SIZE_FILL:
                 fill_count += 1
             else:
-                fixed_total += max(0, c.h)
+                ch_fixed = max(0, c.h)
+                if sp == SIZE_SHRINK:
+                    ch_fixed = ch_fixed * 0.5
+                fixed_total += ch_fixed
         avail = max(0, ch - fixed_total - self.spacing * max(0, len(visible) - 1))
-        fill_h = avail / max(fill_count, 1) if fill_count > 0 else 0
+        total_fill = fill_count + expand_count
+        fill_h = avail / max(total_fill, 1) if total_fill > 0 else 0
+        expand_h = avail / max(expand_count, 1) if expand_count > 0 else 0
         for c in visible:
             c.x = cx
             c.y = cy
             c.w = cw
             sp = getattr(c, 'size_policy_h', SIZE_FILL)
-            if sp == SIZE_FILL:
+            if sp == SIZE_EXPAND:
+                c.h = expand_h * 1.5
+            elif sp == SIZE_FILL:
                 c.h = fill_h
+            elif sp == SIZE_SHRINK:
+                c.h = max(20, c.h * 0.5)
             c._z = self._z + 1
+            c.apply_anchors(cw, ch)
             cy = cy + c.h + self.spacing
         self._needs_layout = False
 
@@ -578,11 +669,24 @@ class Grid(Panel):
         for i, c in enumerate(visible):
             col = i % self.cols
             row = i // self.cols
+            sp_w = getattr(c, 'size_policy_w', SIZE_FILL)
+            sp_h = getattr(c, 'size_policy_h', SIZE_FILL)
+            if sp_w == SIZE_EXPAND:
+                c.w = col_w * 1.5
+            elif sp_w == SIZE_SHRINK:
+                c.w = max(20, col_w * 0.5)
+            else:
+                c.w = col_w
+            if sp_h == SIZE_EXPAND:
+                c.h = row_h * 1.5
+            elif sp_h == SIZE_SHRINK:
+                c.h = max(20, row_h * 0.5)
+            else:
+                c.h = row_h
             c.x = cx + col * (col_w + self.spacing)
             c.y = cy + row * (row_h + self.spacing)
-            c.w = col_w
-            c.h = row_h
             c._z = self._z + 1
+            c.apply_anchors(col_w, row_h)
         self._needs_layout = False
 
     def draw(self, draw_ns):
@@ -1923,4 +2027,13 @@ register_module("gui", {
     "message_box": message_box,
     "SIZE_FIXED": SIZE_FIXED,
     "SIZE_FILL": SIZE_FILL,
+    "SIZE_EXPAND": SIZE_EXPAND,
+    "SIZE_SHRINK": SIZE_SHRINK,
+    "ANCHOR_NONE": ANCHOR_NONE,
+    "ANCHOR_LEFT": ANCHOR_LEFT,
+    "ANCHOR_RIGHT": ANCHOR_RIGHT,
+    "ANCHOR_TOP": ANCHOR_TOP,
+    "ANCHOR_BOTTOM": ANCHOR_BOTTOM,
+    "ANCHOR_HCENTER": ANCHOR_HCENTER,
+    "ANCHOR_VCENTER": ANCHOR_VCENTER,
 })

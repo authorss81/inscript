@@ -1,6 +1,6 @@
 # InScript Roadmap — Production-Grade Microversion Plan
 
-> **Current:** v3.9.6.35 — GUI: data binding + validation + dialog. Phase 11 items up to v35 complete.
+> **Current:** v3.9.6.37 — GUI: advanced layout (anchors, margins, EXPAND/SHRINK, dynamic resize). Phase 11 items up to v37 complete.
 > 
 > **Version scheme:** MAJOR.MINOR.PATCH.MICRO — each micro targets a discrete production feature.
 > After v3.9.6.99, roll to v3.9.7.0 for the next feature cluster.
@@ -366,9 +366,9 @@ Parallel microversion to v3.9.6.13. Fixes 6 pre-existing Rust lexer tests by bri
 - [x] `TextArea` — multi-line text input with scroll
 
 ### v3.9.6.37 — GUI: advanced layout
-- [ ] Anchors and margins (screen-relative positioning: left, right, top, bottom)
-- [ ] `SIZE_EXPAND` / `SIZE_SHRINK` size policies
-- [ ] Dynamic resize behavior in HBox/VBox/Grid
+- [x] Anchors and margins (screen-relative positioning: left, right, top, bottom)
+- [x] `SIZE_EXPAND` / `SIZE_SHRINK` size policies
+- [x] Dynamic resize behavior in HBox/VBox/Grid
 
 ### v3.9.6.38 — GUI: dialogs + ListModel
 - [ ] `ListModel` — observable list for dropdowns/grids
