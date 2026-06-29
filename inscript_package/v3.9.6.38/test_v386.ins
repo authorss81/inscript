@@ -1,0 +1,66 @@
+test "ListModel basic operations" {
+    import "gui" as gui
+    let lm = gui.ListModel(["a", "b", "c"])
+    assert(lm.len() == 3)
+    assert(lm.contains("a") == true)
+    assert(lm.index_of("c") == 2)
+
+    lm.add("d")
+    assert(lm.len() == 4)
+    assert(lm.get_at(3) == "d")
+
+    lm.insert(0, "z")
+    assert(lm.get_at(0) == "z")
+
+    lm.remove_at(0)
+    assert(lm.get_at(0) == "a")
+
+    lm.sort()
+    assert(lm.get_at(0) == "a")
+    assert(lm.get_at(3) == "d")
+
+    lm.clear()
+    assert(lm.len() == 0)
+}
+
+test "ListModel observable callbacks" {
+    import "gui" as gui
+    let lm = gui.ListModel(["x"])
+    let count = 0
+    lm.on_change(fn(items) {
+        count = count + 1
+    })
+    lm.add("y")
+    assert(count == 1)
+    lm.remove("x")
+    assert(count == 2)
+}
+
+test "ListModel to_dropdown_options" {
+    import "gui" as gui
+    let lm = gui.ListModel([42, "hello"])
+    let opts = lm.to_dropdown_options()
+    assert(opts.length == 2)
+    assert(opts[0]["label"] == "42")
+    assert(opts[1]["value"] == "hello")
+}
+
+test "ListModel set_attr and clear" {
+    import "gui" as gui
+    let lm = gui.ListModel(["a", "b"])
+    lm.set_attr("items", ["p", "q", "r"])
+    assert(lm.len() == 3)
+    assert(lm.get_at(2) == "r")
+    lm.clear()
+    assert(lm.len() == 0)
+}
+
+test "file_picker exists" {
+    import "gui" as gui
+    assert(gui.file_picker != nil)
+}
+
+test "color_picker exists" {
+    import "gui" as gui
+    assert(gui.color_picker != nil)
+}

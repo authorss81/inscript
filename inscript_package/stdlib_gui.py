@@ -1961,6 +1961,106 @@ class ObservableValue:
         else: raise AttributeError(f"ObservableValue has no settable attribute '{name}'")
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# ListModel — observable list for dropdowns, grids, etc.
+# ─────────────────────────────────────────────────────────────────────────────
+
+class ListModel:
+    def __init__(self, items: list = None):
+        self._items = list(items) if items else []
+        self._callbacks = []
+
+    def get(self) -> list:
+        return list(self._items)
+
+    def get_at(self, index: int):
+        if 0 <= index < len(self._items):
+            return self._items[index]
+        return None
+
+    def set_at(self, index: int, val):
+        if 0 <= index < len(self._items):
+            self._items[index] = val
+            self._fire()
+
+    def add(self, val):
+        self._items.append(val)
+        self._fire()
+
+    def insert(self, index: int, val):
+        self._items.insert(index, val)
+        self._fire()
+
+    def remove_at(self, index: int):
+        if 0 <= index < len(self._items):
+            self._items.pop(index)
+            self._fire()
+
+    def remove(self, val):
+        if val in self._items:
+            self._items.remove(val)
+            self._fire()
+
+    def clear(self):
+        self._items.clear()
+        self._fire()
+
+    def index_of(self, val) -> int:
+        try:
+            return self._items.index(val)
+        except ValueError:
+            return -1
+
+    def len(self) -> int:
+        return len(self._items)
+
+    def contains(self, val) -> bool:
+        return val in self._items
+
+    def sort(self, reverse: bool = False):
+        self._items = sorted(self._items, reverse=reverse)
+        self._fire()
+
+    def filter(self, predicate):
+        self._items = [item for item in self._items if predicate(item)]
+        self._fire()
+
+    def map(self, transform):
+        self._items = [transform(item) for item in self._items]
+        self._fire()
+
+    def on_change(self, fn):
+        if fn is not None:
+            self._callbacks.append(fn)
+
+    def _fire(self):
+        for cb in self._callbacks:
+            _call_user_fn(cb, self._items)
+
+    def set_attr(self, name: str, val):
+        if name == "items":
+            self._items = list(val) if isinstance(val, (list, tuple)) else []
+            self._fire()
+        elif name == "items_json":
+            import json as _j
+            try:
+                self._items = _j.loads(str(val)) if isinstance(val, str) else list(val)
+            except Exception:
+                pass
+            self._fire()
+        else:
+            raise AttributeError(f"ListModel has no settable attribute '{name}'")
+
+    def to_dropdown_options(self) -> list:
+        result = []
+        for item in self._items:
+            if isinstance(item, dict):
+                result.append(item)
+            else:
+                result.append({"label": str(item), "value": item})
+        return result
+
+
 def bind(widget, attr, observable):
     observable.on_change(lambda val: setattr(widget, attr, str(val) if not isinstance(val, str) else val))
     init_val = observable.get()
@@ -1989,9 +2089,66 @@ def message_box(title: str = "Message", text: str = "",
     panel.add(ml)
     btn = Button(w / 2 - 40, h - 40, 80, 30, button_text, 12)
     if on_close is not None:
-        btn.on_click(lambda w: _call_user_fn(on_close, "OK"))
+        btn.on_click(lambda w:             _call_user_fn(on_close, "OK"))
     panel.add(btn)
     return panel
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# file_picker / color_picker — native OS dialogs via tkinter
+# ─────────────────────────────────────────────────────────────────────────────
+
+def file_picker(title: str = "Open File",
+                file_types: list = None,
+                mode: str = "open",
+                default_extension: str = "",
+                initial_dir: str = "") -> str:
+    try:
+        import tkinter as _tk
+        from tkinter import filedialog as _fd
+        root = _tk.Tk()
+        root.withdraw()
+        root.wm_attributes('-topmost', 1)
+        ft = file_types if file_types else [("All files", "*.*")]
+        if mode == "save":
+            path = _fd.asksaveasfilename(
+                title=title, filetypes=ft,
+                defaultextension=default_extension,
+                initialdir=initial_dir or None)
+        else:
+            path = _fd.askopenfilename(
+                title=title, filetypes=ft,
+                defaultextension=default_extension,
+                initialdir=initial_dir or None)
+        root.destroy()
+        return path if path else None
+    except Exception:
+        return None
+
+
+def color_picker(title: str = "Pick Color",
+                 initial_color: dict = None) -> dict:
+    try:
+        import tkinter as _tk
+        from tkinter import colorchooser as _cc
+        root = _tk.Tk()
+        root.withdraw()
+        root.wm_attributes('-topmost', 1)
+        if initial_color:
+            ir = int(max(0, min(255, initial_color.get("r", 1.0) * 255)))
+            ig = int(max(0, min(255, initial_color.get("g", 1.0) * 255)))
+            ib = int(max(0, min(255, initial_color.get("b", 1.0) * 255)))
+            init = f"#{ir:02x}{ig:02x}{ib:02x}"
+        else:
+            init = "#ffffff"
+        result = _cc.askcolor(title=title, initialcolor=init)
+        root.destroy()
+        if result is not None and result[0] is not None:
+            r, g, b = result[0]
+            return _color_dict(r / 255.0, g / 255.0, b / 255.0, 1.0)
+        return None
+    except Exception:
+        return None
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -2022,8 +2179,11 @@ register_module("gui", {
     "Theme": Theme,
     "default_theme": default_theme,
     "ObservableValue": ObservableValue,
+    "ListModel": ListModel,
     "bind": bind,
     "message_box": message_box,
+    "file_picker": file_picker,
+    "color_picker": color_picker,
     "SIZE_FIXED": SIZE_FIXED,
     "SIZE_FILL": SIZE_FILL,
     "SIZE_EXPAND": SIZE_EXPAND,

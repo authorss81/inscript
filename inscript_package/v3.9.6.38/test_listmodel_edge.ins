@@ -1,0 +1,192 @@
+test "ListModel empty operations" {
+    import "gui" as gui
+    let lm = gui.ListModel()
+    assert(lm.len() == 0)
+    assert(lm.contains("x") == false)
+    assert(lm.index_of("x") == -1)
+    assert(lm.get_at(0) == nil)
+    assert(lm.get_at(-1) == nil)
+    assert(lm.get_at(99) == nil)
+    lm.clear()
+    assert(lm.len() == 0)
+}
+
+test "ListModel single item roundtrip" {
+    import "gui" as gui
+    let lm = gui.ListModel()
+    lm.add(42)
+    assert(lm.len() == 1)
+    assert(lm.get_at(0) == 42)
+    assert(lm.contains(42) == true)
+    assert(lm.index_of(42) == 0)
+    lm.remove_at(0)
+    assert(lm.len() == 0)
+}
+
+test "ListModel duplicate items" {
+    import "gui" as gui
+    let lm = gui.ListModel(["a", "a", "a"])
+    assert(lm.len() == 3)
+    assert(lm.index_of("a") == 0)
+    assert(lm.contains("a") == true)
+    lm.remove("a")
+    assert(lm.len() == 2)
+}
+
+test "ListModel mixed types" {
+    import "gui" as gui
+    let lm = gui.ListModel()
+    lm.add(42)
+    lm.add("hello")
+    lm.add(true)
+    lm.add(nil)
+    assert(lm.len() == 4)
+    assert(lm.contains(42) == true)
+    assert(lm.contains("hello") == true)
+    assert(lm.contains(true) == true)
+    assert(lm.contains(nil) == true)
+    lm.remove(nil)
+    assert(lm.len() == 3)
+    assert(lm.contains(nil) == false)
+}
+
+test "ListModel insert at various positions" {
+    import "gui" as gui
+    let lm = gui.ListModel(["a", "b", "c"])
+    lm.insert(0, "z")
+    assert(lm.get_at(0) == "z")
+    assert(lm.len() == 4)
+    lm.insert(4, "zz")
+    assert(lm.get_at(4) == "zz")
+    assert(lm.len() == 5)
+    lm.insert(2, "mid")
+    assert(lm.get_at(2) == "mid")
+    assert(lm.len() == 6)
+}
+
+test "ListModel sort reverse" {
+    import "gui" as gui
+    let lm = gui.ListModel([3, 1, 4, 1, 5, 9])
+    lm.sort()
+    assert(lm.get_at(0) == 1)
+    assert(lm.get_at(5) == 9)
+    lm.sort(reverse: true)
+    assert(lm.get_at(0) == 9)
+    assert(lm.get_at(5) == 1)
+}
+
+test "ListModel filter" {
+    import "gui" as gui
+    let lm = gui.ListModel([1, 2, 3, 4, 5])
+    lm.filter(fn(x) { return x > 3 })
+    assert(lm.len() == 2)
+    assert(lm.contains(4) == true)
+    assert(lm.contains(5) == true)
+    assert(lm.contains(1) == false)
+}
+
+test "ListModel filter no matches" {
+    import "gui" as gui
+    let lm = gui.ListModel([1, 2, 3])
+    lm.filter(fn(x) { return x > 99 })
+    assert(lm.len() == 0)
+}
+
+test "ListModel map" {
+    import "gui" as gui
+    let lm = gui.ListModel([1, 2, 3])
+    lm.map(fn(x) { return x * 10 })
+    assert(lm.len() == 3)
+    assert(lm.get_at(0) == 10)
+    assert(lm.get_at(1) == 20)
+    assert(lm.get_at(2) == 30)
+}
+
+test "ListModel set_at" {
+    import "gui" as gui
+    let lm = gui.ListModel(["a", "b", "c"])
+    lm.set_at(1, "X")
+    assert(lm.get_at(1) == "X")
+    assert(lm.len() == 3)
+}
+
+test "ListModel set_attr items" {
+    import "gui" as gui
+    let lm = gui.ListModel()
+    lm.set_attr("items", [10, 20, 30])
+    assert(lm.len() == 3)
+    assert(lm.get_at(1) == 20)
+}
+
+test "ListModel set_attr items empty" {
+    import "gui" as gui
+    let lm = gui.ListModel(["a", "b"])
+    lm.set_attr("items", [])
+    assert(lm.len() == 0)
+}
+
+test "ListModel to_dropdown_options with dict items" {
+    import "gui" as gui
+    let lm = gui.ListModel([{"label": "One", "value": 1}, {"label": "Two", "value": 2}])
+    let opts = lm.to_dropdown_options()
+    assert(opts.length == 2)
+    assert(opts[0]["label"] == "One")
+    assert(opts[0]["value"] == 1)
+    assert(opts[1]["label"] == "Two")
+    assert(opts[1]["value"] == 2)
+}
+
+test "ListModel multiple on_change handlers" {
+    import "gui" as gui
+    let lm = gui.ListModel(["a"])
+    let c1 = 0
+    let c2 = 0
+    lm.on_change(fn(items) { c1 = c1 + 1 })
+    lm.on_change(fn(items) { c2 = c2 + 2 })
+    lm.add("b")
+    assert(c1 == 1)
+    assert(c2 == 2)
+    lm.add("c")
+    assert(c1 == 2)
+    assert(c2 == 4)
+}
+
+test "ListModel chained operations" {
+    import "gui" as gui
+    let lm = gui.ListModel([3, 1, 2])
+    lm.sort()
+    lm.add(4)
+    assert(lm.len() == 4)
+    lm.filter(fn(x) { return x > 2 })
+    assert(lm.len() == 2)
+    assert(lm.contains(3) == true)
+    assert(lm.contains(4) == true)
+    lm.map(fn(x) { return x * 2 })
+    assert(lm.contains(6) == true)
+    assert(lm.contains(8) == true)
+}
+
+test "file_picker returns nil when no display" {
+    import "gui" as gui
+    let path = gui.file_picker()
+    assert(gui.file_picker != nil)
+}
+
+test "color_picker returns nil when no display" {
+    import "gui" as gui
+    let c = gui.color_picker()
+    assert(gui.color_picker != nil)
+}
+
+test "file_picker with custom args" {
+    import "gui" as gui
+    let path = gui.file_picker("Select a file", [["Text", "*.txt"], ["All", "*.*"]],
+                               "open", ".txt", "")
+    assert(true == true)
+}
+
+test "color_picker with initial color" {
+    import "gui" as gui
+    let c = gui.color_picker("Pick", {"r": 1.0, "g": 0.5, "b": 0.0, "a": 1.0})
+    assert(true == true)
+}

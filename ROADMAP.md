@@ -1,6 +1,6 @@
 # InScript Roadmap — Production-Grade Microversion Plan
 
-> **Current:** v3.9.6.37 — GUI: advanced layout (anchors, margins, EXPAND/SHRINK, dynamic resize). Phase 11 items up to v37 complete.
+> **Current:** v3.9.6.38 — GUI: dialogs + ListModel (ListModel, file_picker, color_picker). Phase 11 items up to v38 complete.
 > 
 > **Version scheme:** MAJOR.MINOR.PATCH.MICRO — each micro targets a discrete production feature.
 > After v3.9.6.99, roll to v3.9.7.0 for the next feature cluster.
@@ -370,10 +370,10 @@ Parallel microversion to v3.9.6.13. Fixes 6 pre-existing Rust lexer tests by bri
 - [x] `SIZE_EXPAND` / `SIZE_SHRINK` size policies
 - [x] Dynamic resize behavior in HBox/VBox/Grid
 
-### v3.9.6.38 — GUI: dialogs + ListModel
-- [ ] `ListModel` — observable list for dropdowns/grids
-- [ ] `file_picker()` — native OS file dialog via tkinter
-- [ ] `color_picker()` — native OS color picker via tkinter
+### v3.9.6.38 — GUI: dialogs + ListModel ✅
+- [x] `ListModel` — observable list for dropdowns/grids
+- [x] `file_picker()` — native OS file dialog via tkinter
+- [x] `color_picker()` — native OS color picker via tkinter
 
 ### v3.9.6.39 — GUI: gradients + stylesheets
 - [ ] Gradient background rendering (vertical top→bottom gradient)
@@ -716,6 +716,7 @@ Parallel microversion to v3.9.6.13. Fixes 6 pre-existing Rust lexer tests by bri
 | **Debugger** | v3.9.6.17 | Exception breakpoints | 7 | ✅ Done |
 | **Debugger** | v3.9.6.18 | Data breakpoints | 8 | ✅ Done |
 | **Debugger** | v3.9.6.19 | REPL polish | 9 | ✅ Done |
+| **GUI** | v3.9.6.38 | ListModel + dialogs | 6 | ✅ Done |
 
 ### Priority Plan
 
