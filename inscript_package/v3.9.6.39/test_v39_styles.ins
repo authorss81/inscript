@@ -1,0 +1,78 @@
+test "Stylesheet exists" {
+    import "gui" as gui
+    assert(gui.Stylesheet != nil)
+    assert(gui.load_stylesheet != nil)
+}
+
+test "Stylesheet basic add_rule and apply_to_widget" {
+    import "gui" as gui
+    let ss = gui.Stylesheet()
+    ss.add_rule("Button", {"rounded_radius": 12, "bg_color": {"r": 0.5, "g": 0.5, "b": 0.5}})
+    let btn = gui.Button(0, 0, 100, 30, "test", 16)
+    btn.theme = nil
+    btn.stylesheet = ss
+    btn._init_theme()
+    assert(btn.rounded_radius == 12)
+    assert(btn.bg_color["r"] == 0.5)
+}
+
+test "Gradient attrs on Panel" {
+    import "gui" as gui
+    let pn = gui.Panel(0, 0, 200, 100)
+    assert(pn.gradient_top == nil)
+    assert(pn.gradient_bottom == nil)
+    pn.set_attr("gradient_top", {"r": 0.2, "g": 0.3, "b": 0.5})
+    pn.set_attr("gradient_bottom", {"r": 0.05, "g": 0.1, "b": 0.2})
+    assert(pn.gradient_top["r"] == 0.2)
+    assert(pn.gradient_bottom["b"] == 0.2)
+}
+
+test "Gradient attrs on Button" {
+    import "gui" as gui
+    let btn = gui.Button(0, 0, 100, 30, "grad", 16)
+    btn.set_attr("gradient_top", {"r": 0.3, "g": 0.5, "b": 0.7})
+    btn.set_attr("gradient_bottom", {"r": 0.1, "g": 0.2, "b": 0.3})
+    assert(btn.gradient_top["g"] == 0.5)
+    assert(btn.gradient_bottom["r"] == 0.1)
+}
+
+test "Style cascade: user attr overrides theme" {
+    import "gui" as gui
+    let theme = gui.Theme()
+    theme.set_style("Button", {"rounded_radius": 25})
+    let btn = gui.Button(0, 0, 100, 30, "cascade", 16)
+    btn.set_attr("rounded_radius", 88)
+    btn.theme = theme
+    btn._init_theme()
+    assert(btn.rounded_radius == 88)
+}
+
+test "Style cascade: theme overrides stylesheet" {
+    import "gui" as gui
+    let ss = gui.Stylesheet()
+    ss.add_rule("Button", {"rounded_radius": 10})
+    let theme = gui.Theme()
+    theme.set_style("Button", {"rounded_radius": 35})
+    let btn = gui.Button(0, 0, 100, 30, "cascade2", 16)
+    btn.theme = nil
+    btn.stylesheet = ss
+    btn.theme = theme
+    btn._init_theme()
+    assert(btn.rounded_radius == 35)
+}
+
+test "Stylesheet apply_to theme" {
+    import "gui" as gui
+    let ss = gui.Stylesheet()
+    ss.add_rule("Panel", {"bg_color": {"r": 0.1, "g": 0.1, "b": 0.15}, "border_width": 2})
+    let theme = gui.Theme()
+    ss.apply_to(theme)
+    assert(theme.get_style("Panel", "border_width") == 2)
+    assert(theme.get_style("Panel", "bg_color")["r"] == 0.1)
+}
+
+test "load_stylesheet returns nil for missing file" {
+    import "gui" as gui
+    let ss = gui.load_stylesheet("/nonexistent/missing.insstyle")
+    assert(ss == nil)
+}

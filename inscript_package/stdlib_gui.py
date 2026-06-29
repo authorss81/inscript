@@ -102,15 +102,23 @@ class _Widget:
         self.shadow = None
         self.rounded_radius = 0
         self.theme = None
+        self._theme_set_explicit = False
+        self.stylesheet = None
         self.anchor = ANCHOR_NONE
         self.margin_left = 0.0
         self.margin_right = 0.0
         self.margin_top = 0.0
         self.margin_bottom = 0.0
+        self.gradient_top = None
+        self.gradient_bottom = None
+        self._user_attrs = set()
 
     def _init_theme(self):
-        if self.theme is None:
-            g = globals()
+        g = globals()
+        # Cascade: built-in default < stylesheet < theme < widget attr
+        if self.stylesheet is not None:
+            self.stylesheet.apply_to_widget(self)
+        if self.theme is None and not self._theme_set_explicit:
             dt = g.get("default_theme")
             if dt is not None:
                 self.theme = dt
@@ -153,6 +161,7 @@ class _Widget:
                                                        self.y <= py <= self.y + self.h)
 
     def set_attr(self, name: str, val):
+        self._user_attrs.add(name)
         if name == "x": self.x = val
         elif name == "y": self.y = val
         elif name == "w": self.w = val
@@ -169,6 +178,10 @@ class _Widget:
         elif name == "margin_right": self.margin_right = float(val)
         elif name == "margin_top": self.margin_top = float(val)
         elif name == "margin_bottom": self.margin_bottom = float(val)
+        elif name == "gradient_top": self.gradient_top = val
+        elif name == "gradient_bottom": self.gradient_bottom = val
+        elif name == "stylesheet": self.stylesheet = val
+        elif name == "theme": self.theme = val; self._theme_set_explicit = True
         else:
             raise AttributeError(f"_Widget has no settable attribute '{name}'")
 
@@ -265,7 +278,9 @@ class Button(_Widget):
         cx = self.x + self.w / 2
         cy = self.y + self.h / 2
         rr = max(0, int(self.rounded_radius))
-        if hasattr(draw_ns, "rounded_rect") and rr > 0:
+        if self.gradient_top is not None and self.gradient_bottom is not None and hasattr(draw_ns, "gradient_rect"):
+            draw_ns.gradient_rect(self.x, self.y, self.w, self.h, self.gradient_top, self.gradient_bottom)
+        elif hasattr(draw_ns, "rounded_rect") and rr > 0:
             draw_ns.rounded_rect(self.x, self.y, self.w, self.h, color, rr, True)
         elif hasattr(draw_ns, "rect"):
             draw_ns.rect(self.x, self.y, self.w, self.h, color, True)
@@ -394,7 +409,9 @@ class Panel(_Widget):
     def draw(self, draw_ns):
         if not self.visible:
             return
-        if self.bg_color and hasattr(draw_ns, "rect"):
+        if self.gradient_top is not None and self.gradient_bottom is not None and hasattr(draw_ns, "gradient_rect"):
+            draw_ns.gradient_rect(self.x, self.y, self.w, self.h, self.gradient_top, self.gradient_bottom)
+        elif self.bg_color and hasattr(draw_ns, "rect"):
             draw_ns.rect(self.x, self.y, self.w, self.h, self.bg_color, True)
         if self.border_color and self.border_width > 0 and hasattr(draw_ns, "rect"):
             draw_ns.rect(self.x, self.y, self.w, self.h, self.border_color,
@@ -1904,7 +1921,10 @@ class Theme:
     def apply_to(self, widget):
         wt = getattr(widget, "_widget_type", "Widget")
         style = self._styles.get(wt, {})
+        user_attrs = getattr(widget, '_user_attrs', set())
         for k, v in style.items():
+            if k in user_attrs:
+                continue
             if hasattr(widget, k):
                 setattr(widget, k, v)
 
@@ -2152,6 +2172,102 @@ def color_picker(title: str = "Pick Color",
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Stylesheet — .insstyle file loader
+# ─────────────────────────────────────────────────────────────────────────────
+
+class Stylesheet:
+    def __init__(self):
+        self._rules: dict[str, dict] = {}
+
+    def add_rule(self, widget_type: str, props: dict):
+        self._rules[widget_type] = dict(props)
+
+    def get_rule(self, widget_type: str, attr: str, default=None):
+        rule = self._rules.get(widget_type, {})
+        return rule.get(attr, default)
+
+    def apply_to(self, theme: Theme):
+        for wt, props in self._rules.items():
+            existing = dict(theme._styles.get(wt, {}))
+            existing.update(props)
+            theme.set_style(wt, existing)
+
+    def apply_to_widget(self, widget):
+        wt = getattr(widget, "_widget_type", "Widget")
+        rule = self._rules.get(wt, {})
+        user_attrs = getattr(widget, '_user_attrs', set())
+        for k, v in rule.items():
+            if k in user_attrs:
+                continue
+            if hasattr(widget, k):
+                setattr(widget, k, v)
+
+    def rules(self) -> dict:
+        return dict(self._rules)
+
+
+def load_stylesheet(path: str):
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            content = f.read()
+    except Exception:
+        return None
+
+    ss = Stylesheet()
+    lines = content.split("\n")
+    current_type = None
+    current_props = {}
+    in_block = False
+
+    for line in lines:
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or stripped.startswith("//"):
+            continue
+        if stripped.endswith("{"):
+            current_type = stripped.rstrip("{").strip()
+            current_props = {}
+            in_block = True
+        elif stripped == "}":
+            if current_type and current_props:
+                ss.add_rule(current_type, current_props)
+            current_type = None
+            current_props = {}
+            in_block = False
+        elif in_block and ":" in stripped:
+            key, _, val_text = stripped.partition(":")
+            key = key.strip()
+            val_text = val_text.strip().rstrip(";").strip()
+            parsed = _parse_stylesheet_value(val_text)
+            current_props[key] = parsed
+
+    return ss
+
+
+def _parse_stylesheet_value(text: str):
+    if text.startswith("{") and text.endswith("}"):
+        try:
+            import json
+            return json.loads(text)
+        except Exception:
+            return text
+    if text.lower() == "true":
+        return True
+    if text.lower() == "false":
+        return False
+    if text.lower() == "nil" or text.lower() == "none":
+        return None
+    try:
+        return int(text)
+    except ValueError:
+        pass
+    try:
+        return float(text)
+    except ValueError:
+        pass
+    return text
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Module registration
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -2184,6 +2300,8 @@ register_module("gui", {
     "message_box": message_box,
     "file_picker": file_picker,
     "color_picker": color_picker,
+    "Stylesheet": Stylesheet,
+    "load_stylesheet": load_stylesheet,
     "SIZE_FIXED": SIZE_FIXED,
     "SIZE_FILL": SIZE_FILL,
     "SIZE_EXPAND": SIZE_EXPAND,

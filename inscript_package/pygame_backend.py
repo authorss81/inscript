@@ -219,6 +219,20 @@ class DrawNamespace(_NS):
     def pixel(self, x, y, color):
         self._surf.set_at((int(x), int(y)), _color(color))
 
+    def gradient_rect(self, x, y, w, h, color_top, color_bottom):
+        ct = _color(color_top)
+        cb = _color(color_bottom)
+        ih = max(1, int(h))
+        surf = pygame.Surface((max(1, int(w)), ih), pygame.SRCALPHA)
+        for row in range(ih):
+            t = row / max(1, ih - 1)
+            cr = int(ct.r + (cb.r - ct.r) * t)
+            cg = int(ct.g + (cb.g - ct.g) * t)
+            cb_ = int(ct.b + (cb.b - ct.b) * t)
+            ca = int(ct.a + (cb.a - ct.a) * t)
+            pygame.draw.line(surf, (cr, cg, cb_, ca), (0, row), (int(w) - 1, row))
+        self._surf.blit(surf, (int(x), int(y)))
+
     # ── text ──────────────────────────────────────────────────────────────────
     def text(self, x, y, text, color=None, size=16, bold=False, font_path=None):
         c = _color(color) if color is not None else pygame.Color(255, 255, 255)
@@ -301,6 +315,8 @@ class BatchedDrawNamespace(_NS):
         self._real.arc(x, y, w, h, start_deg, end_deg, color, thickness)
     def pixel(self, x, y, color):
         self._real.pixel(x, y, color)
+    def gradient_rect(self, x, y, w, h, color_top, color_bottom):
+        self._real.gradient_rect(x, y, w, h, color_top, color_bottom)
     def text(self, x, y, text, color=None, size=16, bold=False, font_path=None):
         self._real.text(x, y, text, color, size, bold, font_path)
     def text_centered(self, cx, cy, text, color=None, size=16, bold=False, font_path=None):

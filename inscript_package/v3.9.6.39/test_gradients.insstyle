@@ -1,0 +1,17 @@
+Button {
+    bg_color: {"r": 0.4, "g": 0.4, "b": 0.5};
+    rounded_radius: 10;
+    gradient_top: {"r": 0.3, "g": 0.5, "b": 0.7};
+    gradient_bottom: {"r": 0.1, "g": 0.2, "b": 0.3};
+}
+
+Panel {
+    bg_color: {"r": 0.12, "g": 0.12, "b": 0.15};
+    border_width: 1;
+    border_color: {"r": 0.3, "g": 0.3, "b": 0.35};
+}
+
+Label {
+    color: {"r": 0.9, "g": 0.9, "b": 0.95};
+    font_size: 14;
+}
