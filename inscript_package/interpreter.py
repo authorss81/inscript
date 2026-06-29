@@ -444,10 +444,10 @@ class Interpreter(Visitor):
             "tanh":    math.tanh,
             "smoothstep": lambda e0,e1,x: (lambda t: t*t*(3-2*t))(max(0,min(1,(x-e0)/(e1-e0) if e1!=e0 else 0))),
             # ── I/O helpers ───────────────────────────────────────────────────
-            "read_file":   lambda p: open(p).read(),
-            "write_file":  lambda p, s: open(p,'w').write(s) and None,
-            "append_file": lambda p, s: open(p,'a').write(s) and None,
-            "read_lines":  lambda p: open(p).read().splitlines(),
+            "read_file":   lambda p: open(p, encoding="utf-8").read(),
+            "write_file":  lambda p, s: open(p, 'w', encoding="utf-8").write(s) and None,
+            "append_file": lambda p, s: open(p, 'a', encoding="utf-8").write(s) and None,
+            "read_lines":  lambda p: open(p, encoding="utf-8").read().splitlines(),
             "exists":      lambda p: __import__('os').path.exists(p),
             "cwd":         lambda: __import__('os').getcwd(),
             "list_dir":    lambda p=".": __import__('os').listdir(p),
@@ -3436,6 +3436,11 @@ def _get_attr(obj: Any, name: str, line: int, interp: Interpreter) -> Any:
 
     # Stub namespace fallthrough
     if isinstance(obj, _StubNamespace):
+        if name == "gradient_rect":
+            def _stub_gradient_rect(x, y, w, h, color_top, color_bottom):
+                return {"type": "gradient_rect", "x": x, "y": y, "w": w, "h": h,
+                        "color_top": color_top, "color_bottom": color_bottom}
+            return _stub_gradient_rect
         return _StubMethod(obj.name, name)
 
     # Primitive type methods: int, float, bool

@@ -2509,8 +2509,8 @@ def run_repl():
         from repl import EnhancedREPL
         EnhancedREPL().run()
         return
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"[EnhancedREPL unavailable: {e}]")
 
     # Fallback simple REPL
     print(REPL_BANNER)
@@ -2563,11 +2563,16 @@ def run_repl():
             if not arg:
                 print("  Usage: .type <expression>"); return True
             try:
+                # Evaluate once and show type
                 prog = parse(arg, "<repl>")
                 from ast_nodes import ExprStmt
                 if prog.body and isinstance(prog.body[-1], ExprStmt):
                     val = interp.visit(prog.body[-1].expr)
-                    print(f"  {type(val).__name__}")
+                    from interpreter import _inscript_str
+                    print(f"  {type(val).__name__}  →  {_inscript_str(val)}")
+                else:
+                    interp.run(prog)
+                    print("  (statement — no value)")
             except Exception as e:
                 print(f"  Error: {e}")
             return True
@@ -2615,12 +2620,28 @@ def run_repl():
         buf = []
 
         try:
-            prog = parse(source, "<repl>")
-            interp.run(prog)
+            # For bare expressions, wrap to capture value (avoids double-visit)
             from ast_nodes import ExprStmt
-            if prog.body and isinstance(prog.body[-1], ExprStmt):
-                val = interp.visit(prog.body[-1].expr)
-                show_result(val)
+            source_stripped = source.strip()
+            is_bare_expr = (source_stripped and
+                          not source_stripped.startswith(("let ","const ","fn ","struct ","enum ",
+                                                          "import ","if ","while ","for ","return ",
+                                                          "break","continue","try ","match ","print(")) and
+                          "=" not in source_stripped.split("\n")[-1])
+            if is_bare_expr:
+                wrapped = f"let __repl_rv__ = ({source_stripped})"
+                try:
+                    prog = parse(wrapped, "<repl>")
+                    interp.run(prog)
+                    rv = interp._env._store.pop("__repl_rv__", None)
+                    show_result(rv)
+                except Exception:
+                    # If wrap fails, try running the original source directly
+                    prog = parse(source, "<repl>")
+                    interp.run(prog)
+            else:
+                prog = parse(source, "<repl>")
+                interp.run(prog)
         except (LexerError, ParseError, SemanticError, InScriptRuntimeError) as e:
             print(e)
         except Exception as e:

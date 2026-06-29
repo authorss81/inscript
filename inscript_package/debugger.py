@@ -658,7 +658,7 @@ class Debugger:
         if not items:
             print("  (no global variables)")
             return
-        for k in sorted(items.keys())[:80]:
+        for k in sorted(items.keys()):
             try:
                 vs = _format_value(items[k])
             except Exception:

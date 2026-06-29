@@ -111,7 +111,7 @@ def _make_banner():
         return f"{TC}║{RST}{content}{' ' * pad}{TC}║{RST}"
 
     tagline = f" \033[38;5;51m>>\033[0m  \033[1mA scripting language for game development\033[0m  \033[2mv{VERSION}\033[0m"
-    stats   = f" \033[2m59 stdlib modules  ·  527 tests  ·  Python 3.10+\033[0m"
+    stats   = f" \033[2m{len(STDLIB_MODULES)} stdlib modules  ·  527 tests  ·  Python 3.10+\033[0m"
     tips    = f" \033[33m.help\033[0m  commands  ·  \033[33m.modules\033[0m  stdlib  ·  \033[33mexit\033[0m  quit"
 
     lines = [""]
@@ -130,6 +130,37 @@ def _make_banner():
     lines.append("")
 
     return "\n".join(lines)
+
+# ── stdlib module registry ────────────────────────────────────────────
+STDLIB_MODULES = [
+    "math","string","array","json","io","random","time","debug",
+    "csv","regex","xml","toml","yaml","url","base64","uuid",
+    "format","iter","template","argparse",
+    "http","ssl","crypto","hash","net",
+    "path","fs","process","compress","log",
+    "datetime","collections","database",
+    "thread","bench",
+    "color","tween","image","atlas","animation","shader",
+    "input","audio",
+    "physics2d","tilemap","camera2d","particle","pathfind",
+    "grid","events","ecs","fsm","save","localize","net_game",
+    "signal","vec","pool",
+]
+
+STDLIB_CATEGORIES = {
+    "Core":             ["math","string","array","json","io","random","time","debug"],
+    "Data":             ["csv","regex","xml","toml","yaml","url","base64","uuid"],
+    "Format/Iter":      ["format","iter","template","argparse"],
+    "Net/Crypto":       ["http","ssl","crypto","hash","net"],
+    "FS/Process":       ["path","fs","process","compress","log"],
+    "Date/Collections": ["datetime","collections","database"],
+    "Async/Bench":      ["thread","bench"],
+    "Game: Visual":     ["color","tween","image","atlas","animation","shader"],
+    "Game: I/O":        ["input","audio"],
+    "Game: World":      ["physics2d","tilemap","camera2d","particle","pathfind"],
+    "Game: Systems":    ["grid","events","ecs","fsm","save","localize","net_game"],
+    "Utilities":        ["signal","vec","pool"],
+}
 
 BANNER = _make_banner()
 
@@ -163,8 +194,9 @@ def _make_help():
         cmd(".env",                "Show full environment tree"),
         cmd(".inspect <expr>",     "Deep field / method inspection"),
         cmd(".type <expr>",        "Show type of an expression"),
+        cmd(".import <module>",    "Import a stdlib module"),
         cmd(".doc <module>",       "Show module exports"),
-        cmd(".modules",            "Browse all 59 stdlib modules"),
+        cmd(".modules",            f"Browse all {len(STDLIB_MODULES)} stdlib modules"),
         section("── Session ──────────────────────────────────────────"),
         cmd(".clear",              "Reset session variables"),
         cmd(".reset",              "Full reset (interpreter + history)"),
@@ -204,69 +236,122 @@ def _make_help():
 
 HELP_TEXT = _make_help()
 
-
-# All 59 stdlib modules, grouped by category
-STDLIB_MODULES = [
-    # Core
-    "math","string","array","json","io","random","time","debug",
-    # Data
-    "csv","regex","xml","toml","yaml","url","base64","uuid",
-    # Format / Iteration
-    "format","iter","template","argparse",
-    # Networking & Crypto
-    "http","ssl","crypto","hash","net",
-    # File System & Process
-    "path","fs","process","compress","log",
-    # Date & Collections
-    "datetime","collections","database",
-    # Threading & Bench
-    "thread","bench",
-    # Game: Visual
-    "color","tween","image","atlas","animation","shader",
-    # Game: Input / Audio
-    "input","audio",
-    # Game: World
-    "physics2d","tilemap","camera2d","particle","pathfind",
-    # Game: Systems
-    "grid","events","ecs","fsm","save","localize","net_game",
-    # Utilities
-    "signal","vec","pool",
-]
-
-STDLIB_CATEGORIES = {
-    "Core":             ["math","string","array","json","io","random","time","debug"],
-    "Data":             ["csv","regex","xml","toml","yaml","url","base64","uuid"],
-    "Format/Iter":      ["format","iter","template","argparse"],
-    "Net/Crypto":       ["http","ssl","crypto","hash","net"],
-    "FS/Process":       ["path","fs","process","compress","log"],
-    "Date/Collections": ["datetime","collections","database"],
-    "Async/Bench":      ["thread","bench"],
-    "Game: Visual":     ["color","tween","image","atlas","animation","shader"],
-    "Game: I/O":        ["input","audio"],
-    "Game: World":      ["physics2d","tilemap","camera2d","particle","pathfind"],
-    "Game: Systems":    ["grid","events","ecs","fsm","save","localize","net_game"],
-    "Utilities":        ["signal","vec","pool"],
-}
-
 STDLIB_DOCS = {
-    "math":   ["sin(x)","cos(x)","tan(x)","sqrt(x)","pow(x,y)","abs(x)","floor(x)",
-               "ceil(x)","round(x)","log(x)","log2(x)","exp(x)","PI","E","TAU","INF","NAN"],
-    "string": ["len(s)","upper(s)","lower(s)","trim(s)","split(s,sep)","join(a,sep)",
-               "replace(s,old,new)","contains(s,sub)","starts_with(s,p)","ends_with(s,p)",
-               "substring(s,a,b)","repeat(s,n)","pad_start(s,n,c)","index_of(s,sub)"],
-    "array":  ["len(a)","push(a,v)","pop(a)","insert(a,i,v)","remove(a,i)","contains(a,v)",
-               "sort(a)","reverse(a)","map(a,fn)","filter(a,fn)","reduce(a,fn,i)",
-               "zip(a,b)","enumerate(a)","unique(a)","chunk(a,n)","take(a,n)","skip(a,n)",
-               "sum(a)","min(a)","max(a)","any(a,fn)","all(a,fn)"],
-    "random": ["int(min,max)","float(min,max)","bool()","choice(arr)","shuffle(arr)","seed(n)"],
-    "json":   ["parse(s)","stringify(v)","stringify_pretty(v)"],
-    "io":     ["read_file(p)","write_file(p,s)","append_file(p,s)","read_lines(p)",
-               "file_exists(p)","delete_file(p)","list_dir(p)","input(prompt)"],
-    "time":   ["now()","sleep(ms)","format(t,fmt)"],
-    "regex":  ["match(pat,s)","find(pat,s)","find_all(pat,s)","replace(pat,s,r)","test(pat,s)"],
-    "path":   ["join(...)","exists(p)","dir(p)","base(p)","ext(p)","absolute(p)"],
-    "color":  ["rgb(r,g,b)","rgba(r,g,b,a)","hsv(h,s,v)","lerp(a,b,t)",
-               "from_hex(s)","to_hex(c)","BLACK","WHITE","RED","GREEN","BLUE"],
+    "math": {
+        "sin":     ("sin(x)", "Sine of x (radians)", "sin(0) → 0.0"),
+        "cos":     ("cos(x)", "Cosine of x (radians)", "cos(PI) → -1.0"),
+        "tan":     ("tan(x)", "Tangent of x (radians)", "tan(PI/4) → 1.0"),
+        "sqrt":    ("sqrt(x)", "Square root", "sqrt(16) → 4.0"),
+        "pow":     ("pow(x,y)", "x raised to y", "pow(2,10) → 1024.0"),
+        "abs":     ("abs(x)", "Absolute value", "abs(-5) → 5"),
+        "floor":   ("floor(x)", "Round down", "floor(3.9) → 3.0"),
+        "ceil":    ("ceil(x)", "Round up", "ceil(3.1) → 4.0"),
+        "round":   ("round(x)", "Round to nearest int", "round(3.5) → 4.0"),
+        "log":     ("log(x)", "Natural logarithm", "log(E) → 1.0"),
+        "log2":    ("log2(x)", "Base-2 logarithm", "log2(8) → 3.0"),
+        "exp":     ("exp(x)", "e raised to x", "exp(1) → 2.71828..."),
+        "PI":      ("PI", "3.141592653589793", "PI"),
+        "E":       ("E", "2.718281828459045", "E"),
+        "TAU":     ("TAU", "6.283185307179586", "TAU"),
+        "INF":     ("INF", "Positive infinity", "INF"),
+        "NAN":     ("NAN", "Not-a-number", "NAN"),
+    },
+    "string": {
+        "len":         ("len(s)", "String length", 'len("hello") → 5'),
+        "upper":       ("upper(s)", "Uppercase", 'upper("hi") → "HI"'),
+        "lower":       ("lower(s)", "Lowercase", 'lower("HI") → "hi"'),
+        "trim":        ("trim(s)", "Strip whitespace", 'trim("  x  ") → "x"'),
+        "split":       ("split(s, sep)", "Split by delimiter", 'split("a,b,c", ",") → ["a","b","c"]'),
+        "join":        ("join(arr, sep)", "Join array into string", 'join(["a","b"], "-") → "a-b"'),
+        "replace":     ("replace(s, old, new)", "Replace all occurrences", 'replace("aXbX","X","-") → "a-b-"'),
+        "contains":    ("contains(s, sub)", "Check substring", 'contains("hello","el") → true'),
+        "starts_with": ("starts_with(s, prefix)", "Check prefix", 'starts_with("hello","he") → true'),
+        "ends_with":   ("ends_with(s, suffix)", "Check suffix", 'ends_with("hello","lo") → true'),
+        "substring":   ("substring(s, start, end)", "Extract substring (end excluded)", 'substring("hello",1,4) → "ell"'),
+        "repeat":      ("repeat(s, n)", "Repeat string n times", 'repeat("ab",3) → "ababab"'),
+        "pad_start":   ("pad_start(s, n, char)", "Pad left to width n", 'pad_start("5",3,"0") → "005"'),
+        "index_of":    ("index_of(s, sub)", "First index of substring (0-based)", 'index_of("hello","l") → 2'),
+    },
+    "array": {
+        "len":      ("len(arr)", "Array length", "len([1,2,3]) → 3"),
+        "push":     ("push(arr, val)", "Append element (mutates)", "let a=[1,2]; push(a,3) → [1,2,3]"),
+        "pop":      ("pop(arr)", "Remove & return last element", "let a=[1,2,3]; pop(a) → 3, a=[1,2]"),
+        "insert":   ("insert(arr, i, val)", "Insert at index (mutates)", 'let a=[1,3]; insert(a,1,2) → [1,2,3]'),
+        "remove":   ("remove(arr, i)", "Remove at index (mutates)", "let a=[1,2,3]; remove(a,1) → [1,3]"),
+        "contains": ("contains(arr, val)", "Check if value in array", "contains([1,2,3], 2) → true"),
+        "sort":     ("sort(arr)", "Sort in-place (mutates)", "let a=[3,1,2]; sort(a) → [1,2,3]"),
+        "reverse":  ("reverse(arr)", "Reverse in-place (mutates)", "let a=[1,2,3]; reverse(a) → [3,2,1]"),
+        "map":      ("map(arr, fn)", "Transform each element", 'map([1,2,3], fn(x) x*2) → [2,4,6]'),
+        "filter":   ("filter(arr, fn)", "Keep elements where fn true", 'filter([1,2,3], fn(x) x>1) → [2,3]'),
+        "reduce":   ("reduce(arr, fn, init)", "Accumulate left-to-right", 'reduce([1,2,3], fn(a,x) a+x, 0) → 6'),
+        "zip":      ("zip(a, b)", "Pair up elements", 'zip([1,2],[3,4]) → [[1,3],[2,4]]'),
+        "enumerate":("enumerate(arr)", "Index-value pairs", 'enumerate(["a","b"]) → [[0,"a"],[1,"b"]]'),
+        "unique":   ("unique(arr)", "Remove duplicates, preserve order", 'unique([1,2,1,3]) → [1,2,3]'),
+        "chunk":    ("chunk(arr, n)", "Split into chunks of n", 'chunk([1,2,3,4],2) → [[1,2],[3,4]]'),
+        "take":     ("take(arr, n)", "First n elements", 'take([1,2,3],2) → [1,2]'),
+        "skip":     ("skip(arr, n)", "Drop first n elements", 'skip([1,2,3],2) → [3]'),
+        "sum":      ("sum(arr)", "Sum of elements", "sum([1,2,3]) → 6"),
+        "min":      ("min(arr)", "Minimum element", "min([3,1,2]) → 1"),
+        "max":      ("max(arr)", "Maximum element", "max([3,1,2]) → 3"),
+        "any":      ("any(arr, fn)", "True if any element satisfies fn", 'any([1,2,3], fn(x) x>2) → true'),
+        "all":      ("all(arr, fn)", "True if all elements satisfy fn", 'all([1,2,3], fn(x) x>0) → true'),
+    },
+    "random": {
+        "int":     ("int(min, max)", "Random int in [min, max]", "int(1,6) → 4"),
+        "float":   ("float(min, max)", "Random float in [min, max)", "float(0,1) → 0.374..."),
+        "bool":    ("bool()", "Random true/false", "bool() → true"),
+        "choice":  ("choice(arr)", "Pick random element", 'choice(["a","b","c"]) → "b"'),
+        "shuffle": ("shuffle(arr)", "Shuffle in-place (mutates)", "let a=[1,2,3]; shuffle(a)"),
+        "seed":    ("seed(n)", "Seed the RNG for reproducibility", "seed(42)"),
+    },
+    "json": {
+        "parse":             ('parse(s)', "Parse JSON string → InScript value", 'parse(\'{"a":1}\') → {a:1}'),
+        "stringify":         ("stringify(v)", "Serialize to compact JSON", 'stringify({a:1}) → \'{"a":1}\''),
+        "stringify_pretty":  ("stringify_pretty(v)", "Serialize to pretty-printed JSON", 'stringify_pretty({a:1})'),
+    },
+    "io": {
+        "read_file":   ("read_file(path)", "Read entire file as string", "read_file(\"data.txt\")"),
+        "write_file":  ("write_file(path, s)", "Write string to file (overwrite)", "write_file(\"out.txt\", \"hello\")"),
+        "append_file": ("append_file(path, s)", "Append string to file", "append_file(\"log.txt\", \"error\\n\")"),
+        "read_lines":  ("read_lines(path)", "Read lines into array", "read_lines(\"data.txt\") → [\"line1\",\"line2\"]"),
+        "file_exists": ("file_exists(path)", "Check if file exists", "file_exists(\"data.txt\") → true"),
+        "delete_file": ("delete_file(path)", "Delete a file", "delete_file(\"tmp.txt\")"),
+        "list_dir":    ("list_dir(path)", "List directory contents", "list_dir(\".\") → [\"file1.ins\",\"dir1\"]"),
+        "input":       ("input(prompt)", "Read line from stdin", 'input("enter name: ") → "Alice"'),
+    },
+    "time": {
+        "now":    ("now()", "Current Unix timestamp (seconds)", "now() → 1699123456.789"),
+        "sleep":  ("sleep(ms)", "Pause execution (milliseconds)", "sleep(100)"),
+        "format": ('format(t, fmt)', "Format timestamp (strftime)", 'format(now(), "%Y-%m-%d") → "2026-06-29"'),
+    },
+    "regex": {
+        "match":    ('match(pattern, s)', "First match or nil", 'match(r"\\\\d+", "abc123") → "123"'),
+        "find":     ('find(pattern, s)', "First match position or nil", 'find(r"\\\\d+", "abc123")'),
+        "find_all": ('find_all(pattern, s)', "All matches as array", 'find_all(r"\\\\d", "a1b2c3") → ["1","2","3"]'),
+        "replace":  ('replace(pattern, s, repl)', "Replace all matches", 'replace(r"\\\\d", "a1b2", "X") → "aXbX"'),
+        "test":     ('test(pattern, s)', "Test if pattern matches", 'test(r"^[a-z]+$", "hello") → true'),
+    },
+    "path": {
+        "join":     ('"join"(parts...)', "Join path components", 'join(["dir","sub","file.txt"])'),
+        "exists":   ("exists(path)", "Check path exists", 'exists("file.txt") → true'),
+        "dir":      ('"dir"(path)', "Parent directory", 'dir("/a/b.txt") → "/a"'),
+        "base":     ('"base"(path)', "File name with extension", 'base("/a/b.txt") → "b.txt"'),
+        "ext":      ('"ext"(path)', "File extension", 'ext("file.txt") → ".txt"'),
+        "absolute": ('"absolute"(path)', "Absolute path", 'absolute("rel") → "/cwd/rel"'),
+    },
+    "color": {
+        "rgb":      ("rgb(r,g,b)", "Create color from 0-255 ints", "rgb(255,0,0) → RED"),
+        "rgba":     ("rgba(r,g,b,a)", "Color with alpha (0-255)", "rgba(255,0,0,128)"),
+        "hsv":      ("hsv(h,s,v)", "Color from hue(0-360) sat/val(0-1)", "hsv(0,1,1) → RED"),
+        "lerp":     ("lerp(a, b, t)", "Linear interpolate between colors", "lerp(RED, BLUE, 0.5)"),
+        "from_hex": ('from_hex(s)', "Parse hex color", 'from_hex("#ff0000") → RED'),
+        "to_hex":   ("to_hex(c)", "Format as hex string", 'to_hex(RED) → "#ff0000"'),
+        "BLACK":    ("BLACK", "rgb(0,0,0)", "BLACK"),
+        "WHITE":    ("WHITE", "rgb(255,255,255)", "WHITE"),
+        "RED":      ("RED", "rgb(255,0,0)", "RED"),
+        "GREEN":    ("GREEN", "rgb(0,255,0)", "GREEN"),
+        "BLUE":     ("BLUE", "rgb(0,0,255)", "BLUE"),
+    },
 }
 
 KEYWORDS = [
@@ -288,19 +373,41 @@ _KW_RE  = _re.compile(r'\b(let|const|fn|struct|enum|interface|if|else|while|for|
                       r'catch|finally|throw|true|false|nil|self|super|operator|static)\b')
 _NUM_RE = _re.compile(r'\b\d+\.?\d*\b')
 _STR_RE = _re.compile(r'"[^"\\]*(?:\\.[^"\\]*)*"')
-_CMT_RE = _re.compile(r'//.*$')
-_FN_RE  = _re.compile(r'\b([a-z_]\w*)\s*(?=\()')
-_TY_RE  = _re.compile(r'\b([A-Z]\w*)\b')
+_CMT_RE = _re.compile(r'#.*$')
+_FN_RE  = _re.compile(r'\b([a-zA-Z_]\w*)\s*(?=\()')
+_TY_RE  = _re.compile(r'\b([A-Z]\w*)\b(?!\s*\()')
 
 def highlight(line):
     if not sys.stdout.isatty(): return line
+    # Use placeholder approach to prevent color corruption
+    # (ANSI codes inserted by one pattern should not be matched by subsequent patterns)
+    protected = []
+    def _save(m):
+        protected.append(m.group())
+        return f"\x00{len(protected)-1}\x00"
+
     r = line
-    r = _STR_RE.sub(lambda m: GREEN(m.group()), r)
-    r = _CMT_RE.sub(lambda m: DIM(m.group()), r)
+    # Save comments first (highest priority)
+    cmt_re = _re.compile(r'#.*$')
+    r = cmt_re.sub(_save, r)
+    # Save strings next
+    r = _STR_RE.sub(_save, r)
+
+    # Apply remaining patterns to unprotected code only
     r = _KW_RE.sub(lambda m: CYAN(m.group()), r)
     r = _NUM_RE.sub(lambda m: MAGENTA(m.group()), r)
     r = _TY_RE.sub(lambda m: YELLOW(m.group()), r)
     r = _FN_RE.sub(lambda m: BLUE(m.group(1)), r)
+
+    # Restore protected segments with proper colors
+    for i, seg in enumerate(protected):
+        placeholder = f"\x00{i}\x00"
+        if placeholder in r:
+            if seg.startswith('"'):
+                replacement = GREEN(seg)
+            else:
+                replacement = DIM(seg)
+            r = r.replace(placeholder, replacement)
     return r
 
 # ── TAB COMPLETER ─────────────────────────────────────────────────────────────
@@ -342,7 +449,7 @@ class InScriptCompleter:
 _STMT_STARTS = (
     "let ","const ","fn ","struct ","enum ","interface ","mixin ","impl ",
     "import ","from ","export ","if ","while ","for ","return ","break",
-    "continue","throw ","try","match ","print(","//",
+    "continue","throw ","try","match ","print(",
 )
 _ASSIGN_RE = _re.compile(r'^[A-Za-z_]\w*\s*(\*\*=|<<=|>>=|&&=|\|\|=|[+\-*/%&|^]=|=)(?!=)\s*')
 _BLOCK_RE  = _re.compile(r'^(fn|struct|enum|interface)\s+\w+')
@@ -448,8 +555,13 @@ class EnhancedREPL:
         readline.set_completer_delims(" \t\n`~!@#$%^&*()-=+[{]}\\|;:'\",<>?/")
         if HISTORY_FILE.exists():
             try: readline.read_history_file(str(HISTORY_FILE))
-            except: pass
-        atexit.register(lambda: readline.write_history_file(str(HISTORY_FILE)))
+            except OSError: pass
+        atexit.register(self._save_history)
+
+    def _save_history(self):
+        if _HAS_READLINE:
+            try: readline.write_history_file(str(HISTORY_FILE))
+            except OSError: pass
 
     # ── execution ─────────────────────────────────────────────────────────────
     def _eval(self, source) -> Tuple[Any, Optional[str], float]:
@@ -608,11 +720,9 @@ class EnhancedREPL:
 
         Strategy:
         - Always attempt value-capture via the interpreter (persistent env).
-        - If interpreter returns an error AND we are in VM mode, the expression
-          likely references a name defined in the VM's environment.  In that
-          case silently fall back to _eval() (VM path) — no auto-print, but
-          no error shown either.  This is a known limitation: auto-print for
-          VM-mode user-defined calls is not supported.
+        - If the capture fails the expression is **not** re-executed —
+          the error is returned immediately.  This avoids the double-execution
+          hazard present in earlier versions.
         """
         if _is_expression(source):
             wrapped = f"let __repl_rv__ = ({source})"
@@ -628,12 +738,11 @@ class EnhancedREPL:
                 result  = self._interp._env._store.get("__repl_rv__")
                 self._interp._env._store.pop("__repl_rv__", None)
                 return result, None, (_t.perf_counter() - t0) * 1000
-            except (InScriptError, Exception):
-                # Value capture failed — fall through to normal _eval().
-                # In interpreter mode _eval returns a clean (None, err, ms).
-                # In VM mode _eval runs the expression through the VM (no
-                # auto-print, but correct side-effects and error reporting).
-                pass
+            except InScriptError as e:
+                # Value capture failed — return error (NO re-execution)
+                return None, _format_error(str(e), source), (_t.perf_counter() - t0) * 1000
+            except Exception:
+                pass  # only fall through for non-InScript errors (VM mode)
         return self._eval(source)
 
     def _fmt_result(self, val):
@@ -647,10 +756,14 @@ class EnhancedREPL:
         return f"  {DIM('→')} {GREEN(s)}"
 
     def _is_complete(self, source):
-        depth = 0; in_str = False; esc = False
+        depth = 0; in_str = False; esc = False; in_comment = False
         for ch in source:
+            if in_comment:
+                if ch == '\n': in_comment = False
+                continue
             if esc: esc = False; continue
             if ch == '\\' and in_str: esc = True; continue
+            if ch == '#': in_comment = True; continue
             if ch == '"': in_str = not in_str; continue
             if in_str: continue
             if ch in "{[(": depth += 1
@@ -764,34 +877,81 @@ class EnhancedREPL:
             if err: print(RED(f"  Error: {err}")); return True
             print(f"  {YELLOW(_type_name(val))}  {DIM('→')}  {GREEN(_val_preview(val))}")
 
+        elif c == ".import":
+            if not arg:
+                print(f"  Usage: {YELLOW('.import <module>')}  —  import a stdlib module")
+                return True
+            mod_name = arg.strip().strip("\"'")
+            if mod_name not in STDLIB_MODULES:
+                # Try case-insensitive match
+                matches = [m for m in STDLIB_MODULES if m.lower() == mod_name.lower()]
+                if matches:
+                    mod_name = matches[0]
+                else:
+                    print(RED(f"  Unknown module '{mod_name}'. See .modules for available modules."))
+                    return True
+            try:
+                from stdlib import load_module
+                mod_dict = load_module(mod_name)
+                alias = mod_name.split("/")[-1].split(".")[0]
+                self._interp._env._store[alias] = mod_dict
+                print(GREEN(f"  Imported '{mod_name}' as '{alias}'  ({len(mod_dict)} exports)"))
+            except Exception as e:
+                print(RED(f"  Failed to import '{mod_name}': {e}"))
+
         elif c == ".doc":
             if not arg:
-                print(f"  Usage: {YELLOW('.doc <module>')}  —  modules: {', '.join(STDLIB_MODULES)}")
+                print(f"  Usage: {YELLOW('.doc <module>')}  or  {YELLOW('.doc <module>.<func>')}  —  modules: {', '.join(STDLIB_MODULES)}")
                 return True
-            mod = arg.strip().strip("\"'")
+            arg = arg.strip().strip("\"'")
 
-            # Priority 1: hardcoded STDLIB_DOCS (rich signature strings)
+            # Check for module.function syntax
+            mod = arg
+            func_name = None
+            if "." in arg:
+                parts = arg.split(".", 1)
+                mod = parts[0]
+                func_name = parts[1]
+
+            # Priority 1: hardcoded STDLIB_DOCS (detailed signatures + examples)
             if mod in STDLIB_DOCS:
                 fns = STDLIB_DOCS[mod]
+                if func_name:
+                    if func_name in fns:
+                        sig, desc, ex = fns[func_name]
+                        print(f"\n  {BOLD(CYAN(f'{mod}.{func_name}'))}")
+                        print(f"  {DIM('Signature:')} {BLUE(sig)}")
+                        print(f"  {DIM('Description:')} {desc}")
+                        print(f"  {DIM('Example:')}    {GREEN(ex)}")
+                    else:
+                        print(RED(f"  Unknown function '{func_name}' in {mod}"))
+                    return True
                 print(f"  {BOLD(CYAN(mod))} stdlib module ({len(fns)} exports):")
-                for i in range(0, len(fns), 3):
-                    row = fns[i:i+3]
-                    print("    " + "  ".join(BLUE(f.ljust(24)) for f in row))
+                print(f"  {DIM('─' * 58)}")
+                for name in sorted(fns.keys()):
+                    sig, desc, ex = fns[name]
+                    print(f"  {BLUE(sig):<28} {DIM(desc)}")
+                print(f"  {DIM('Usage:')} import \"{mod}\" as m")
+                print(f"  {DIM('Details:')} .doc {mod}.<func>  for examples")
                 return True
 
-            # Priority 2: query stdlib._MODULES directly (works for ALL 59 modules)
+            # Priority 2: query stdlib._MODULES directly (works for all modules)
             try:
                 from stdlib import _MODULES
                 if mod in _MODULES:
                     mod_dict = _MODULES[mod]
                     keys = sorted(k for k in mod_dict if not k.startswith("_"))
+                    if func_name:
+                        if func_name in mod_dict:
+                            val = mod_dict[func_name]
+                            print(f"\n  {BOLD(CYAN(f'{mod}.{func_name}'))}")
+                            print(f"  {DIM('Type:')} {_type_name(val)}")
+                        else:
+                            print(RED(f"  Unknown function '{func_name}' in {mod}"))
+                        return True
                     print(f"  {BOLD(CYAN(mod))} stdlib module ({len(keys)} exports):")
-                    W = 62
-                    col_w = 20
-                    per_row = max(1, W // (col_w + 2))
-                    for i in range(0, len(keys), per_row):
-                        row = keys[i:i+per_row]
-                        print("    " + "  ".join(CYAN(k.ljust(col_w)) for k in row))
+                    for k in keys:
+                        print(f"    {CYAN(k)}")
                     print(f"  {DIM('Usage:')} import \"{mod}\" as {mod[0].upper()}")
                     return True
             except Exception:
@@ -806,9 +966,8 @@ class EnhancedREPL:
                 if isinstance(env_mod, dict):
                     keys = [k for k in sorted(env_mod) if not k.startswith("_")]
                     print(f"  {BOLD(CYAN(mod))} — {len(keys)} exports:")
-                    for i in range(0, len(keys), 4):
-                        row = keys[i:i+4]
-                        print("    " + "  ".join(CYAN(k.ljust(16)) for k in row))
+                    for k in keys:
+                        print(f"    {CYAN(k)}")
                 else:
                     print(DIM(f"  Module '{mod}' not found."))
             except Exception as e:
@@ -834,14 +993,14 @@ class EnhancedREPL:
         elif c == ".save":
             if not arg: print(RED("  Usage: .save <file.ins>")); return True
             p = Path(arg)
-            p.write_text("\n".join(self._session))
+            p.write_text("\n".join(self._session), encoding="utf-8")
             print(GREEN(f"  Saved {len(self._session)} lines → {p}"))
 
         elif c in (".load", ".run"):
             if not arg: print(RED(f"  Usage: {c} <file.ins>")); return True
             p = Path(arg)
             if not p.exists(): print(RED(f"  File not found: {p}")); return True
-            source = p.read_text()
+            source = p.read_text(encoding="utf-8")
             print(DIM(f"  Loading {p}…"))
             result, err, ms = self._eval(source)
             if err: print(RED(f"  ✗ {err}"))
@@ -857,17 +1016,21 @@ class EnhancedREPL:
                 lines.append("```inscript\n" + entry + "\n```\n")
             content = "\n".join(lines)
             if arg:
-                Path(arg).write_text(content)
+                Path(arg).write_text(content, encoding="utf-8")
                 print(GREEN(f"  Exported {len(self._session)} entries → {arg}"))
             else:
                 print(content)
 
         elif c == ".time":
             if not arg: print(RED("  Usage: .time <expr>")); return True
-            times = [self._eval(arg)[2] for _ in range(10)]
-            avg = sum(times)/10
+            times = []
+            for _ in range(10):
+                _, err, ms = self._eval(arg)
+                if not err: times.append(ms)
+            if not times: print(RED("  All runs failed — nothing to report.")); return True
+            avg = sum(times)/len(times)
             print(f"  avg {CYAN(f'{avg:.2f}ms')}  min {GREEN(f'{min(times):.2f}ms')}  "
-                  f"max {YELLOW(f'{max(times):.2f}ms')}  (10 runs)")
+                  f"max {YELLOW(f'{max(times):.2f}ms')}  ({len(times)} runs)")
 
         elif c == ".bench":
             if not arg: print(RED("  Usage: .bench <expr>")); return True
@@ -875,8 +1038,11 @@ class EnhancedREPL:
             print(DIM(f"  Warming up (5 runs)…"))
             for _ in range(5): self._eval(arg)
             print(DIM(f"  Benchmarking ({N} runs)…"))
-            times = [self._eval(arg)[2] for _ in range(N)]
-            avg = sum(times)/N
+            times = []
+            for _ in range(N):
+                _, err, ms = self._eval(arg)
+                if not err: times.append(ms)
+            if not times: print(RED("  All runs failed — nothing to report.")); return True
             mn, mx = min(times), max(times)
             stddev = math.sqrt(sum((t-avg)**2 for t in times)/N)
             p50 = sorted(times)[N//2]
@@ -947,10 +1113,10 @@ class EnhancedREPL:
 
         # v1.6.0: .lint — run analyzer on current session buffer
         elif c == ".lint":
-            if not self._history:
+            session_src = "\n".join(self._session) if self._session else ""
+            if not session_src.strip():
                 print(ORANGE("  No session code to lint yet."))
             else:
-                session_src = "\n".join(self._history)
                 try:
                     from parser import parse as _parse
                     from analyzer import Analyzer
@@ -1148,7 +1314,7 @@ main{flex:1;display:grid;grid-template-columns:1fr 1fr;overflow:hidden}
 <body>
 <header>
   <div class="logo">&#127918; InScript <span>Playground</span></div>
-  <span class="vbadge">v1.0.5</span>
+  <span class="vbadge">v{VERSION}</span>
   <div class="hactions">
     <button class="btn btn-sec" onclick="shareCode()">&#128279; Share</button>
     <button class="btn btn-sec" onclick="clearOutput()">Clear</button>

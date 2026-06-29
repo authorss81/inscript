@@ -919,13 +919,15 @@ def run_scene(ins_file: str, width=800, height=600, fps=60, title=None, profile=
                 _e = _e.parent
 
     def _check_hook_breakpoint(hook_type):
-        """If debugger active and breakpoints set, pause at this hook."""
+        """If debugger active, check if this hook's start line has a breakpoint."""
         if dbgr is None or not dbgr.bp_manager.list():
             return False
-        # Check any breakpoint set for the scene file
-        for bp in dbgr.bp_manager.list():
-            if bp.filename == dbgr.filename or bp.filename == ins_file:
-                return True
+        for h in scene_node.hooks:
+            if h.hook_type == hook_type:
+                line = getattr(h, 'line', 0)
+                if line and dbgr.bp_manager.should_break(dbgr.filename, line):
+                    return True
+                break
         return False
 
     def _game_debug_repl(reason: str, hook_type: str = ""):
@@ -943,7 +945,8 @@ def run_scene(ins_file: str, width=800, height=600, fps=60, title=None, profile=
             print(f"  Hook: {hook_type}{line_info}")
         while True:
             try:
-                cmd = input("(game-debug) ").strip().lower()
+                raw = input("(game-debug) ").strip()
+                cmd = raw.lower()
             except (EOFError, KeyboardInterrupt):
                 print(); return
             if cmd in ("c", "continue"):
@@ -963,16 +966,19 @@ def run_scene(ins_file: str, width=800, height=600, fps=60, title=None, profile=
                 for _k, _v in sorted(_state.items()):
                     print(f"    {_k} = {_v}")
             elif cmd.startswith(".watch"):
-                arg = cmd.split(None, 1)[1] if " " in cmd else ""
+                arg = raw.split(None, 1)[1] if " " in raw else ""
                 dbgr._cmd_watch(arg)
             elif cmd.startswith("b "):
-                dbgr._cmd_break(cmd[2:])
+                dbgr._cmd_break(raw[2:])  # pass raw args (preserve case)
             elif cmd == "bl":
-                dbgr._cmd_break("")  # list breakpoints
-            elif cmd.startswith("bc "):
-                dbgr._cmd_delete(cmd[3:])
+                dbgr._cmd_list_breakpoints()
+            elif cmd.startswith("bd "):
+                dbgr._cmd_delete(raw[3:])  # bd = delete specific breakpoint
+            elif cmd == "bc":
+                dbgr.bp_manager.clear()
+                print("  All breakpoints cleared.")
             elif cmd.startswith(".set "):
-                dbgr._cmd_set(cmd[5:])
+                dbgr._cmd_set(raw[5:])  # pass raw args (preserve case)
             elif cmd in ("?", "help"):
                 print("  Game debug commands:")
                 print("    c, continue    — Resume normal execution")
@@ -982,12 +988,13 @@ def run_scene(ins_file: str, width=800, height=600, fps=60, title=None, profile=
                 print("    .globals       — List global variables")
                 print("    .stack         — Print call stack")
                 print("    .state         — List scene state dict")
-                print("    .watch <expr>  — Evaluate expression")
-                print("    .set <var>     — Set variable value")
+                print("    .watch <expr>  — Add expression to watch list")
+                print("    .set <var>=<v> — Set a variable's value")
                 print("    b <line>       — Set breakpoint at line")
                 print("    b <line> if <c>— Set conditional breakpoint")
                 print("    bl             — List breakpoints")
-                print("    bc <line>      — Clear breakpoint at line")
+                print("    bd <line>      — Delete breakpoint at line")
+                print("    bc             — Clear ALL breakpoints")
             else:
                 try:
                     dbgr._eval_expr(cmd)
@@ -998,17 +1005,7 @@ def run_scene(ins_file: str, width=800, height=600, fps=60, title=None, profile=
         """Check and enter debug REPL before a hook runs."""
         if dbgr is None:
             return
-        # Check for any breakpoint in the scene file
-        has_bps = _check_hook_breakpoint(hook_type)
-        if not has_bps:
-            # Also check line-level breakpoint at hook's start
-            for h in scene_node.hooks:
-                if h.hook_type == hook_type:
-                    line = getattr(h, 'line', 0)
-                    if line and dbgr.should_break(dbgr.filename, line):
-                        has_bps = True
-                    break
-        if has_bps:
+        if _check_hook_breakpoint(hook_type):
             _game_debug_repl(f"Breakpoint hit at {hook_type}", hook_type)
 
     def run_hook_phase7(hook_type, *args):
@@ -1121,7 +1118,7 @@ def run_scene(ins_file: str, width=800, height=600, fps=60, title=None, profile=
                 _ipc_data["type"] = "profile"
                 try:
                     _tmp = _IPC_STATE_FILE + ".tmp"
-                    with open(_tmp, "w") as _f:
+                    with open(_tmp, "w", encoding="utf-8") as _f:
                         json.dump(_ipc_data, _f)
                     os.replace(_tmp, _IPC_STATE_FILE)
                 except Exception:
