@@ -369,9 +369,278 @@ class _Animator:
 
     def __repr__(self): return f"<Animator clip={self._current!r} frame={self._frame_idx} done={self._done}>"
 
+# ═══════════════════════════════════════════════════════════════════════════
+# 5.3 — animation module (continued): v3.9.6.43 Animation Player
+# ═══════════════════════════════════════════════════════════════════════════
+
+import math as _anim_math
+
+def _anim_ease_linear(t):
+    return t
+
+def _anim_ease_in_quad(t):
+    return t * t
+
+def _anim_ease_out_quad(t):
+    return t * (2 - t)
+
+def _anim_ease_io_quad(t):
+    return 2 * t * t if t < 0.5 else -1 + (4 - 2 * t) * t
+
+def _anim_ease_in_cubic(t):
+    return t * t * t
+
+def _anim_ease_out_cubic(t):
+    p = t - 1
+    return p * p * p + 1
+
+def _anim_ease_out_bounce(t):
+    n1, d1 = 7.5625, 2.75
+    if t < 1 / d1:
+        return n1 * t * t
+    if t < 2 / d1:
+        t -= 1.5 / d1
+        return n1 * t * t + 0.75
+    if t < 2.5 / d1:
+        t -= 2.25 / d1
+        return n1 * t * t + 0.9375
+    t -= 2.625 / d1
+    return n1 * t * t + 0.984375
+
+def _anim_ease_in_bounce(t):
+    return 1 - _anim_ease_out_bounce(1 - t)
+
+def _anim_ease_out_elastic(t):
+    c4 = (2 * _anim_math.pi) / 3
+    if t == 0:
+        return 0
+    if t == 1:
+        return 1
+    return 2 ** (-10 * t) * _anim_math.sin((t * 10 - 0.75) * c4) + 1
+
+def _anim_ease_in_elastic(t):
+    c4 = (2 * _anim_math.pi) / 3
+    if t == 0:
+        return 0
+    if t == 1:
+        return 1
+    return -(2 ** (10 * t - 10)) * _anim_math.sin((t * 10 - 10.75) * c4)
+
+_EASING_FUNCS = {
+    "linear":       _anim_ease_linear,
+    "ease_in":      _anim_ease_in_quad,
+    "ease_out":     _anim_ease_out_quad,
+    "ease_in_out":  _anim_ease_io_quad,
+    "ease_in_quad": _anim_ease_in_quad,
+    "ease_out_quad":_anim_ease_out_quad,
+    "ease_in_cubic":_anim_ease_in_cubic,
+    "ease_out_cubic":_anim_ease_out_cubic,
+    "ease_in_bounce":_anim_ease_in_bounce,
+    "ease_out_bounce":_anim_ease_out_bounce,
+    "ease_in_elastic":_anim_ease_in_elastic,
+    "ease_out_elastic":_anim_ease_out_elastic,
+}
+
+def _lerp_val(a, b, t):
+    if isinstance(a, (int, float)) and isinstance(b, (int, float)):
+        return a + (b - a) * t
+    if isinstance(a, dict) and isinstance(b, dict) and "x" in a and "y" in a:
+        return {"x": a["x"] + (b["x"] - a["x"]) * t, "y": a["y"] + (b["y"] - a["y"]) * t}
+    if isinstance(a, dict) and isinstance(b, dict) and "r" in a:
+        return {"r": a["r"] + (b["r"] - a["r"]) * t,
+                "g": a["g"] + (b["g"] - a["g"]) * t,
+                "b": a["b"] + (b["b"] - a["b"]) * t,
+                "a": (a.get("a", 1) + (b.get("a", 1) - a.get("a", 1))) * t}
+    return b if t >= 0.5 else a
+
+class _Keyframe:
+    def __init__(self, time, value, easing="linear"):
+        self.time = float(time)
+        self.value = value
+        self.easing = easing if easing in _EASING_FUNCS else "linear"
+
+    def __repr__(self):
+        return f"<Keyframe t={self.time} val={self.value!r} ease={self.easing}>"
+
+class _Track:
+    def __init__(self, name, keyframes=None, mode="parallel"):
+        self.name = name
+        self.keyframes = list(keyframes or [])
+        self.mode = mode
+        if self.keyframes:
+            self.keyframes.sort(key=lambda kf: kf.time)
+        self._duration = max((kf.time for kf in self.keyframes), default=0.0)
+
+    def add_keyframe(self, kf):
+        self.keyframes.append(kf)
+        self.keyframes.sort(key=lambda kf: kf.time)
+        self._duration = max(kf.time, self._duration)
+
+    def duration(self):
+        return self._duration
+
+    def sample(self, t):
+        if not self.keyframes:
+            return None
+        if t <= self.keyframes[0].time:
+            return self.keyframes[0].value
+        if t >= self.keyframes[-1].time:
+            return self.keyframes[-1].value
+        for i in range(len(self.keyframes) - 1):
+            a = self.keyframes[i]
+            b = self.keyframes[i + 1]
+            if a.time <= t < b.time:
+                span = b.time - a.time
+                local_t = (t - a.time) / span if span > 0 else 0.0
+                easing_fn = _EASING_FUNCS.get(a.easing, _anim_ease_linear)
+                et = easing_fn(max(0.0, min(1.0, local_t)))
+                return _lerp_val(a.value, b.value, et)
+        return self.keyframes[-1].value
+
+    def __repr__(self):
+        return f"<Track '{self.name}' {len(self.keyframes)} kf dur={self._duration:.2f}s>"
+
+class _AnimationPlayer:
+    def __init__(self):
+        self._tracks = {}
+        self._playing = False
+        self._paused = False
+        self._time = 0.0
+        self._speed = 1.0
+        self._loop = False
+        self._duration = 0.0
+        self._done = False
+        self._order = []
+
+    def add_track(self, name, keyframes=None, mode="parallel"):
+        if isinstance(name, _Track):
+            track = name
+            name = track.name
+        else:
+            track = _Track(str(name), keyframes, mode)
+        self._tracks[name] = track
+        if name not in self._order:
+            self._order.append(name)
+        self._rebuild_duration()
+        return track
+
+    def remove_track(self, name):
+        self._tracks.pop(str(name), None)
+        self._order = [n for n in self._order if n != str(name)]
+        self._rebuild_duration()
+
+    def _rebuild_duration(self):
+        dur = 0.0
+        sequential_offset = 0.0
+        for name in self._order:
+            t = self._tracks[name]
+            if t.mode == "parallel":
+                dur = max(dur, sequential_offset + t.duration())
+            else:
+                sequential_offset += t.duration()
+                dur = max(dur, sequential_offset)
+        self._duration = dur
+
+    def play(self, loop=False):
+        self._playing = True
+        self._paused = False
+        self._loop = bool(loop)
+        if self._done:
+            self._time = 0.0
+            self._done = False
+
+    def set_loop(self, v):
+        self._loop = bool(v)
+
+    def pause(self):
+        self._paused = True
+
+    def resume(self):
+        self._paused = False
+
+    def stop(self):
+        self._playing = False
+        self._paused = False
+        self._time = 0.0
+        self._done = False
+
+    def seek(self, t):
+        self._time = max(0.0, float(t))
+
+    def set_speed(self, v):
+        self._speed = max(0.0, float(v))
+
+    def update(self, dt):
+        if not self._playing or self._paused or self._done:
+            return
+        self._time += float(dt) * self._speed
+        if self._time >= self._duration:
+            if self._loop:
+                self._time %= self._duration
+            else:
+                self._time = self._duration
+                self._done = True
+                self._playing = False
+
+    def value(self, name):
+        track = self._tracks.get(str(name))
+        if track is None:
+            return None
+        t = self._time
+        sequential_offset = 0.0
+        for n in self._order:
+            tr = self._tracks[n]
+            if n == str(name):
+                sample_t = t - sequential_offset if tr.mode == "sequential" else t
+                return tr.sample(sample_t)
+            if tr.mode == "sequential":
+                sequential_offset += tr.duration()
+        return None
+
+    def values(self):
+        result = {}
+        for name in self._tracks:
+            result[name] = self.value(name)
+        return result
+
+    @property
+    def time(self):
+        return self._time
+
+    @property
+    def speed(self):
+        return self._speed
+
+    @speed.setter
+    def speed(self, v):
+        self._speed = max(0.0, float(v))
+
+    @property
+    def playing(self):
+        return self._playing
+
+    @property
+    def done(self):
+        return self._done
+
+    @property
+    def duration(self):
+        return self._duration
+
+    @property
+    def progress(self):
+        return min(self._time / self._duration, 1.0) if self._duration > 0 else 0.0
+
+    def __repr__(self):
+        return f"<AnimationPlayer {len(self._tracks)} tracks t={self._time:.2f}/{self._duration:.2f}s playing={self._playing}>"
+
 register_module("animation", _wrapmod({
     "Clip":     lambda name, frame_names, fps=12, loop=True: _Clip(name, frame_names, fps, loop),
     "Animator": _Animator,
+    # v43: Animation Player
+    "keyframe":   _Keyframe,
+    "Track":      _Track,
+    "AnimationPlayer": _AnimationPlayer,
 }, "animation"))
 
 # ═══════════════════════════════════════════════════════════════════════════

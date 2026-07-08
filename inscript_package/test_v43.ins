@@ -1,0 +1,163 @@
+test "AnimationPlayer: create" {
+  import "animation" as anim
+  let p = anim.AnimationPlayer()
+  assert(p != nil)
+  assert(p.playing == false)
+  assert(p.done == false)
+  assert(p.progress == 0.0)
+}
+
+test "AnimationPlayer: add_track and sample" {
+  import "animation" as anim
+  let p = anim.AnimationPlayer()
+  let t = anim.Track("x", [anim.keyframe(0.0, 0), anim.keyframe(1.0, 100)])
+  p.add_track(t)
+  assert(p.duration == 1.0)
+  let v1 = p.value("x")
+  assert(v1 == 0)
+  p.seek(0.5)
+  let v2 = p.value("x")
+  assert(v2 == 50)
+  p.seek(1.0)
+  let v3 = p.value("x")
+  assert(v3 == 100)
+}
+
+test "AnimationPlayer: create track from keyframes" {
+  import "animation" as anim
+  let p = anim.AnimationPlayer()
+  p.add_track("y", [anim.keyframe(0.0, 10), anim.keyframe(2.0, 20)])
+  p.seek(1.0)
+  let v = p.value("y")
+  assert(v == 15)
+}
+
+test "AnimationPlayer: play and update" {
+  import "animation" as anim
+  let p = anim.AnimationPlayer()
+  p.add_track("x", [anim.keyframe(0.0, 0), anim.keyframe(1.0, 100)])
+  p.play()
+  assert(p.playing == true)
+  p.update(0.5)
+  assert(p.time > 0.0)
+  assert(p.done == false)
+}
+
+test "AnimationPlayer: reaches end" {
+  import "animation" as anim
+  let p = anim.AnimationPlayer()
+  p.add_track("x", [anim.keyframe(0.0, 0), anim.keyframe(0.1, 100)])
+  p.play()
+  p.update(0.2)
+  assert(p.done == true)
+  assert(p.playing == false)
+}
+
+test "AnimationPlayer: loop" {
+  import "animation" as anim
+  let p = anim.AnimationPlayer()
+  p.add_track("x", [anim.keyframe(0.0, 0), anim.keyframe(0.1, 100)])
+  p.play(true)
+  p.update(0.15)
+  assert(p.done == false)
+}
+
+test "AnimationPlayer: pause and resume" {
+  import "animation" as anim
+  let p = anim.AnimationPlayer()
+  p.add_track("x", [anim.keyframe(0.0, 0), anim.keyframe(1.0, 100)])
+  p.play()
+  p.update(0.3)
+  p.pause()
+  let t1 = p.time
+  p.update(0.5)
+  assert(p.time == t1)
+  p.resume()
+  p.update(0.2)
+  assert(p.time > t1)
+}
+
+test "AnimationPlayer: stop resets" {
+  import "animation" as anim
+  let p = anim.AnimationPlayer()
+  p.add_track("x", [anim.keyframe(0.0, 0), anim.keyframe(1.0, 100)])
+  p.play()
+  p.update(0.5)
+  p.stop()
+  assert(p.time == 0.0)
+  assert(p.playing == false)
+  assert(p.done == false)
+}
+
+test "AnimationPlayer: speed control" {
+  import "animation" as anim
+  let p = anim.AnimationPlayer()
+  p.set_speed(2.0)
+  p.add_track("x", [anim.keyframe(0.0, 0), anim.keyframe(1.0, 100)])
+  p.play()
+  p.update(0.5)
+  assert(p.time == 1.0)
+  assert(p.value("x") == 100)
+}
+
+test "AnimationPlayer: seek" {
+  import "animation" as anim
+  let p = anim.AnimationPlayer()
+  p.add_track("x", [anim.keyframe(0.0, 0), anim.keyframe(1.0, 100)])
+  p.seek(0.8)
+  assert(p.value("x") == 80)
+}
+
+test "AnimationPlayer: easing" {
+  import "animation" as anim
+  let p = anim.AnimationPlayer()
+  p.add_track("x", [anim.keyframe(0.0, 0, "ease_out_bounce"), anim.keyframe(1.0, 100)])
+  p.seek(0.5)
+  let v = p.value("x")
+  assert(v >= 0)
+  assert(v <= 100)
+}
+
+test "AnimationPlayer: sequential tracks" {
+  import "animation" as anim
+  let p = anim.AnimationPlayer()
+  p.add_track("a", [anim.keyframe(0.0, 0), anim.keyframe(0.5, 10)], "sequential")
+  p.add_track("b", [anim.keyframe(0.0, 100), anim.keyframe(0.5, 200)], "sequential")
+  p.seek(0.25)
+  assert(p.value("a") == 5)
+  p.seek(0.75)
+  assert(p.value("b") == 150)
+}
+
+test "AnimationPlayer: values() dict" {
+  import "animation" as anim
+  let p = anim.AnimationPlayer()
+  p.add_track("x", [anim.keyframe(0.0, 0), anim.keyframe(1.0, 10)])
+  p.add_track("y", [anim.keyframe(0.0, 100), anim.keyframe(1.0, 200)])
+  p.seek(0.5)
+  let vals = p.values()
+  assert(vals["x"] == 5)
+  assert(vals["y"] == 150)
+}
+
+test "AnimationPlayer: remove_track" {
+  import "animation" as anim
+  let p = anim.AnimationPlayer()
+  p.add_track("x", [anim.keyframe(0.0, 0), anim.keyframe(1.0, 10)])
+  p.add_track("y", [anim.keyframe(0.0, 100), anim.keyframe(1.0, 200)])
+  p.remove_track("x")
+  assert(p.value("x") == nil)
+  assert(p.value("y") == 100)
+}
+
+test "AnimationPlayer: multiple play resets time" {
+  import "animation" as anim
+  let p = anim.AnimationPlayer()
+  p.add_track("x", [anim.keyframe(0.0, 0), anim.keyframe(1.0, 100)])
+  p.play()
+  p.update(1.5)
+  assert(p.done == true)
+  p.play()
+  assert(p.time == 0.0)
+  assert(p.done == false)
+}

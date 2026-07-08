@@ -1,6 +1,6 @@
 [package]
 name = "inscript"
-version = "3.9.6.42"
+version = "3.9.6.43"
 edition = "2024"
 authors = ["Shreyasi Sarkar"]
 license = "MIT"

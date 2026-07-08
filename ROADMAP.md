@@ -1,6 +1,6 @@
 # InScript Roadmap — Production-Grade Microversion Plan
 
-> **Current:** v3.9.6.42 — Particles: advanced stdlib (emission shapes, curves, sub-emitters, attractors, trails, collision, pre-warm). Phase 12 items up to v42 complete.
+> **Current:** v3.9.6.45 — Animation: tween system (AnimationPlayer, state machine, built-in tween namespace).
 > 
 > **Version scheme:** MAJOR.MINOR.PATCH.MICRO — each micro targets a discrete production feature.
 > After v3.9.6.99, roll to v3.9.7.0 for the next feature cluster.
@@ -407,12 +407,12 @@ Parallel microversion to v3.9.6.13. Fixes 6 pre-existing Rust lexer tests by bri
 - [x] Particle collision with scene bodies (`collision_enabled` + bounds/bounce/dampening)
 - [x] Pre-warm (simulate N seconds at spawn via `pre_warm(duration)`)
 
-### v3.9.6.43 — Animation: animation player
-- [ ] `AnimationPlayer` namespace
-- [ ] Property keyframing: position, rotation, scale, color, etc.
-- [ ] Interpolation modes: linear, ease, cubic, bounce, elastic
-- [ ] Animation tracks: parallel, sequential
-- [ ] Play, pause, stop, seek, speed control
+### v3.9.6.43 — Animation: animation player ✅
+- [x] `AnimationPlayer` class (importable via `import "animation"`)
+- [x] Property keyframing: position (vec2), rotation (scalar), color, generic values
+- [x] Interpolation modes: linear, ease quad/cubic/bounce/elastic
+- [x] Animation tracks: parallel, sequential
+- [x] Play, pause, stop, seek, speed control
 
 ### v3.9.6.44 — Animation: state machine
 - [ ] `AnimationStateMachine` — states + transitions
@@ -427,6 +427,34 @@ Parallel microversion to v3.9.6.13. Fixes 6 pre-existing Rust lexer tests by bri
 - [ ] Easing presets: 30+ functions
 - [ ] Sequence / parallel tween groups
 - [ ] Ping-pong, loop, delay, on_complete callback
+
+### v3.9.6.46 — Animation: advanced features
+- [ ] Animation layers (overlay multiple animations on one target)
+- [ ] Additive blending (layer contributes delta, not absolute)
+- [ ] Animation masking (exclude specific properties per layer)
+- [ ] Animation event callbacks (fire InScript callbacks at keyframe times)
+- [ ] Runtime speed curve per layer (time remapping)
+
+### v3.9.6.47 — Audio: positional audio + audio bus
+- [ ] Spatial audio (2D pan + distance-based volume falloff)
+- [ ] Audio bus system (master, music, SFX, voice groups)
+- [ ] Per-bus volume, mute, solo controls
+- [ ] Audio effects (low-pass, reverb zones per room)
+- [ ] Positional listener (follow camera or entity)
+
+### v3.9.6.48 — Input: action map system
+- [ ] `InputMap` — declarative action→key bindings (JSON-like config)
+- [ ] Action rebinding at runtime (persist to save file)
+- [ ] Input chords (Shift+W = sprint, not just W)
+- [ ] Gesture detection (swipe, long-press, double-tap)
+- [ ] Input device query (keyboard vs gamepad active)
+
+### v3.9.6.49 — Camera: advanced 2D camera
+- [ ] Follow smoothing (lerp towards target, dead zone, look-ahead)
+- [ ] Screen shake with configurable intensity/duration/decay
+- [ ] Zoom bounds (min/max zoom, smooth zoom-to-target)
+- [ ] Parallax layers (multi-layer scrolling at different rates)
+- [ ] Camera transition effects (fade-to-black, wipe, zoom-in)
 
 ---
 
