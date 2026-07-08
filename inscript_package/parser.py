@@ -1704,7 +1704,7 @@ class Parser:
             self.advance()
             right = self.parse_shift()
             return BinaryExpr(left=left, op="in", right=right, line=line, col=col)
-        if self.check(TT.IDENT) and self.current.value == "not":
+        if (self.check(TT.IDENT) and self.current.value == "not") or self.check(TT.NOT):
             saved = self.pos
             self.advance()
             if self.check(TT.IN):

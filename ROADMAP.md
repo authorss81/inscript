@@ -1,6 +1,6 @@
 # InScript Roadmap — Production-Grade Microversion Plan
 
-> **Current:** v3.9.6.39 — GUI: gradients + stylesheets (gradient_rect, .insstyle loader, style cascade). Phase 11 items up to v39 complete.
+> **Current:** v3.9.6.42 — Particles: advanced stdlib (emission shapes, curves, sub-emitters, attractors, trails, collision, pre-warm). Phase 12 items up to v42 complete.
 > 
 > **Version scheme:** MAJOR.MINOR.PATCH.MICRO — each micro targets a discrete production feature.
 > After v3.9.6.99, roll to v3.9.7.0 for the next feature cluster.
@@ -386,26 +386,26 @@ Parallel microversion to v3.9.6.13. Fixes 6 pre-existing Rust lexer tests by bri
 
 **P1 gap:** Particle system is demo-only, animation system is a standalone script.
 
-### v3.9.6.40 — Particles: built-in particle API
-- [ ] `particles` namespace module
-- [ ] `ParticleEmitter` — position, rate, lifetime, max particles
-- [ ] Particle properties: position, velocity, color, size, rotation, alpha
-- [ ] Emission shapes: point, circle, rectangle, cone
-- [ ] GPU acceleration (pre-compute batch for sprite drawing)
+### v3.9.6.40 — Particles: built-in particle API ✅
+- [x] `particles` namespace module (alias `particle`/`particles`)
+- [x] `ParticleEmitter` — position, rate, lifetime, max particles, rotation
+- [x] Particle properties: position, velocity, color, size, rotation, alpha
+- [x] Emission shapes: point, circle, rectangle, cone
+- [x] GPU acceleration (pre-compute batch for sprite drawing → `draw_batch()`)
 
-### v3.9.6.41 — Particles: curve-based property modulation
-- [ ] Size-over-lifetime curve
-- [ ] Color-over-lifetime gradient
-- [ ] Velocity-over-lifetime (wind, gravity wells)
-- [ ] Alpha/fade-over-lifetime
-- [ ] Rotation-over-lifetime
+### v3.9.6.41 — Particles: curve-based property modulation ✅
+- [x] Size-over-lifetime curve (`_Curve` with linear/sine/quadratic/exponential/bounce/elastic)
+- [x] Color-over-lifetime gradient (via `alpha_curve` + existing color_start/color_end)
+- [x] Velocity-over-lifetime (wind, gravity wells, `velocity_curve`)
+- [x] Alpha/fade-over-lifetime (`alpha_curve`)
+- [x] Rotation-over-lifetime (`rotation_curve`)
 
-### v3.9.6.42 — Particles: advanced features
-- [ ] Sub-emitters (emit on death, on collision)
-- [ ] Attractor / repeller zones
-- [ ] Particle trails / ribbons
-- [ ] Particle collision with scene bodies
-- [ ] Pre-warm (simulate N seconds at spawn)
+### v3.9.6.42 — Particles: advanced features ✅
+- [x] Sub-emitters (emit on particle death via `sub_emitter`)
+- [x] Attractor / repeller zones (`_AttractorZone` class, `add_attractor`/`clear_attractors`)
+- [x] Particle trails / ribbons (`trail_length`/`trail_spacing`)
+- [x] Particle collision with scene bodies (`collision_enabled` + bounds/bounce/dampening)
+- [x] Pre-warm (simulate N seconds at spawn via `pre_warm(duration)`)
 
 ### v3.9.6.43 — Animation: animation player
 - [ ] `AnimationPlayer` namespace

@@ -734,6 +734,11 @@ class Interpreter(Visitor):
                 gen_env = Environment(parent=closure_env, name=f"gen:{node.name}")
                 gen_interp._env = gen_env
 
+                # v3.9.6.x: debugging attributes (set in __init__ but skipped by __new__)
+                gen_interp._debug    = False
+                gen_interp._debugger = None
+                gen_interp._paused   = False
+
                 # Bind parameters inside the generator scope
                 for i, param in enumerate(node.params):
                     default_val = (gen_interp.visit(param.default)

@@ -399,6 +399,139 @@ if data:
 emitter.set_position(100, 200)
 ok("set_position updates x/y",          emitter.x == 100 and emitter.y == 200)
 
+# ── v3.9.6.40: emission shapes, rotation, max_particles ────────────────────
+section("5.7a — particle v40 features")
+
+em2 = particle["Emitter"](400, 300)
+ok("v40: Emitter x/y",                  em2.x == 400 and em2.y == 300)
+ok("v40: default max_particles=1000",    em2.max_particles == 1000)
+ok("v40: default emission_shape=point",  em2.emission_shape == "point")
+ok("v40: default one_shot=False",        em2.one_shot == False)
+
+particle["set_shape"](em2, "circle", r=30)
+ok("v40: set_shape circle radius 30",    em2.emission_shape == "circle" and em2.emission_radius == 30.0)
+
+particle["set_shape"](em2, "rectangle", w=100, h=50)
+ok("v40: set_shape rect 100x50",         em2.emission_shape == "rectangle" and em2.emission_width == 100.0)
+
+particle["set_shape"](em2, "cone", r=80, a=45)
+ok("v40: set_shape cone angle 45",       em2.emission_shape == "cone" and em2.emission_angle == 45.0)
+
+particle["max_particles"](em2, 50)
+ok("v40: max_particles=50",              em2.max_particles == 50)
+
+em2.burst(100)
+ok("v40: burst capped at max_particles", em2.count == 50)
+
+particle["rotation_start"](em2, 0.0)
+particle["rotation_end"](em2, 360.0)
+ok("v40: rotation range set",            em2.rotation_end == 360.0)
+
+particle["rotation_speed"](em2, -90, 90)
+ok("v40: rotation_speed range",          em2.rotation_speed_range == (-90.0, 90.0))
+
+batch = particle["draw_batch"](em2)
+ok("v40: draw_batch returns list",       isinstance(batch, list))
+if batch:
+    ok("v40: batch has rotation key",    "rotation" in batch[0])
+
+particle["one_shot"](em2, True)
+ok("v40: one_shot=True",                 em2.one_shot == True)
+
+particle["local_space"](em2, True)
+ok("v40: local_space=True",              em2.local_space == True)
+
+em2._particles.clear()
+em2.start()
+ok("v40: one_shot start calls burst",    em2.count == int(em2.rate))
+
+# ── v3.9.6.41: curves ─────────────────────────────────────────────────────
+section("5.7b — particle v41 curves")
+
+c = particle["curve"]("linear", 0.0, 1.0)
+ok("v41: curve linear",                 callable(c.evaluate))
+ok("v41: linear eval 0=0",              abs(c.evaluate(0.0) - 0.0) < 0.01)
+ok("v41: linear eval 0.5=0.5",          abs(c.evaluate(0.5) - 0.5) < 0.01)
+ok("v41: linear eval 1=1",              abs(c.evaluate(1.0) - 1.0) < 0.01)
+
+cq = particle["curve"]("quadratic", 1.0, 0.0)
+ok("v41: quadratic eval 0=1",           abs(cq.evaluate(0.0) - 1.0) < 0.01)
+ok("v41: quadratic eval 1=0",           abs(cq.evaluate(1.0) - 0.0) < 0.01)
+
+cs = particle["curve"]("sine", 0.0, 1.0)
+ok("v41: sine eval 0=0",                abs(cs.evaluate(0.0) - 0.0) < 0.01)
+ok("v41: sine eval 1=1",                abs(cs.evaluate(1.0) - 1.0) < 0.01)
+
+ce = particle["curve"]("exponential", 0.0, 1.0)
+ok("v41: exponential eval 0=0",         abs(ce.evaluate(0.0) - 0.0) < 0.01)
+
+cb = particle["curve"]("bounce", 0.0, 1.0)
+ok("v41: bounce shape exists",          cb.shape == "bounce")
+
+# Set curves on emitter
+em3 = particle["Emitter"](0, 0)
+particle["set_size_curve"](em3, cq)
+ok("v41: size_curve set",               em3.size_curve is cq)
+particle["set_alpha_curve"](em3, cs)
+ok("v41: alpha_curve set",              em3.alpha_curve is cs)
+particle["set_velocity_curve"](em3, ce)
+ok("v41: velocity_curve set",           em3.velocity_curve is ce)
+particle["set_rotation_curve"](em3, c)
+ok("v41: rotation_curve set",           em3.rotation_curve is c)
+
+# Wind
+particle["wind"](em3, 10.0, 0.0)
+ok("v41: wind_x set",                   em3.wind_x == 10.0)
+ok("v41: wind_y set",                   em3.wind_y == 0.0)
+
+# ── v3.9.6.42: advanced features ──────────────────────────────────────────
+section("5.7c — particle v42 advanced")
+
+em4 = particle["Emitter"](100, 100)
+
+# Trail
+particle["set_trail"](em4, 10)
+ok("v42: trail_length set",             em4.trail_length == 10)
+ok("v42: trail_spacing default",        abs(em4.trail_spacing - 0.02) < 0.001)
+
+# Collision
+particle["set_collision"](em4, True, (0, 0, 800, 600))
+ok("v42: collision enabled",            em4.collision_enabled == True)
+ok("v42: collision bounds",             em4.collision_bounds == (0.0, 0.0, 800.0, 600.0))
+ok("v42: bounce factor default",        abs(em4.bounce_factor - 0.5) < 0.01)
+
+# Attractors
+particle["add_attractor"](em4, 200, 200, -100, 150)
+ok("v42: attractor added",              len(em4._attractors) == 1)
+particle["clear_attractors"](em4)
+ok("v42: attractors cleared",           len(em4._attractors) == 0)
+
+# Pre-warm
+em4.burst(10)
+init_count = em4.count
+particle["pre_warm"](em4, 0.1)
+ok("v42: pre_warm runs without error",  True)
+
+# Sub-emitter
+child = particle["Emitter"](0, 0)
+particle["sub_emitter"](em4, child)
+ok("v42: sub_emitter set",              em4.sub_emitter is child)
+
+# Full update cycle with collision + attractors + trails
+em5 = particle["Emitter"](400, 300)
+particle["set_collision"](em5, True, (0, 0, 800, 600))
+particle["set_trail"](em5, 3)
+particle["add_attractor"](em5, 400, 300, -200, 200)
+em5.burst(5)
+for _ in range(10):
+    em5.update(0.016)
+ok("v42: full update cycle ok",         em5.count <= 5)
+
+# particles alias module
+p_alias = load("particles")
+ok("v42: particles alias loads",        p_alias is not None)
+ok("v42: particles has Emitter",        callable(p_alias["Emitter"]))
+
 # ─────────────────────────────────────────────────────────────────────────────
 # 5.8 — pathfind
 # ─────────────────────────────────────────────────────────────────────────────
@@ -833,7 +966,7 @@ section("Regression — all prior suites")
 
 import subprocess
 prior = ["test_lexer.py","test_parser.py","test_interpreter.py",
-         "test_analyzer.py","test_stdlib.py","test_v12.py","test_audit.py"]
+         "test_analyzer.py","test_stdlib2.py","test_v12.py","test_audit.py"]
 for tfile in prior:
     res = subprocess.run(
         [sys.executable, tfile],

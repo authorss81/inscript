@@ -802,34 +802,143 @@ register_module("camera2d", _wrapmod({
 }, "camera2d"))
 
 # ═══════════════════════════════════════════════════════════════════════════
-# 5.7 — particle module
+# 5.7 — particle module (v3.9.6.40-42: emission shapes, curves, advanced)
 # ═══════════════════════════════════════════════════════════════════════════
 
 import random as _random
 import math as _math
+from collections import namedtuple as _namedtuple
 
+# ── v3.9.6.41: Curve class ─────────────────────────────────────────────────
+class _Curve:
+    """Keyframe-less curve: shape + interpolation between start/end over t∈[0,1]."""
+    SHAPES = frozenset({"linear", "sine", "quadratic", "exponential", "bounce", "elastic"})
+    __slots__ = ("shape", "start", "end")
+
+    def __init__(self, shape="linear", start=0.0, end=1.0):
+        self.shape = str(shape)
+        self.start = float(start)
+        self.end   = float(end)
+
+    def evaluate(self, t):
+        t = max(0.0, min(1.0, float(t)))
+        s, e = self.start, self.end
+        if self.shape == "linear":
+            return s + (e - s) * t
+        if self.shape == "sine":
+            return s + (e - s) * _math.sin(t * _math.pi / 2.0)
+        if self.shape == "quadratic":
+            return s + (e - s) * t * t
+        if self.shape == "exponential":
+            return s + (e - s) * (1.0 - _math.exp(-t * 5.0))
+        if self.shape == "bounce":
+            if t < 0.5: return s + (e - s) * (2.0 * t * t)
+            return s + (e - s) * (1.0 - (-2.0 * t * t + 4.0 * t - 1.0) / 2.0)
+        if self.shape == "elastic":
+            return s + (e - s) * _math.pow(2.0, -10.0 * t) * _math.sin((t - 0.075) * 2.0 * _math.pi / 0.3) + s
+        return s
+
+    def __repr__(self):
+        return f"<_Curve({self.shape} {self.start}→{self.end})>"
+
+
+# ── v3.9.6.42: Attractor zone ──────────────────────────────────────────────
+class _AttractorZone:
+    __slots__ = ("x", "y", "strength", "radius")
+    def __init__(self, x, y, strength, radius):
+        self.x = float(x); self.y = float(y)
+        self.strength = float(strength)
+        self.radius   = float(radius)
+
+    def apply(self, p, dt):
+        dx = self.x - p.x
+        dy = self.y - p.y
+        dist = _math.hypot(dx, dy)
+        if dist < 0.001 or dist > self.radius:
+            return
+        force = self.strength * (1.0 - dist / self.radius) * dt
+        p.vx += (dx / dist) * force
+        p.vy += (dy / dist) * force
+
+
+# ── v3.9.6.40: Enhanced _Particle with rotation, acceleration, trails ─────
 class _Particle:
-    __slots__ = ("x","y","vx","vy","life","max_life",
+    __slots__ = ("x","y","vx","vy","ax","ay","life","max_life",
                  "r0","g0","b0","a0","r1","g1","b1","a1",
-                 "size","size_end","gx","gy")
+                 "size","size_end","rotation","rotation_speed","gx","gy",
+                 "trail_x","trail_y","sub_triggered")
     def __init__(self, x, y, vx, vy, life,
                  r0, g0, b0, a0, r1, g1, b1, a1,
-                 size, size_end, gx, gy):
+                 size, size_end, gx, gy, rotation=0.0, rotation_speed=0.0):
         self.x=x; self.y=y; self.vx=vx; self.vy=vy
+        self.ax=0.0; self.ay=0.0
         self.life=life; self.max_life=life
         self.r0=r0; self.g0=g0; self.b0=b0; self.a0=a0
         self.r1=r1; self.g1=g1; self.b1=b1; self.a1=a1
         self.size=size; self.size_end=size_end
+        self.rotation=rotation; self.rotation_speed=rotation_speed
         self.gx=gx; self.gy=gy
+        self.trail_x=[]; self.trail_y=[]
+        self.sub_triggered=False
 
+    def _t(self):
+        return 1.0 - self.life / max(self.max_life, 0.0001)
+
+
+# ── v3.9.6.40-42: Full _Emitter (ParticleEmitter) ─────────────────────────
 class _Emitter:
     def __init__(self, x=0, y=0):
         self.x = float(x); self.y = float(y)
+
         # Emission
-        self.rate = 30.0          # particles per second
+        self.rate = 30.0
         self.lifetime = (0.5, 1.5)
         self.speed = (50.0, 150.0)
         self.angle = (0.0, 360.0)
+        self.max_particles = 1000
+
+        # v40: Rotation
+        self.rotation_start = 0.0
+        self.rotation_end = 0.0
+        self.rotation_speed_range = (0.0, 0.0)
+
+        # v40: Emission shapes
+        self.emission_shape = "point"
+        self.emission_radius = 0.0
+        self.emission_width = 0.0
+        self.emission_height = 0.0
+        self.emission_angle = 0.0
+
+        # v40: Modes
+        self.one_shot = False
+        self.local_space = False
+
+        # v41: Curves
+        self.size_curve = None
+        self.alpha_curve = None
+        self.velocity_curve = None
+        self.rotation_curve = None
+
+        # v41: Environment
+        self.wind_x = 0.0
+        self.wind_y = 0.0
+
+        # v42: Sub-emitter
+        self.sub_emitter = None
+
+        # v42: Attractors
+        self._attractors = []
+
+        # v42: Trails
+        self.trail_length = 0
+        self.trail_spacing = 0.02
+
+        # v42: Collision
+        self.collision_enabled = False
+        self.bounce_factor = 0.5
+        self.collision_dampening = 0.5
+        self.collision_bounds = None  # (x, y, w, h) or None
+
         # Appearance
         self.color_start = {"r": 1.0, "g": 0.8, "b": 0.0, "a": 1.0}
         self.color_end   = {"r": 1.0, "g": 0.0, "b": 0.0, "a": 0.0}
@@ -837,93 +946,384 @@ class _Emitter:
         self.size_end   = 0.0
         self.gravity_x  = 0.0
         self.gravity_y  = 50.0
+
         # State
         self._particles = []
         self._running = False
         self._accumulator = 0.0
+        self._trail_accum = 0.0
+
+    # ── spawn position helpers for emission shapes ─────────────────────────
+    def _spawn_pos(self):
+        sx, sy = self.x, self.y
+        shape = self.emission_shape
+        if shape == "point":
+            pass
+        elif shape == "circle":
+            a = _random.uniform(0.0, _math.pi * 2.0)
+            r = _random.uniform(0.0, self.emission_radius)
+            sx += _math.cos(a) * r
+            sy += _math.sin(a) * r
+        elif shape == "rectangle":
+            sx += _random.uniform(-self.emission_width/2, self.emission_width/2)
+            sy += _random.uniform(-self.emission_height/2, self.emission_height/2)
+        elif shape == "cone":
+            half = self.emission_angle / 2.0 * _math.pi / 180.0
+            a = _random.uniform(-half, half)
+            r = _random.uniform(0.0, self.emission_radius)
+            sx += _math.cos(a) * r
+            sy += _math.sin(a) * r
+        return sx, sy
 
     def _spawn_one(self):
         angle = _random.uniform(*self.angle) * _math.pi / 180.0
         speed = _random.uniform(*self.speed)
         life  = _random.uniform(*self.lifetime)
         cs, ce = self.color_start, self.color_end
+        sx, sy = self._spawn_pos()
+
+        # Rotation
+        if self.rotation_speed_range != (0.0, 0.0):
+            rotspeed = _random.uniform(*self.rotation_speed_range)
+        else:
+            rotspeed = 0.0
+        if self.rotation_start != 0.0 or self.rotation_end != 0.0:
+            rot = _random.uniform(self.rotation_start, self.rotation_end)
+        else:
+            rot = 0.0
+
         return _Particle(
-            self.x, self.y,
+            sx, sy,
             _math.cos(angle)*speed, _math.sin(angle)*speed,
             life,
             cs.get("r",1)*255, cs.get("g",0)*255, cs.get("b",0)*255, cs.get("a",1)*255,
             ce.get("r",1)*255, ce.get("g",0)*255, ce.get("b",0)*255, ce.get("a",0)*255,
             self.size_start, self.size_end,
-            self.gravity_x, self.gravity_y
+            self.gravity_x, self.gravity_y,
+            rotation=rot, rotation_speed=rotspeed,
         )
 
     def burst(self, count=20):
-        for _ in range(int(count)): self._particles.append(self._spawn_one())
+        count = int(count)
+        for _ in range(count):
+            if len(self._particles) >= self.max_particles:
+                break
+            self._particles.append(self._spawn_one())
 
-    def start(self): self._running = True
-    def stop(self):  self._running = False
+    def start(self):
+        self._running = True
+        if self.one_shot:
+            self.burst(int(self.rate))
+            self._running = False
 
-    def set_position(self, x, y): self.x = float(x); self.y = float(y)
+    def stop(self):
+        self._running = False
 
+    def set_position(self, x, y):
+        dx = float(x) - self.x
+        dy = float(y) - self.y
+        self.x = float(x)
+        self.y = float(y)
+        if self.local_space:
+            for p in self._particles:
+                p.x += dx
+                p.y += dy
+
+    # ── v41: Curve helpers ─────────────────────────────────────────────────
+    def _apply_curves(self, p):
+        t = p._t()
+        if self.size_curve:
+            p.size = self.size_curve.evaluate(t) * self.size_start
+        else:
+            p.size = p.size + (p.size_end - p.size) * t
+
+        if self.alpha_curve:
+            val = max(0.0, min(1.0, self.alpha_curve.evaluate(t)))
+            p.a1 = val * 255
+        if self.velocity_curve:
+            mult = max(0.0, self.velocity_curve.evaluate(t))
+            p.vx *= mult
+            p.vy *= mult
+        if self.rotation_curve:
+            p.rotation = self.rotation_curve.evaluate(t)
+
+    # ── v42: Collision ─────────────────────────────────────────────────────
+    def _apply_collision(self, p, dt):
+        if not self.collision_enabled or self.collision_bounds is None:
+            return
+        bx, by, bw, bh = self.collision_bounds
+        if p.x - p.size < bx:
+            p.x = bx + p.size
+            p.vx = -p.vx * self.bounce_factor
+            p.vy *= self.collision_dampening
+        elif p.x + p.size > bx + bw:
+            p.x = bx + bw - p.size
+            p.vx = -p.vx * self.bounce_factor
+            p.vy *= self.collision_dampening
+        if p.y - p.size < by:
+            p.y = by + p.size
+            p.vy = -p.vy * self.bounce_factor
+            p.vx *= self.collision_dampening
+        elif p.y + p.size > by + bh:
+            p.y = by + bh - p.size
+            p.vy = -p.vy * self.bounce_factor
+            p.vx *= self.collision_dampening
+
+    # ── v42: Sub-emitter trigger ───────────────────────────────────────────
+    def _trigger_sub(self, p):
+        if self.sub_emitter is None or p.sub_triggered:
+            return
+        p.sub_triggered = True
+        se = self.sub_emitter
+        if isinstance(se, _Emitter):
+            se.set_position(p.x, p.y)
+            se.burst(int(se.rate * 0.5 + 1))
+
+    # ── v42: Trail recording ───────────────────────────────────────────────
+    def _record_trails(self, dt):
+        if self.trail_length <= 0:
+            return
+        self._trail_accum += dt
+        if self._trail_accum < self.trail_spacing:
+            return
+        self._trail_accum = 0.0
+        for p in self._particles:
+            if len(p.trail_x) >= self.trail_length:
+                p.trail_x.pop(0)
+                p.trail_y.pop(0)
+            p.trail_x.append(p.x)
+            p.trail_y.append(p.y)
+
+    # ── Main update ────────────────────────────────────────────────────────
     def update(self, dt):
         dt = float(dt)
-        # Spawn new
-        if self._running:
+
+        # Spawn new (v40: respect max_particles)
+        if self._running and not self.one_shot:
             self._accumulator += self.rate * dt
             while self._accumulator >= 1.0:
+                if len(self._particles) >= self.max_particles:
+                    self._accumulator = 0.0
+                    break
                 self._particles.append(self._spawn_one())
                 self._accumulator -= 1.0
-        # Update existing
+        elif self._running and self.one_shot:
+            self._running = False
+
+        # Update existing + apply attractors / wind / collision
         alive = []
         for p in self._particles:
             p.life -= dt
-            if p.life <= 0: continue
-            p.vx += p.gx * dt; p.vy += p.gy * dt
-            p.x  += p.vx * dt; p.y  += p.vy * dt
+            if p.life <= 0:
+                self._trigger_sub(p)
+                continue
+
+            # Gravity
+            p.vx += p.gx * dt
+            p.vy += p.gy * dt
+
+            vx_curve = 1.0
+            vy_curve = 1.0
+            if self.velocity_curve:
+                vc = max(0.0, self.velocity_curve.evaluate(p._t()))
+                vx_curve = vc
+                vy_curve = vc
+
+            # Wind (v41)
+            p.vx += self.wind_x * dt * vx_curve
+            p.vy += self.wind_y * dt * vy_curve
+
+            # Acceleration (from attractors)
+            p.vx += p.ax * dt
+            p.vy += p.ay * dt
+
+            # Attractors (v42)
+            for attr in self._attractors:
+                attr.apply(p, dt)
+
+            # Integrate position
+            p.x += p.vx * dt * vx_curve
+            p.y += p.vy * dt * vy_curve
+
+            # Rotation
+            p.rotation += p.rotation_speed * dt
+
+            # Collision (v42)
+            self._apply_collision(p, dt)
+
+            # Curves (v41)
+            self._apply_curves(p)
+
             alive.append(p)
+
         self._particles = alive
 
-    def draw(self, renderer=None):
-        # renderer is the pygame draw namespace when called from game code
-        # Headless: no-op
-        pass
+        # Trails (v42)
+        self._record_trails(dt)
 
+    # ── v40: GPU-batchable draw ────────────────────────────────────────────
+    def draw(self, renderer=None):
+        """Draw all particles. If renderer (DrawNamespace) is provided, draw
+        directly via pygame circles. Otherwise no-op (headless)."""
+        if renderer is None:
+            return
+        has_pygame = type(renderer).__module__.startswith("pygame_backend") or True
+        if not has_pygame:
+            return
+        for p in self._particles:
+            t = p._t()
+            r = int(p.r0 + (p.r1 - p.r0) * t)
+            g = int(p.g0 + (p.g1 - p.g0) * t)
+            b = int(p.b0 + (p.b1 - p.b0) * t)
+            a = int(p.a0 + (p.a1 - p.a0) * t)
+            a = max(0, min(255, a))
+            sz = max(0.5, p.size)
+            renderer.circle(p.x, p.y, sz, {"r":r/255,"g":g/255,"b":b/255,"a":a/255})
+
+    # ── v40: Return batched draw data as list of dicts ─────────────────────
+    def draw_batch(self):
+        """Return pre-computed particle data for efficient rendering.
+        Each entry: {x, y, r, g, b, a, size, rotation}."""
+        out = []
+        for p in self._particles:
+            t = p._t()
+            r = int(p.r0 + (p.r1 - p.r0) * t)
+            g = int(p.g0 + (p.g1 - p.g0) * t)
+            b = int(p.b0 + (p.b1 - p.b0) * t)
+            a = int(p.a0 + (p.a1 - p.a0) * t)
+            sz = max(0.5, p.size)
+            out.append({
+                "x": p.x,
+                "y": p.y,
+                "r": r, "g": g, "b": b, "a": max(0, min(255, a)),
+                "size": sz,
+                "rotation": p.rotation,
+            })
+        return out
+
+    # ── v40: particle_data (backward compat) ───────────────────────────────
     def particle_data(self):
         out = []
         for p in self._particles:
-            t = 1.0 - p.life / max(p.max_life, 0.0001)
-            lerp = lambda a, b: a + (b-a)*t
+            t = p._t()
+            lerp = lambda a, b: a + (b - a) * t
             out.append({
-                "x": p.x, "y": p.y,
-                "r": lerp(p.r0, p.r1), "g": lerp(p.g0, p.g1),
-                "b": lerp(p.b0, p.b1), "a": lerp(p.a0, p.a1),
+                "x": p.x,
+                "y": p.y,
+                "r": lerp(p.r0, p.r1),
+                "g": lerp(p.g0, p.g1),
+                "b": lerp(p.b0, p.b1),
+                "a": lerp(p.a0, p.a1),
                 "size": lerp(p.size, p.size_end),
             })
         return out
 
+    # ── v42: Pre-warm ──────────────────────────────────────────────────────
+    def pre_warm(self, duration):
+        """Pre-simulate the emitter for `duration` seconds."""
+        steps = int(duration / 0.016)  # ~60Hz
+        for _ in range(steps):
+            self.update(0.016)
+
+    # ── v42: Attractor management ──────────────────────────────────────────
+    def add_attractor(self, x, y, strength, radius):
+        self._attractors.append(_AttractorZone(x, y, strength, radius))
+
+    def clear_attractors(self):
+        self._attractors.clear()
+
+    # ── Properties ─────────────────────────────────────────────────────────
     @property
-    def count(self): return len(self._particles)
+    def count(self):
+        return len(self._particles)
 
-    def __repr__(self): return f"<Emitter particles={len(self._particles)} running={self._running}>"
+    def __repr__(self):
+        return f"<Emitter particles={len(self._particles)} running={self._running}>"
 
-register_module("particle", _wrapmod({
+
+# ── Alias for public API ───────────────────────────────────────────────────
+_ParticleEmitter = _Emitter
+
+
+# ── Module registration ────────────────────────────────────────────────────
+_particle_exports = {
     "Emitter":      lambda x=0, y=0: _Emitter(x, y),
+    "ParticleEmitter": lambda x=0, y=0: _ParticleEmitter(x, y),
     "start":        lambda e: e.start(),
     "stop":         lambda e: e.stop(),
     "update":       lambda e, dt: e.update(dt),
     "burst":        lambda e, n=None: e.burst(n),
     "set_position": lambda e, x, y: e.set_position(x, y),
-    "rate":         lambda e, v: e.rate(v),
-    "lifetime":     lambda e, v: e.lifetime(v),
-    "speed":        lambda e, v: e.speed(v),
-    "angle":        lambda e, v: e.angle(v),
+    "rate":         lambda e, v: setattr(e, "rate", float(v)),
+    "lifetime":     lambda e, v: setattr(e, "lifetime", tuple(float(x) for x in v)),
+    "speed":        lambda e, v: setattr(e, "speed", tuple(float(x) for x in v)),
+    "angle":        lambda e, v: setattr(e, "angle", tuple(float(x) for x in v)),
     "count":        lambda e: e.count(),
-    "color_start":  lambda e, r, g, b, a=1.0: e.color_start(r, g, b, a),
-    "color_end":    lambda e, r, g, b, a=0.0: e.color_end(r, g, b, a),
-    "size_start":   lambda e, v: e.size_start(v),
-    "size_end":     lambda e, v: e.size_end(v),
-    "gravity":      lambda e, x, y: (e.gravity_x(x), e.gravity_y(y)),
-}, "particle"))
+    "color_start":  lambda e, r, g, b, a=1.0: _set_color(e, "color_start", r, g, b, a),
+    "color_end":    lambda e, r, g, b, a=0.0: _set_color(e, "color_end", r, g, b, a),
+    "size_start":   lambda e, v: setattr(e, "size_start", float(v)),
+    "size_end":     lambda e, v: setattr(e, "size_end", float(v)),
+    "gravity":      lambda e, x, y: (setattr(e, "gravity_x", x), setattr(e, "gravity_y", y)),
+    # v40: Emission shapes
+    "set_shape":    lambda e, shape, r=0, w=0, h=0, a=0: _set_shape(e, shape, r, w, h, a),
+    "max_particles": lambda e, v: setattr(e, "max_particles", int(v)),
+    "one_shot":     lambda e, v: setattr(e, "one_shot", bool(v)),
+    "local_space":  lambda e, v: setattr(e, "local_space", bool(v)),
+    "rotation_start": lambda e, v: setattr(e, "rotation_start", float(v)),
+    "rotation_end":   lambda e, v: setattr(e, "rotation_end", float(v)),
+    "rotation_speed": lambda e, lo, hi=None: _rotation_speed(e, lo, hi),
+    "draw_batch":   lambda e: e.draw_batch(),
+    "draw":         lambda e, r=None: e.draw(r),
+    # v41: Curves
+    "curve":        lambda shape="linear", start=0.0, end=1.0: _Curve(shape, start, end),
+    "set_size_curve":     lambda e, c: setattr(e, "size_curve", c),
+    "set_alpha_curve":    lambda e, c: setattr(e, "alpha_curve", c),
+    "set_velocity_curve": lambda e, c: setattr(e, "velocity_curve", c),
+    "set_rotation_curve": lambda e, c: setattr(e, "rotation_curve", c),
+    "wind":         lambda e, x, y: _set_wind(e, x, y),
+    # v42: Advanced
+    "sub_emitter":  lambda e, child: setattr(e, "sub_emitter", child),
+    "add_attractor": lambda e, x, y, s, r: e.add_attractor(x, y, s, r),
+    "clear_attractors": lambda e: e.clear_attractors(),
+    "set_collision": lambda e, enabled, bounds=None, bounce=0.5, damp=0.5: _set_collision(e, enabled, bounds, bounce, damp),
+    "set_trail":    lambda e, length, spacing=0.02: _set_trail(e, length, spacing),
+    "pre_warm":     lambda e, dur: e.pre_warm(dur),
+}
+
+def _set_shape(e, shape, r=0, w=0, h=0, a=0):
+    e.emission_shape = str(shape)
+    e.emission_radius = float(r)
+    e.emission_width = float(w)
+    e.emission_height = float(h)
+    e.emission_angle = float(a)
+
+def _rotation_speed(e, lo, hi=None):
+    if hi is None:
+        hi = lo
+    e.rotation_speed_range = (float(lo), float(hi))
+
+def _set_wind(e, x, y):
+    e.wind_x = float(x)
+    e.wind_y = float(y)
+
+def _set_collision(e, enabled, bounds=None, bounce=0.5, damp=0.5):
+    e.collision_enabled = bool(enabled)
+    if bounds is not None:
+        e.collision_bounds = tuple(float(v) for v in bounds)
+    e.bounce_factor = float(bounce)
+    e.collision_dampening = float(damp)
+
+def _set_trail(e, length, spacing=0.02):
+    e.trail_length = int(length)
+    e.trail_spacing = float(spacing)
+
+def _set_color(e, attr, r, g, b, a):
+    getattr(e, attr).update({"r": float(r), "g": float(g), "b": float(b), "a": float(a)})
+
+register_module("particle", _wrapmod(_particle_exports, "particle"))
+
+# v40: Also register the `particles` alias
+register_module("particles", _wrapmod(_particle_exports, "particles"))
 
 # ═══════════════════════════════════════════════════════════════════════════
 # 5.8 — pathfind module

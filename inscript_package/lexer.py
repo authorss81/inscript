@@ -794,6 +794,12 @@ def tokenize(source: str, filename: str = "<stdin>") -> List[Token]:
             elif tt == TT.IDENT and val_str in _RUST_SOFT_KEYWORDS:
                 tt = _RUST_SOFT_KEYWORDS[val_str]
 
+            # Rust lexer names differ from InScript keywords — correct values
+            if tt == TT.MATCH:
+                val_str = "match"
+            elif tt == TT.CASE:
+                val_str = "case"
+
             # Convert value to correct Python type
             if tt == TT.INT:
                 val = int(val_str) if val_str else 0
