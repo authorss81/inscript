@@ -1,6 +1,6 @@
 # InScript Roadmap — Production-Grade Microversion Plan
 
-> **Current:** v3.9.6.45 — Animation: tween system (AnimationPlayer, state machine, built-in tween namespace).
+> **Current:** v3.9.6.45 — Animation: tween system (AnimationPlayer, state machine, built-in tween namespace, TweenRunner, Sequence/Parallel).
 > 
 > **Version scheme:** MAJOR.MINOR.PATCH.MICRO — each micro targets a discrete production feature.
 > After v3.9.6.99, roll to v3.9.7.0 for the next feature cluster.
@@ -421,12 +421,12 @@ Parallel microversion to v3.9.6.13. Fixes 6 pre-existing Rust lexer tests by bri
 - [x] History tracking, time-in-state query
 - [x] Direct Python callable support for conditions
 
-### v3.9.6.45 — Animation: tween system
-- [ ] Built-in `tween` namespace (not just a package)
-- [ ] `Tween.to(obj, "property", target, duration)`
-- [ ] Easing presets: 30+ functions
-- [ ] Sequence / parallel tween groups
-- [ ] Ping-pong, loop, delay, on_complete callback
+### v3.9.6.45 — Animation: tween system ✅
+- [x] Built-in `tween` system via `TweenRunner`, `Tween` classes (in `import "animation"`)
+- [x] `TweenRunner.to(target, prop, end_val, duration)` — simple property tween
+- [x] Easing presets: 12+ functions (linear, quad, cubic, bounce, elastic)
+- [x] Sequence (sequential tween groups) and Parallel groups
+- [x] Ping-pong, loop, delay, on_complete callback
 
 ### v3.9.6.46 — Animation: advanced features
 - [ ] Animation layers (overlay multiple animations on one target)

@@ -1,0 +1,164 @@
+test "Tween: create" {
+  import "animation" as anim
+  let t = anim.Tween({}, "x", 100, 1.0)
+  assert(t != nil)
+  assert(t.done == false)
+  assert(t.progress == 0.0)
+}
+
+test "Tween: animate to target value" {
+  import "animation" as anim
+  let target = {"x": 0}
+  let t = anim.Tween(target, "x", 100, 1.0)
+  t.update(0.5)
+  assert(target["x"] == 50)
+  t.update(0.5)
+  assert(target["x"] == 100)
+  assert(t.done == true)
+}
+
+test "Tween: linear interpolation" {
+  import "animation" as anim
+  let target = {"val": 0}
+  let t = anim.Tween(target, "val", 200, 2.0)
+  t.update(1.0)
+  assert(target["val"] == 100)
+}
+
+test "Tween: delay" {
+  import "animation" as anim
+  let target = {"x": 0}
+  let t = anim.Tween(target, "x", 100, 1.0)
+  t.set_delay(0.5)
+  t.update(0.3)
+  assert(target["x"] == 0)
+  assert(t.done == false)
+  t.update(0.3)
+  assert(target["x"] > 0)
+}
+
+test "Tween: loop" {
+  import "animation" as anim
+  let target = {"x": 0}
+  let t = anim.Tween(target, "x", 100, 0.5)
+  t.set_loop(true)
+  t.update(1.0)
+  assert(t.done == false)
+}
+
+test "Tween: ping_pong" {
+  import "animation" as anim
+  let target = {"x": 0}
+  let t = anim.Tween(target, "x", 100, 1.0)
+  t.set_ping_pong(true)
+  t.update(1.0)
+  assert(target["x"] == 100)
+  t.update(1.0)
+  assert(target["x"] == 0)
+}
+
+test "Tween: on_complete callback" {
+  import "animation" as anim
+  let target = {"x": 0}
+  let fired = false
+  fn done_fn() {
+    fired = true
+  }
+  let t = anim.Tween(target, "x", 100, 0.1)
+  t.on_complete(done_fn)
+  t.update(0.2)
+  assert(t.done == true)
+  assert(fired == true)
+}
+
+test "Tween: stop" {
+  import "animation" as anim
+  let target = {"x": 0}
+  let t = anim.Tween(target, "x", 100, 1.0)
+  t.update(0.3)
+  t.stop()
+  assert(t.done == true)
+}
+
+test "Tween: reset" {
+  import "animation" as anim
+  let target = {"x": 0}
+  let t = anim.Tween(target, "x", 100, 1.0)
+  t.update(0.5)
+  assert(target["x"] == 50)
+  t.reset()
+  assert(t.done == false)
+  assert(t.progress == 0.0)
+  t.update(0.5)
+  assert(target["x"] == 50)
+}
+
+test "TweenRunner: create and add tweens" {
+  import "animation" as anim
+  let r = anim.TweenRunner()
+  assert(r != nil)
+  assert(r.count() == 0)
+  let target = {"x": 0}
+  r.to(target, "x", 100, 1.0)
+  assert(r.count() == 1)
+}
+
+test "TweenRunner: update all tweens" {
+  import "animation" as anim
+  let r = anim.TweenRunner()
+  let target = {"x": 0, "y": 0}
+  r.to(target, "x", 100, 1.0)
+  r.to(target, "y", 200, 1.0)
+  r.update(0.5)
+  assert(target["x"] == 50)
+  assert(target["y"] == 100)
+}
+
+test "TweenRunner: removes completed tweens" {
+  import "animation" as anim
+  let r = anim.TweenRunner()
+  let target = {"x": 0}
+  r.to(target, "x", 100, 0.1)
+  r.update(0.2)
+  assert(r.count() == 0)
+}
+
+test "TweenRunner: clear" {
+  import "animation" as anim
+  let r = anim.TweenRunner()
+  let target = {"x": 0}
+  r.to(target, "x", 100, 1.0)
+  r.to(target, "y", 200, 1.0)
+  r.clear()
+  assert(r.count() == 0)
+}
+
+test "TweenSequence: runs tweens sequentially" {
+  import "animation" as anim
+  let target = {"x": 0, "y": 0}
+  let t1 = anim.Tween(target, "x", 100, 0.5)
+  let t2 = anim.Tween(target, "y", 200, 0.5)
+  let seq = anim.Sequence()
+  seq.add(t1).add(t2)
+  seq.update(0.3)
+  assert(target["x"] > 0)
+  assert(target["y"] == 0)
+  seq.update(0.3)
+  assert(target["x"] == 100)
+  assert(target["y"] > 0)
+  seq.update(0.5)
+  assert(target["y"] == 200)
+  assert(seq.done == true)
+}
+
+test "TweenParallel: runs tweens in parallel" {
+  import "animation" as anim
+  let target = {"x": 0, "y": 0}
+  let t1 = anim.Tween(target, "x", 100, 1.0)
+  let t2 = anim.Tween(target, "y", 200, 1.0)
+  let p = anim.Parallel()
+  p.add(t1).add(t2)
+  p.update(0.5)
+  assert(target["x"] == 50)
+  assert(target["y"] == 100)
+}

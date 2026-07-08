@@ -741,6 +741,236 @@ class _StateMachine:
     def __repr__(self):
         return f"<StateMachine states={list(self._states.keys())} current={self._current}>"
 
+# ═══════════════════════════════════════════════════════════════════════════
+# 5.3 — animation module (continued): v3.9.6.45 Tween System
+# ═══════════════════════════════════════════════════════════════════════════
+
+_TWEEN_EASING = {
+    "linear":       _anim_ease_linear,
+    "ease_in":      _anim_ease_in_quad,
+    "ease_out":     _anim_ease_out_quad,
+    "ease_in_out":  _anim_ease_io_quad,
+    "ease_in_quad": _anim_ease_in_quad,
+    "ease_out_quad":_anim_ease_out_quad,
+    "ease_in_cubic":_anim_ease_in_cubic,
+    "ease_out_cubic":_anim_ease_out_cubic,
+    "ease_in_bounce":_anim_ease_in_bounce,
+    "ease_out_bounce":_anim_ease_out_bounce,
+    "ease_in_elastic":_anim_ease_in_elastic,
+    "ease_out_elastic":_anim_ease_out_elastic,
+}
+
+def _tween_get(target, prop):
+    if isinstance(target, dict):
+        return target.get(prop, 0)
+    return getattr(target, prop, 0)
+
+def _tween_set(target, prop, val):
+    if isinstance(target, dict):
+        target[prop] = val
+    else:
+        setattr(target, prop, val)
+
+class _Tween:
+    def __init__(self, target, prop, end_val, duration, easing="linear"):
+        self.target = target
+        self.prop = str(prop)
+        self._abs_end = float(end_val)
+        self.duration = max(0.001, float(duration))
+        self._easing_name = easing if easing in _TWEEN_EASING else "linear"
+        self._easing_fn = _TWEEN_EASING.get(self._easing_name, _anim_ease_linear)
+        self._abs_start = None
+        self.elapsed = 0.0
+        self.delay = 0.0
+        self.loop = False
+        self.ping_pong = False
+        self._done = False
+        self._reverse = False
+        self._on_complete = None
+
+    def _init_start(self):
+        if self._abs_start is None:
+            self._abs_start = _tween_get(self.target, self.prop)
+
+    def set_delay(self, d):
+        self.delay = max(0.0, float(d))
+        return self
+
+    def set_loop(self, v=True):
+        self.loop = bool(v)
+        return self
+
+    def set_ping_pong(self, v=True):
+        self.ping_pong = bool(v)
+        return self
+
+    def on_complete(self, fn):
+        self._on_complete = fn
+        return self
+
+    def update(self, dt):
+        if self._done:
+            return
+        if self.delay > 0:
+            self.delay -= float(dt)
+            if self.delay <= 0:
+                dt = -self.delay
+            else:
+                return
+        self._init_start()
+        self.elapsed += float(dt)
+        t = min(self.elapsed / self.duration, 1.0) if self.duration > 0 else 1.0
+        et = self._easing_fn(t)
+        start = self._abs_end if self._reverse else self._abs_start
+        end = self._abs_start if self._reverse else self._abs_end
+        val = start + (end - start) * et
+        _tween_set(self.target, self.prop, val)
+        if self.elapsed >= self.duration:
+            if self.loop:
+                self.elapsed = 0.0
+            elif self.ping_pong:
+                self._reverse = not self._reverse
+                self.elapsed = 0.0
+            else:
+                self._done = True
+                if self._on_complete:
+                    self._on_complete()
+
+    def stop(self):
+        self._done = True
+
+    def reset(self):
+        self.elapsed = 0.0
+        self._done = False
+        self._reverse = False
+
+    @property
+    def done(self):
+        return self._done
+
+    @property
+    def progress(self):
+        return min(self.elapsed / self.duration, 1.0) if self.duration > 0 else 1.0
+
+    def __repr__(self):
+        return f"<Tween {self.prop} {self._abs_start}->{self._abs_end} dur={self.duration}s done={self._done}>"
+
+class _TweenRunner:
+    def __init__(self):
+        self._tweens = []
+
+    def to(self, target, prop, end_val, duration, easing="linear"):
+        t = _Tween(target, prop, end_val, duration, easing)
+        self._tweens.append(t)
+        return t
+
+    def add(self, tween):
+        self._tweens.append(tween)
+
+    def remove(self, tween):
+        if tween in self._tweens:
+            self._tweens.remove(tween)
+
+    def clear(self):
+        self._tweens.clear()
+
+    def update(self, dt):
+        for t in list(self._tweens):
+            t.update(dt)
+        self._tweens = [t for t in self._tweens if not t.done]
+
+    def count(self):
+        return len(self._tweens)
+
+    def __repr__(self):
+        return f"<TweenRunner {len(self._tweens)} active>"
+
+class _TweenSequence:
+    def __init__(self):
+        self._items = []
+        self._index = 0
+        self._done = False
+        self._on_complete = None
+
+    def add(self, tween):
+        self._items.append(tween)
+        return self
+
+    def on_complete(self, fn):
+        self._on_complete = fn
+        return self
+
+    def update(self, dt):
+        if self._done or not self._items:
+            return
+        dt_remain = float(dt)
+        while self._index < len(self._items) and dt_remain > 0.0001:
+            current = self._items[self._index]
+            if current.done:
+                self._index += 1
+                continue
+            before = current.elapsed
+            need = current.duration - before
+            chunk = min(dt_remain, need + 0.001)
+            current.update(chunk)
+            dt_remain -= (current.elapsed - before)
+        if self._index >= len(self._items):
+            self._done = True
+            if self._on_complete:
+                self._on_complete()
+
+    def stop(self):
+        self._done = True
+
+    def reset(self):
+        self._index = 0
+        self._done = False
+        for item in self._items:
+            item.reset()
+
+    @property
+    def done(self):
+        return self._done
+
+class _TweenParallel:
+    def __init__(self):
+        self._items = []
+        self._done = False
+        self._on_complete = None
+
+    def add(self, tween):
+        self._items.append(tween)
+        return self
+
+    def on_complete(self, fn):
+        self._on_complete = fn
+        return self
+
+    def update(self, dt):
+        if self._done:
+            return
+        all_done = True
+        for item in self._items:
+            item.update(dt)
+            if not item.done:
+                all_done = False
+        if all_done:
+            self._done = True
+            if self._on_complete:
+                self._on_complete()
+
+    def stop(self):
+        self._done = True
+
+    def reset(self):
+        self._done = False
+        for item in self._items:
+            item.reset()
+
+    @property
+    def done(self):
+        return self._done
+
 register_module("animation", _wrapmod({
     "Clip":     lambda name, frame_names, fps=12, loop=True: _Clip(name, frame_names, fps, loop),
     "Animator": _Animator,
@@ -751,6 +981,11 @@ register_module("animation", _wrapmod({
     # v44: State Machine
     "StateMachine":  _StateMachine,
     "SMState":       _SMState,
+    # v45: Tween System
+    "Tween":         _Tween,
+    "TweenRunner":   _TweenRunner,
+    "Sequence":      _TweenSequence,
+    "Parallel":      _TweenParallel,
 }, "animation"))
 
 # ═══════════════════════════════════════════════════════════════════════════
