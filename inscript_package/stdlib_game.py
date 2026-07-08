@@ -634,6 +634,113 @@ class _AnimationPlayer:
     def __repr__(self):
         return f"<AnimationPlayer {len(self._tracks)} tracks t={self._time:.2f}/{self._duration:.2f}s playing={self._playing}>"
 
+# ═══════════════════════════════════════════════════════════════════════════
+# 5.3 — animation module (continued): v3.9.6.44 State Machine
+# ═══════════════════════════════════════════════════════════════════════════
+
+class _SMState:
+    def __init__(self, name, on_enter=None, on_leave=None, on_update=None):
+        self.name = str(name)
+        self.on_enter = on_enter
+        self.on_leave = on_leave
+        self.on_update = on_update
+    def __repr__(self):
+        return f"<SMState '{self.name}'>"
+
+class _SMTransition:
+    def __init__(self, from_state, to_state, condition=None, event=None):
+        self.from_state = str(from_state)
+        self.to_state = str(to_state)
+        self.condition = condition
+        self.event = str(event) if event else None
+    def __repr__(self):
+        return f"<SMTransition {self.from_state} -> {self.to_state}>"
+
+class _StateMachine:
+    def __init__(self):
+        self._states = {}
+        self._transitions = []
+        self._current = None
+        self._previous = None
+        self._time_in_state = 0.0
+        self._history = []
+
+    def add_state(self, name, on_enter=None, on_leave=None, on_update=None):
+        s = _SMState(name, on_enter, on_leave, on_update)
+        self._states[name] = s
+
+    def add_transition(self, from_state, to_state, event_or_condition=None):
+        if event_or_condition is None:
+            tr = _SMTransition(from_state, to_state)
+        elif isinstance(event_or_condition, str):
+            tr = _SMTransition(from_state, to_state, event=event_or_condition)
+        else:
+            tr = _SMTransition(from_state, to_state, condition=event_or_condition)
+        self._transitions.append(tr)
+
+    def start(self, name):
+        if name not in self._states:
+            raise KeyError(f"StateMachine: state '{name}' not found")
+        self._current = name
+        self._previous = None
+        self._time_in_state = 0.0
+        self._history = []
+        s = self._states[name]
+        if s.on_enter:
+            s.on_enter()
+
+    def trigger(self, event):
+        if self._current is None:
+            return
+        for tr in self._transitions:
+            if tr.from_state == self._current and tr.event == str(event):
+                self._change_state(tr.to_state)
+                return
+
+    def update(self, dt):
+        if self._current is None:
+            return
+        self._time_in_state += float(dt)
+        s = self._states[self._current]
+        if s.on_update:
+            s.on_update(dt)
+        for tr in self._transitions:
+            if tr.from_state == self._current and tr.event is None:
+                if tr.condition and tr.condition():
+                    self._change_state(tr.to_state)
+                    return
+
+    def _change_state(self, new_name):
+        old = self._states.get(self._current)
+        if old and old.on_leave:
+            old.on_leave()
+        self._previous = self._current
+        self._current = new_name
+        self._time_in_state = 0.0
+        self._history.append((self._previous, new_name))
+        s = self._states.get(new_name)
+        if s and s.on_enter:
+            s.on_enter()
+
+    @property
+    def current(self):
+        return self._current
+
+    @property
+    def previous(self):
+        return self._previous
+
+    @property
+    def time_in_state(self):
+        return self._time_in_state
+
+    @property
+    def history(self):
+        return self._history
+
+    def __repr__(self):
+        return f"<StateMachine states={list(self._states.keys())} current={self._current}>"
+
 register_module("animation", _wrapmod({
     "Clip":     lambda name, frame_names, fps=12, loop=True: _Clip(name, frame_names, fps, loop),
     "Animator": _Animator,
@@ -641,6 +748,9 @@ register_module("animation", _wrapmod({
     "keyframe":   _Keyframe,
     "Track":      _Track,
     "AnimationPlayer": _AnimationPlayer,
+    # v44: State Machine
+    "StateMachine":  _StateMachine,
+    "SMState":       _SMState,
 }, "animation"))
 
 # ═══════════════════════════════════════════════════════════════════════════

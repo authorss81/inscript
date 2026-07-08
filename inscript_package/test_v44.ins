@@ -1,0 +1,124 @@
+test "StateMachine: create" {
+  import "animation" as anim
+  let sm = anim.StateMachine()
+  assert(sm != nil)
+  assert(sm.current == nil)
+}
+
+test "StateMachine: add states and start" {
+  import "animation" as anim
+  let sm = anim.StateMachine()
+  sm.add_state("idle")
+  sm.add_state("running")
+  sm.start("idle")
+  assert(sm.current == "idle")
+  assert(sm.time_in_state == 0.0)
+}
+
+test "StateMachine: transition on event" {
+  import "animation" as anim
+  let sm = anim.StateMachine()
+  sm.add_state("idle")
+  sm.add_state("running")
+  sm.start("idle")
+  sm.add_transition("idle", "running", "start")
+  sm.trigger("start")
+  assert(sm.current == "running")
+}
+
+test "StateMachine: previous state tracked" {
+  import "animation" as anim
+  let sm = anim.StateMachine()
+  sm.add_state("a")
+  sm.add_state("b")
+  sm.start("a")
+  sm.add_transition("a", "b", "go")
+  sm.trigger("go")
+  assert(sm.previous == "a")
+}
+
+test "StateMachine: history" {
+  import "animation" as anim
+  let sm = anim.StateMachine()
+  sm.add_state("a")
+  sm.add_state("b")
+  sm.add_state("c")
+  sm.start("a")
+  sm.add_transition("a", "b", "to_b")
+  sm.add_transition("b", "c", "to_c")
+  sm.trigger("to_b")
+  sm.trigger("to_c")
+  let h = sm.history
+  assert(len(h) == 2)
+}
+
+test "StateMachine: update with time" {
+  import "animation" as anim
+  let sm = anim.StateMachine()
+  sm.add_state("idle")
+  sm.start("idle")
+  sm.update(0.5)
+  assert(sm.time_in_state == 0.5)
+  sm.update(0.3)
+  assert(sm.time_in_state == 0.8)
+}
+
+test "StateMachine: on_enter callback" {
+  import "animation" as anim
+  let entered = false
+  fn on_enter() {
+    entered = true
+  }
+  let sm = anim.StateMachine()
+  sm.add_state("active", on_enter)
+  sm.start("active")
+  assert(entered == true)
+}
+
+test "StateMachine: on_leave callback" {
+  import "animation" as anim
+  let exited = false
+  fn on_leave_fn() {
+    exited = true
+  }
+  let sm = anim.StateMachine()
+  sm.add_state("a", nil, on_leave_fn)
+  sm.add_state("b")
+  sm.start("a")
+  sm.add_transition("a", "b", "go")
+  sm.trigger("go")
+  assert(exited == true)
+  assert(sm.current == "b")
+}
+
+test "StateMachine: condition-based transition" {
+  import "animation" as anim
+  let ready = false
+  fn check() {
+    return ready
+  }
+  let sm = anim.StateMachine()
+  sm.add_state("waiting")
+  sm.add_state("ready_state")
+  sm.start("waiting")
+  sm.add_transition("waiting", "ready_state", check)
+  sm.update(1.0)
+  assert(sm.current == "waiting")
+  ready = true
+  sm.update(1.0)
+  assert(sm.current == "ready_state")
+}
+
+test "StateMachine: update callback per state" {
+  import "animation" as anim
+  let val = 0
+  fn on_upd(dt) {
+    val = val + 1
+  }
+  let sm = anim.StateMachine()
+  sm.add_state("counting", nil, nil, on_upd)
+  sm.start("counting")
+  sm.update(0.1)
+  sm.update(0.1)
+  assert(val == 2)
+}

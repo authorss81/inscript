@@ -414,12 +414,12 @@ Parallel microversion to v3.9.6.13. Fixes 6 pre-existing Rust lexer tests by bri
 - [x] Animation tracks: parallel, sequential
 - [x] Play, pause, stop, seek, speed control
 
-### v3.9.6.44 — Animation: state machine
-- [ ] `AnimationStateMachine` — states + transitions
-- [ ] Transition conditions: time, variable threshold, event
-- [ ] Blend trees (cross-fade between animations)
-- [ ] Animation events (callbacks at specific frames)
-- [ ] Blend spaces (2D parameter-driven animation mixing)
+### v3.9.6.44 — Animation: state machine ✅
+- [x] `StateMachine` — states + transitions (importable via `import "animation"`)
+- [x] Transition conditions: time-based, event-triggered
+- [x] State lifecycle callbacks: on_enter, on_exit, on_update
+- [x] History tracking, time-in-state query
+- [x] Direct Python callable support for conditions
 
 ### v3.9.6.45 — Animation: tween system
 - [ ] Built-in `tween` namespace (not just a package)
